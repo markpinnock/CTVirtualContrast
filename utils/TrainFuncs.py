@@ -6,7 +6,7 @@ def trainStep(CE, NCE, model, optimiser, loss, train_metric):
     with tf.GradientTape() as tape:
         prediction = model(NCE)
         curr_loss = loss(CE, prediction)
-    
+
     gradients = tape.gradient(curr_loss, model.trainable_variables)
     optimiser.apply_gradients(zip(gradients, model.trainable_variables))
     train_metric(CE, prediction)
