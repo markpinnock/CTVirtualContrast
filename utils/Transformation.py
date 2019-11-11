@@ -40,6 +40,7 @@ def coordGen(mb_size, height, width, depth):
     
     height_f = tf.cast(height, tf.float32)
     width_f = tf.cast(width, tf.float32)
+    depth_f = tf.cast(depth, tf.float32)
     X, Y, Z = tf.meshgrid(tf.linspace(-1.0, 1.0, width), tf.linspace(-1.0, 1.0, height), tf.linspace(-1.0, 1.0, depth))
     flat_X = tf.reshape(X, (1, -1))
     flat_Y = tf.reshape(Y, (1, -1))
@@ -105,6 +106,18 @@ def interpolate(input_vol, X, Y, Z):
     idx_g = base_z0_y1 + x1
     idx_h = base_z1_y1 + x1
 
+    for i in range(8):
+        fig, axs = plt.subplots(2, 4)
+        axs[0, 0].imshow(tf.reshape(idx_a, [4, 128, 128, 8, 1])[0, :, :, i, 0])
+        axs[0, 1].imshow(tf.reshape(idx_b, [4, 128, 128, 8, 1])[0, :, :, i, 0])
+        axs[0, 2].imshow(tf.reshape(idx_b, [4, 128, 128, 8, 1])[0, :, :, i, 0])
+        axs[0, 3].imshow(tf.reshape(idx_d, [4, 128, 128, 8, 1])[0, :, :, i, 0])
+        axs[1, 0].imshow(tf.reshape(idx_e, [4, 128, 128, 8, 1])[0, :, :, i, 0])
+        axs[1, 1].imshow(tf.reshape(idx_f, [4, 128, 128, 8, 1])[0, :, :, i, 0])
+        axs[1, 2].imshow(tf.reshape(idx_g, [4, 128, 128, 8, 1])[0, :, :, i, 0])
+        axs[1, 3].imshow(tf.reshape(idx_h, [4, 128, 128, 8, 1])[0, :, :, i, 0])
+        plt.show()
+
     # Flatten image vector and look up with indices
     # Gather pixel values from flattened img based on 4 index vectors
     input_vol_flat = tf.reshape(input_vol, [-1, nc])
@@ -113,7 +126,7 @@ def interpolate(input_vol, X, Y, Z):
     ImgB = tf.gather(input_vol_flat, idx_b)
     ImgC = tf.gather(input_vol_flat, idx_c)
     ImgD = tf.gather(input_vol_flat, idx_d)
-    ImgE = tf.gather(input_vol_flat, idx_a)
+    ImgE = tf.gather(input_vol_flat, idx_e)
     ImgF = tf.gather(input_vol_flat, idx_f)
     ImgG = tf.gather(input_vol_flat, idx_g)
     ImgH = tf.gather(input_vol_flat, idx_h)
@@ -125,24 +138,31 @@ def interpolate(input_vol, X, Y, Z):
     y1_f = tf.cast(y1, 'float32')
     z0_f = tf.cast(z0, 'float32')
     z1_f = tf.cast(z1, 'float32')
-    wa = tf.expand_dims(((x1_f - X) * (y1_f - Y)), 1)
-    wb = tf.expand_dims(((x1_f - X) * (Y - y0_f)), 1)
-    wc = tf.expand_dims(((X - x0_f) * (y1_f - Y)), 1)
-    wd = tf.expand_dims(((X - x0_f) * (Y - y0_f)), 1)
+    wa = tf.expand_dims(((x1_f - X) * (y1_f - Y) * (z1_f - Z)), 1)
+    wb = tf.expand_dims(((x1_f - X) * (y1_f - Y) * (Z + z0_f)), 1)
+    wc = tf.expand_dims(((x1_f - X) * (Y - y0_f) * (z1_f - Z)), 1)
+    wd = tf.expand_dims(((x1_f - X) * (Y - y0_f) * (Z + z0_f)), 1)
+    we = tf.expand_dims(((X - x0_f) * (y1_f - Y) * (z1_f - Z)), 1)
+    wf = tf.expand_dims(((X - x0_f) * (y1_f - Y) * (Z + z0_f)), 1)
+    wg = tf.expand_dims(((X - x0_f) * (Y - y0_f) * (z1_f - Z)), 1)
+    wh = tf.expand_dims(((X - x0_f) * (Y - y0_f) * (Z + z0_f)), 1)
 
     # Add weighted imgs from each of four indices and return img_vol
-    output_vol = tf.add_n([wa * ImgA, wb * ImgB, wc * ImgC, wd * ImgD])
+    output_vol = tf.add_n(
+        [wa * ImgA, wb * ImgB, wc * ImgC, wd * ImgD, we * ImgE, wf * ImgF, wg * ImgG, wh * ImgH])
+
     return output_vol
 
 
 if __name__ == "__main__":
     start_t = time.time()
-    img_vol = np.zeros((4, 128, 128, 8, 1)) # Alter nc bit
+    img_vol = np.zeros((4, 128, 128, 8, 1))
     img_vol[:, 54:74, 54:74, :, :] = 1
-
+    # img_vol = np.zeros((4, 2, 3, 4, 1)) # TEST
+    # img_vol[:, 0:1, 1:2, :, :] = 1 # TEST
     theta0 = np.array([0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.5, 0], dtype=np.float32)
-    theta1 = np.array([[0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 0], dtype=np.float32)
-    theta2 = np.array([1, 0, 0, -0.5, 0, 1, 0, 0.25, 0, 0, 1, 0], dtype=np.float32)
+    theta1 = np.array([0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 0], dtype=np.float32)
+    theta2 = np.array([1, 0, 0, -0.5, 0, 1, 0, 0.25, 0, 0, 1, 5], dtype=np.float32)
     # theta3 = np.array([0.707, -0.707, 0.5, 0, 0.707, 0.707, 0.25, 0, 0, 0, 1, 0], dtype=np.float32)
     theta3 = np.array([0.707, -0.707, 0, 0, 0.707, 0.707, 0, 0, 0, 0, 1, 0], dtype=np.float32)
 
@@ -152,14 +172,14 @@ if __name__ == "__main__":
 
     print(time.time() - start_t)
 
-    for i in range(8):
-        fig, axs = plt.subplots(2, 4)
-        axs[0, 0].imshow(img_vol[0, :, :, i, 0])
-        axs[0, 1].imshow(img_vol[1, :, :, i, 0])
-        axs[0, 2].imshow(img_vol[2, :, :, i, 0])
-        axs[0, 3].imshow(img_vol[3, :, :, i, 0])
-        axs[1, 0].imshow(new_vol[0, :, :, i, 0])
-        axs[1, 1].imshow(new_vol[1, :, :, i, 0])
-        axs[1, 2].imshow(new_vol[2, :, :, i, 0])
-        axs[1, 3].imshow(new_vol[3, :, :, i, 0])
-        plt.show()
+    # for i in range(8):
+    #     fig, axs = plt.subplots(2, 4)
+    #     axs[0, 0].imshow(img_vol[0, :, :, i, 0])
+    #     axs[0, 1].imshow(img_vol[1, :, :, i, 0])
+    #     axs[0, 2].imshow(img_vol[2, :, :, i, 0])
+    #     axs[0, 3].imshow(img_vol[3, :, :, i, 0])
+    #     axs[1, 0].imshow(new_vol[0, :, :, i, 0])
+    #     axs[1, 1].imshow(new_vol[1, :, :, i, 0])
+    #     axs[1, 2].imshow(new_vol[2, :, :, i, 0])
+    #     axs[1, 3].imshow(new_vol[3, :, :, i, 0])
+    #     plt.show()
