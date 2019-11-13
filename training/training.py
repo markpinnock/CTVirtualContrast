@@ -45,7 +45,8 @@ for epoch in range(EPOCHS):
 for imgs in train_ds:
     CE = imgs[0, :, :, :, :, tf.newaxis]
     NCE = imgs[1, :, :, :, :, tf.newaxis]
-    pred = Model(NCE)
+    pred, thetas = Model(NCE)
+    print(tf.reshape(thetas, [MB_SIZE, 3, 4]))
 
     fig, axs = plt.subplots(2, 3)
     axs[0, 0].imshow(CE[0, :, :, 0, 0], cmap='gray')

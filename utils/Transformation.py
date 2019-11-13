@@ -8,14 +8,14 @@ import time
     https://github.com/daviddao/spatial-transformer-tensorflow/blob/master/spatial_transformer.py """
 
 
-def affineTransformation(input_vol, thetas):
+def affineTransformation(input_vol, thetas, mb_size):
     """ input_vol: 3D img volume (mb, height, width, depth, nc)
         thetas: 12 params for transform (mb, 12) """
 
-    mb_size = input_vol.shape[0]
     height = input_vol.shape[1]
     width = input_vol.shape[2]
     depth = input_vol.shape[3]
+    nc = input_vol.shape[4]
 
     # Generate flattened coordinates and transform
     flat_coords = coordGen(mb_size, height, width, depth)
@@ -30,8 +30,9 @@ def affineTransformation(input_vol, thetas):
     Z_new = tf.reshape(new_coords[:, 2, :], [-1])
 
     # Perform interpolation on input_vol
-    output_vol = interpolate(input_vol, X_new, Y_new, Z_new)
-    return tf.reshape(output_vol, input_vol.shape)
+    output_vol = interpolate(input_vol, X_new, Y_new, Z_new, mb_size)
+
+    return tf.reshape(output_vol, [-1, height, width, depth, nc])
 
 
 def coordGen(mb_size, height, width, depth):
@@ -54,10 +55,9 @@ def coordGen(mb_size, height, width, depth):
     return flat_coords
 
 
-def interpolate(input_vol, X, Y, Z):
+def interpolate(input_vol, X, Y, Z, mb_size):
     """ Performs interpolation input_vol, using deformation fields X, Y, Z """
 
-    mb_size = input_vol.shape[0]
     height = input_vol.shape[1]
     width = input_vol.shape[2]
     depth = input_vol.shape[3]

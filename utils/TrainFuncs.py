@@ -4,7 +4,7 @@ import tensorflow as tf
 @tf.function
 def trainStep(CE, NCE, model, optimiser, loss, train_metric):
     with tf.GradientTape() as tape:
-        prediction = model(NCE)
+        prediction, _ = model(NCE)
         curr_loss = loss(CE, prediction)
 
     gradients = tape.gradient(curr_loss, model.trainable_variables)
@@ -14,5 +14,5 @@ def trainStep(CE, NCE, model, optimiser, loss, train_metric):
 
 @tf.function
 def valStep(CE, NCE, model, val_metric):
-    prediction = model(NCE)
+    prediction, _ = model(NCE)
     val_metric(CE, prediction)

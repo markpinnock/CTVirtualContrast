@@ -26,8 +26,8 @@ def imgLoader(file_path, mb_size, shuffle):
         NCE_mb = NCE_list[i*mb_size:(i+1)*mb_size]
         CE_img = [np.load(CE_path + img) for img in CE_mb]
         NCE_img = [np.load(NCE_path + img) for img in NCE_mb]
-        CE_img = [img[::2, ::2, ::2] for img in CE_img]
-        NCE_img = [img[::2, ::2, ::2] for img in NCE_img]
+        CE_img = [img[::4, ::4, ::2] for img in CE_img]
+        NCE_img = [img[::4, ::4, ::2] for img in NCE_img]
 
         i += 1
         yield CE_img, NCE_img
