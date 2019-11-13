@@ -25,7 +25,7 @@ train_ds = tf.data.Dataset.from_generator(
 val_ds = tf.data.Dataset.from_generator(
     imgLoader, args=[FILE_PATH, MB_SIZE, False], output_types=tf.float32)
 
-Model = UNetGen()
+Model = UNetGen(MB_SIZE)
 print(Model.summary())
 loss_func = keras.losses.MeanSquaredError()
 train_metric = keras.metrics.MeanSquaredError()
@@ -47,9 +47,11 @@ for imgs in train_ds:
     NCE = imgs[1, :, :, :, :, tf.newaxis]
     pred = Model(NCE)
 
-    fig, axs = plt.subplots(2, 2)
+    fig, axs = plt.subplots(2, 3)
     axs[0, 0].imshow(CE[0, :, :, 0, 0], cmap='gray')
-    axs[0, 1].imshow(pred[0, :, :, 0, 0], cmap='gray')
-    axs[1, 0].imshow(NCE[0, :, :, 0, 0] - pred[0, :, :, 0, 0], cmap='gray')
-    axs[1, 1].imshow(pred[0, :, :, 0, 0] - CE[0, :, :, 0, 0], cmap='gray')
+    axs[0, 1].imshow(NCE[0, :, :, 0, 0], cmap='gray')
+    axs[0, 2].imshow(pred[0, :, :, 0, 0], cmap='gray')
+    axs[1, 0].imshow(pred[0, :, :, 0, 0] - CE[0, :, :, 0, 0], cmap='gray')
+    axs[1, 1].imshow(pred[0, :, :, 0, 0] - NCE[0, :, :, 0, 0], cmap='gray')
+    axs[1, 2].imshow(NCE[0, :, :, 0, 0] - CE[0, :, :, 0, 0], cmap='gray')
     plt.show()
