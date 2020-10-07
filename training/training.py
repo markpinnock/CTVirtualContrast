@@ -10,14 +10,15 @@ sys.path.append('..')
 
 from Networks import UNet
 from utils.DataLoader import imgLoader
-from utils.TrainFuncs import trainStep
 
 
 SAVE_PATH = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/"
 FILE_PATH = "D:/"
 
 MB_SIZE = 4
+NC = 4
 EPOCHS = 10
+ETA = 1e-4
 
 train_ds = tf.data.Dataset.from_generator(
     imgLoader, args=[FILE_PATH, MB_SIZE, True], output_types=tf.float32)
@@ -25,25 +26,20 @@ train_ds = tf.data.Dataset.from_generator(
 val_ds = tf.data.Dataset.from_generator(
     imgLoader, args=[FILE_PATH, MB_SIZE, False], output_types=tf.float32)
 
-Model = UNet(4)
-Model.build((4, 512, 512, 12, 1))
-
-exit()
-train_metric = keras.metrics.MeanSquaredError()
-val_metric = keras.metrics.MeanSquaredError()
-optimiser = keras.optimizers.Adam(1e-4)
+Model = UNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
 
 start_time = time.time()
 
 for epoch in range(EPOCHS):
+    Model.metric.reset_states()
+
     for imgs in train_ds:
         CE = imgs[0, :, :, :, :, tf.newaxis]
         NCE = imgs[1, :, :, :, :, tf.newaxis]
-        trainStep(CE, NCE, Model, optimiser, train_metric)
+        Model.train_step((NCE, CE))
 
-    print("Epoch {}, Loss {}".format(epoch, train_metric.result()))
+    print("Epoch {}, Loss {}".format(epoch, Model.metric.result()))
 
-    train_metric.reset_states()
 
 print(f"Time taken: {time.time() - start_time}")
 count = 0
@@ -63,7 +59,7 @@ for imgs in train_ds:
     axs[1, 0].imshow(np.flipud(pred[0, :, :, 0, 0] - CE[0, :, :, 0, 0]), cmap='gray', origin='lower')
     axs[1, 1].imshow(np.flipud(pred[0, :, :, 0, 0] - NCE[0, :, :, 0, 0]), cmap='gray', origin='lower')
     axs[1, 2].imshow(np.flipud(NCE[0, :, :, 0, 0] - CE[0, :, :, 0, 0]), cmap='gray', origin='lower')
-    plt.savefig(f"{SAVE_PATH}{count:03d}.png", dpi=250)
+    # plt.savefig(f"{SAVE_PATH}{count:03d}.png", dpi=250)
     plt.close()
     plt.show()
     count += 1

@@ -35,8 +35,11 @@ class UpBlock(keras.layers.Layer):
 
 
 class UNet(keras.Model):
-    def __init__(self, nc):
+    def __init__(self, nc, optimiser):
         super(UNet, self).__init__(self)
+        self.optimiser = optimiser
+        self.loss = keras.losses.MeanSquaredError()
+        self.metric = keras.metrics.MeanSquaredError()
 
         self.down1 = DownBlock(nc, (2, 2, 2))
         self.down2 = DownBlock(nc * 2, (2, 2, 2))
@@ -56,3 +59,19 @@ class UNet(keras.Model):
         x = self.up2(x, skip2)
         x = self.up3(x, skip1)
         return self.out(x)
+    
+    def train_step(self, data):
+        imgs, labels = data
+
+        with tf.GradientTape() as tape:
+            predictions = self(imgs, training=True)
+            loss = self.loss(labels, predictions)
+        
+        gradients = tape.gradient(loss, self.trainable_variables)
+        self.optimiser.apply_gradients(zip(gradients, self.trainable_variables))
+        self.metric.update_state(labels, predictions)
+    
+    def test_step(self, data):
+        imgs, labels = data
+        predictions = self(imgs, training=False)
+        self.metric.update_state(labels, predictions)
