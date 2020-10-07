@@ -34,7 +34,7 @@ def imgLoader(file_path, mb_size, shuffle):
 
 
 if __name__ == "__main__":
-    FILE_PATH = "C:/Users/rmappin/OneDrive - University College London/PhD/PhD_Prog/tf2_prac/train/"
+    FILE_PATH = "Z:/Virtual_Contrast_Data/"
     data = tf.data.Dataset.from_generator(imgLoader, args=[FILE_PATH, 4, True], output_types=tf.float32)
 
     for imgs in data:
