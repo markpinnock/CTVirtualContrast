@@ -8,13 +8,13 @@ import time
 
 sys.path.append('..')
 
-from Networks import UNetGen
+from Networks import UNet
 from utils.DataLoader import imgLoader
 from utils.TrainFuncs import trainStep
 
 
 SAVE_PATH = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/"
-FILE_PATH = "Z:/Virtual_Contrast_Data/"
+FILE_PATH = "D:/"
 
 MB_SIZE = 4
 EPOCHS = 10
@@ -25,9 +25,10 @@ train_ds = tf.data.Dataset.from_generator(
 val_ds = tf.data.Dataset.from_generator(
     imgLoader, args=[FILE_PATH, MB_SIZE, False], output_types=tf.float32)
 
-Model = UNetGen(MB_SIZE)
-print(Model.summary())
+Model = UNet(4)
+Model.build((4, 512, 512, 12, 1))
 
+exit()
 train_metric = keras.metrics.MeanSquaredError()
 val_metric = keras.metrics.MeanSquaredError()
 optimiser = keras.optimizers.Adam(1e-4)

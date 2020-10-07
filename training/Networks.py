@@ -5,42 +5,54 @@ import tensorflow.keras as keras
 from utils.Transformation import affineTransformation
 
 
-def dnResNetBlock(nc, inputlayer, pool_strides):
-    conv1 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')(inputlayer)
-    BN1 = keras.layers.BatchNormalization()(conv1)
-    conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')(BN1)
-    BN2 = keras.layers.BatchNormalization()(conv2)
-    pool = keras.layers.MaxPool3D((2, 2, 2), strides=pool_strides, padding='same')(conv2)
-    return BN2, pool
+class DownBlock(keras.layers.Layer):
+    def __init__(self, nc, pool_strides):
+        super(DownBlock, self).__init__(self)
+
+        self.conv1 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
+        self.conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
+        self.pool = keras.layers.MaxPool3D((2, 2, 2), strides=pool_strides, padding='same')
+    
+    def call(self, x):
+        x = self.conv1(x)
+        x = self.conv2(x)
+        return self.pool(x), x
 
 
-def upResNetBlock(nc, inputlayer, skip, tconv_strides):
-    tconv = keras.layers.Conv3DTranspose(nc, (3, 3, 3), strides=tconv_strides, padding='same', activation='relu')(inputlayer)
-    BN1 = keras.layers.BatchNormalization()(tconv)
-    concat = keras.layers.concatenate([BN1, skip], axis=4)
-    conv1 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')(concat)
-    BN2 = keras.layers.BatchNormalization()(conv1)
-    conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')(BN2)
-    BN3 = keras.layers.BatchNormalization()(conv2)
-    return BN3
+class UpBlock(keras.layers.Layer):
+    def __init__(self, nc, tconv_strides):
+        super(UpBlock, self).__init__(self)
+
+        self.tconv = keras.layers.Conv3DTranspose(nc, (2, 2, 2), strides=tconv_strides, padding='same', activation='relu')
+        self.conv1 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
+        self.conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
+    
+    def call(self, x, skip):
+        x = self.tconv(x)
+        x = keras.layers.concatenate([x, skip], axis=4)
+        x = self.conv1(x)
+        return self.conv2(x)
 
 
-def UNetGen(mb_size):
-    input_layer = keras.layers.Input(shape=(256, 256, 3, 1, ))
+class UNet(keras.Model):
+    def __init__(self, nc):
+        super(UNet, self).__init__(self)
 
-    skip1, dnres1 = dnResNetBlock(16, input_layer, (2, 2, 1))
-    skip2, dnres2 = dnResNetBlock(32, dnres1, (2, 2, 1))
-    skip3, dnres3 = dnResNetBlock(64, dnres2, (2, 2, 1))
-    skip4, dnres4 = dnResNetBlock(128, dnres3, (2, 2, 1))
+        self.down1 = DownBlock(nc, (2, 2, 2))
+        self.down2 = DownBlock(nc * 2, (2, 2, 2))
+        self.down3 = DownBlock(nc * 4, (2, 2, 1))
+        self.down4 = keras.layers.Conv3D(nc * 8, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
+        self.up1 = UpBlock(nc * 4, (2, 2, 1))
+        self.up2 = UpBlock(nc * 2, (2, 2, 2))
+        self.up3 = UpBlock(nc, (2, 2, 2))
+        self.out = keras.layers.Conv3D(1, (1, 1, 1), strides=(1, 1, 1), padding='same', activation='relu')
 
-    dn5 = keras.layers.Conv3D(256, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')(dnres4)
-    BN = keras.layers.BatchNormalization()(dn5)
-
-    upres4 = upResNetBlock(128, BN, skip4, (2, 2, 1))
-    upres3 = upResNetBlock(64, upres4, skip3, (2, 2, 1))
-    upres2 = upResNetBlock(32, upres3, skip2, (2, 2, 1))
-    upres1 = upResNetBlock(16, upres2, skip1, (2, 2, 1))
-
-    output_layer = keras.layers.Conv3D(1, (1, 1, 1), strides=(1, 1, 1), padding='same', activation='relu')(upres1)
-
-    return keras.Model(inputs=input_layer, outputs=output_layer)
+    def call(self, x):
+        x, skip1 = self.down1(x)
+        x, skip2 = self.down2(x)
+        x, skip3 = self.down3(x)
+        x = self.down4(x)
+        x = self.up1(x, skip3)
+        x = self.up2(x, skip2)
+        x = self.up3(x, skip1)
+        return self.out(x)
