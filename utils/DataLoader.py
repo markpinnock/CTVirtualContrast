@@ -6,8 +6,8 @@ import tensorflow as tf
 
 
 def imgLoader(file_path, mb_size, shuffle):
-    CE_path = file_path.decode("utf-8")  + 'ACE/'
-    NCE_path = file_path.decode("utf-8")  + 'NCE/'
+    CE_path = file_path.decode("utf-8")  + 'VAEImages/'
+    NCE_path = file_path.decode("utf-8")  + 'VAESegs/'
     CE_list = os.listdir(CE_path)
     NCE_list = os.listdir(NCE_path)
     CE_list.sort()
@@ -26,8 +26,10 @@ def imgLoader(file_path, mb_size, shuffle):
         NCE_mb = NCE_list[i*mb_size:(i+1)*mb_size]
         CE_img = [np.load(CE_path + img) for img in CE_mb]
         NCE_img = [np.load(NCE_path + img) for img in NCE_mb]
-        CE_img = [img[::4, ::4, ::2] for img in CE_img]
-        NCE_img = [img[::4, ::4, ::2] for img in NCE_img]
+        # CE_img = [img[::4, ::4, ::2] for img in CE_img]
+        # NCE_img = [img[::4, ::4, ::2] for img in NCE_img]
+        CE_img = [img[::4, ::4] for img in CE_img]
+        NCE_img = [img[::4, ::4] for img in NCE_img]
 
         i += 1
         yield CE_img, NCE_img
