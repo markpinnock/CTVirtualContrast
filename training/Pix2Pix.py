@@ -2,64 +2,92 @@ import tensorflow as tf
 import tensorflow.keras as keras
 
 
-def dnBlock(nc, inputlayer, strides, batchnorm=True):
-    conv = keras.layers.Conv3D(nc, (4, 4, 2), strides=strides, padding='same')(inputlayer)
+class DownBlock(keras.layers.Layer):
+    def __init__(self, nc, pool_strides):
+        super(DownBlock, self).__init__(self)
 
-    if batchnorm:
-        conv = keras.layers.BatchNormalization()(conv)
+        self.conv1 = keras.layers.Conv3D(nc, (4, 4, 2), strides=(1, 1, 1), padding='same', activation='relu')
+        self.conv2 = keras.layers.Conv3D(nc, (4, 4, 2), strides=(1, 1, 1), padding='same', activation='relu')
+        self.pool = keras.layers.MaxPool3D((2, 2, 2), strides=pool_strides, padding='same')
+        # Consider pool -> conv3
+        # Consider dropout, normalisation
+        # Leaky ReLU
+    def call(self, x):
+        x = self.conv1(x)
+        x = self.conv2(x)
+        return self.pool(x), x
+
+
+class UpBlock(keras.layers.Layer):
+    def __init__(self, nc, tconv_strides):
+        super(UpBlock, self).__init__(self)
+
+        self.tconv = keras.layers.Conv3DTranspose(nc, (4, 4, 2), strides=tconv_strides, padding='same', activation='relu')
+        self.conv1 = keras.layers.Conv3D(nc, (4, 4, 2), strides=(1, 1, 1), padding='same', activation='relu')
+        self.conv2 = keras.layers.Conv3D(nc, (4, 4, 2), strides=(1, 1, 1), padding='same', activation='relu')
     
-    out = tf.nn.leaky_relu(conv, alpha=0.2)
+    def call(self, x, skip):
+        x = self.tconv(x)
+        x = keras.layers.concatenate([x, skip], axis=4)
+        x = self.conv1(x)
+        return self.conv2(x)
 
-    return out
 
-
-def upBlock(nc, inputlayer, skip, tconv_strides, dropout=False):
-    tconv = keras.layers.Conv3DTranspose(nc, (4, 4, 2), strides=tconv_strides, padding='same')(inputlayer)
-    BN = keras.layers.BatchNormalization()(tconv)
-
-    if dropout:
-        BN = keras.layers.Dropout(0.5)(BN)
+class Discriminator(keras.Model):
+    def __init__(self, image_dims):
+        super(Discriminator, self).__init__()
+        
+        self.conv1 = DownBlock(64, (2, 2, 2)) # 128 128 6
+        self.conv2 = DownBlock(128, (2, 2, 1)) # 64 64 6
+        self.conv3 = DownBlock(256, (2, 2, 2)) # 32 32 3
+        self.conv4 = DownBlock(512, (2, 2, 1)) # 16 16 3
+        self.conv5 = DownBlock(512, (2, 2, 2)) # 8 8 1
+        self.conv6 = DownBlock(512, (2, 2, 1)) # 4 4 1
+        self.conv7 = keras.layers.Conv3D(1, (4, 4, 1), strides=(1, 1, 1), padding='VALID', activation='linear')(dconv6)
+        # Convert to Leaky ReLU
+    def call(self, fake, real):
+        concat = keras.layers.concatenate([fake, real], axis=4)
+        conv1 = self.conv1(concat)
+        conv2 = self.conv2(conv1)
+        conv3 = self.conv3(conv2)
+        conv4 = self.conv4(conv3)
+        conv5 = self.conv5(conv4)
+        conv6 = self.conv6(conv5)
     
-    out = tf.nn.relu(BN)
-    concat = tf.nn.relu(keras.layers.concatenate([out, skip], axis=4))
-
-    return concat
-
-
-def discriminatorModel(image_dims):
-    fake_img = keras.layers.Input(shape=image_dims)
-    real_img = keras.layers.Input(shape=image_dims)
-    concat = keras.layers.concatenate([fake_img, real_img], axis=4)
-    # in_img = keras.layers.Input(shape=image_dims)
-
-    dconv1 = dnBlock(64, concat, (2, 2, 2), batchnorm=False) # 128 128 6
-    dconv2 = dnBlock(128, dconv1, (2, 2, 1)) # 64 64 6
-    dconv3 = dnBlock(256, dconv2, (2, 2, 2)) # 32 32 3
-    dconv4 = dnBlock(512, dconv3, (2, 2, 1)) # 16 16 3
-    dconv5 = dnBlock(512, dconv4, (2, 2, 2)) # 8 8 1
-    dconv6 = dnBlock(512, dconv5, (2, 2, 2)) # 4 4 1
-    dconv7 = keras.layers.Conv3D(1, (4, 4, 1), strides=(1, 1, 1), padding='VALID', activation='linear')(dconv6)
-
-    return keras.Model(inputs=[fake_img, real_img], outputs=dconv7)
+        return self.conv7(conv6)
 
 
 def generatorModel(input_dims):
-    lo_img = keras.layers.Input(shape=input_dims)
+    # Encoder
+    self.dn1 = DownBlock(64, (2, 2, 2)) # 256 256 6
+    self.dn2 = DownBlock(128, (2, 2, 1)) 
+    self.dn3 = DownBlock(256, (2, 2, 2)) # 64 64 3
+    self.dn4 = DownBlock(512, (2, 2, 1))
+    self.dn5 = DownBlock(512, (2, 2, 1)) # 16 16 3
+    self.dn6 = DownBlock(512, dn5, (2, 2, 1)) # 8 8 3
 
-    dn1 = dnBlock(64, lo_img, (2, 2, 2), batchnorm=False) # 256 256 6
-    dn2 = dnBlock(128, dn1, (2, 2, 1)) 
-    dn3 = dnBlock(256, dn2, (2, 2, 2)) # 64 64 3
-    dn4 = dnBlock(512, dn3, (2, 2, 1))
-    dn5 = dnBlock(512, dn4, (2, 2, 1)) # 16 16 3
+    # Decoder
+    self.up1 = UpBlock(512, (2, 2, 1))
+    self.up2 = upBlock(512, (2, 2, 1))
+    self.up3 = upBlock(256, (2, 2, 1)) 
+    self.up4 = upBlock(128, (2, 2, 2))
+    self.up5 = upBlock(64, (2, 2, 1))
+    self.out = keras.layers.Conv3DTranspose(1, (4, 4, 4), strides=(2, 2, 2), padding='same', activation='tanh')(up1)
 
-    dn6 = dnBlock(512, dn5, (2, 2, 1), batchnorm=False) # 8 8 3
+    def call(img):
+        # Encode
+        dn1 = self.dn1(img)
+        dn2 = self.dn1(dn1)
+        dn3 = self.dn1(dn2)
+        dn4 = self.dn1(dn3)
+        dn5 = self.dn1(dn4)
+        dn6 = self.dn1(dn5)
 
-    up5 = upBlock(512, dn6, dn5, (2, 2, 1), dropout=True)
-    up4 = upBlock(512, up5, dn4, (2, 2, 1), dropout=True)
-    up3 = upBlock(256, up4, dn3, (2, 2, 1), dropout=True) 
-    up2 = upBlock(128, up3, dn2, (2, 2, 2))
-    up1 = upBlock(64, up2, dn1, (2, 2, 1))
+        # Decode
+        up1 = self.up1(dn6, dn5)
+        up2 = self.up1(up1, dn4)
+        up3 = self.up1(up2, dn3)
+        up4 = self.up1(up3, dn2)
+        up5 = self.up1(up4, dn1)
 
-    outputlayer = keras.layers.Conv3DTranspose(1, (4, 4, 4), strides=(2, 2, 2), padding='same', activation='tanh')(up1)
-
-    return keras.Model(inputs=lo_img, outputs=outputlayer)
+        return self.up6(up5)

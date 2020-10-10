@@ -12,7 +12,8 @@ class DownBlock(keras.layers.Layer):
         self.conv1 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
         self.conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
         self.pool = keras.layers.MaxPool3D((2, 2, 2), strides=pool_strides, padding='same')
-    
+        # Consider group normalisation
+        # Consider pool -> conv3
     def call(self, x):
         x = self.conv1(x)
         x = self.conv2(x)
