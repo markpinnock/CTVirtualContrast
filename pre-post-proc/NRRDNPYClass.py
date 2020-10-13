@@ -63,11 +63,30 @@ class ImgConv:
 
         return self
     
-    def return_data(self, save_npy=False):
-        if save_npy:
-            raise NotImplementedError
+    def return_data(self, save_path=None):
+        if save_path is not None:
+            count = 0
+
+            if not os.path.exists(save_path):
+                os.mkdir(f"{save_path}/")
+                os.mkdir(f"{save_path}/AC/")
+                os.mkdir(f"{save_path}/VC/")
+
+            for key in self.ACs.keys():
+                AC_list = self.ACs[key]
+                VC_list = self.VCs[key]
+                
+                for idx, (AC, VC) in enumerate(zip(AC_list, VC_list)):
+                    AC_stem = self.AC_names[key][0][-16:-5]
+                    VC_stem = self.VC_names[key][0][-16:-5]
+                    np.save(f"{save_path}/AC/{AC_stem}_{idx:02d}.npy", AC)
+                    np.save(f"{save_path}/VC/{VC_stem}_{idx:02d}.npy", VC)
+                    count += 1
+            
+            assert len(os.listdir(f"{save_path}/AC")) == len(os.listdir(f"{save_path}/VC"))
+            return count
         else:
-            return (self.ACs, self.VCs)
+            return self.ACs, self.VCs
 
     def _resize(self, a, b):
         a_orig = a.GetOrigin()[2]
@@ -110,8 +129,9 @@ if __name__ == "__main__":
     FILE_PATH = "C:/ProjectImages/Imgs/"
     Normal = ImgConv(FILE_PATH, (512, 512, 12))
     AC_dict, VC_dict = Normal.list_images().load_images().return_data()
-    count = 0
-    for ACs, VCs in zip(list(AC_dict.values()), list(VC_dict.values())):
+    num = Normal.return_data("C:/ProjectImages/VirtualContrast/")
+
+    # for ACs, VCs in zip(list(AC_dict.values()), list(VC_dict.values())):
         # for AC, VC in zip(ACs, VCs):
             # plt.figure(figsize=(18, 9))
             # plt.subplot(1, 3, 1)
@@ -122,5 +142,5 @@ if __name__ == "__main__":
             # plt.imshow(np.flipud(AC[:, :, 6] - VC[:, :, 6]), cmap="gray", origin="lower")
             # plt.pause(3)
             # plt.close()
-        count += len(ACs)
-    print(count)
+
+    print(num)
