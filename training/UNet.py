@@ -6,6 +6,11 @@ from utils.Transformation import affineTransformation
 
 
 class DownBlock(keras.layers.Layer):
+
+    """ Implements encoding block for U-Net
+        - nc: number of channels in block
+        - pool_strides: number of pooling strides e.g. (2, 2, 1) """
+
     def __init__(self, nc, pool_strides):
         super(DownBlock, self).__init__(self)
 
@@ -21,6 +26,11 @@ class DownBlock(keras.layers.Layer):
 
 
 class UpBlock(keras.layers.Layer):
+
+    """ Implements encoding block for U-Net
+        - nc: number of channels in block
+        - tconv_strides: number of transpose conv  strides e.g. (2x2x1) """
+    
     def __init__(self, nc, tconv_strides):
         super(UpBlock, self).__init__(self)
 
@@ -36,6 +46,11 @@ class UpBlock(keras.layers.Layer):
 
 
 class UNet(keras.Model):
+
+    """ Implements U-Net
+        - nc: number of channels in first layer
+        - optimiser: of type e.g. keras.optimizers.Adam """
+    
     def __init__(self, nc, optimiser):
         super(UNet, self).__init__(self)
         self.optimiser = optimiser

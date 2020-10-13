@@ -12,24 +12,30 @@ from Networks import UNet
 from utils.DataLoader import imgLoader
 
 
+""" Training script """
+
 SAVE_PATH = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/"
 FILE_PATH = "D:/"
 
+# Hyperparameters
 MB_SIZE = 4
 NC = 4
 EPOCHS = 10
 ETA = 1e-4
 
+# Initialise datasets
 train_ds = tf.data.Dataset.from_generator(
     imgLoader, args=[FILE_PATH, MB_SIZE, True], output_types=tf.float32)
 
 val_ds = tf.data.Dataset.from_generator(
     imgLoader, args=[FILE_PATH, MB_SIZE, False], output_types=tf.float32)
 
+# Compile model
 Model = UNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
 
 start_time = time.time()
 
+# Training loop
 for epoch in range(EPOCHS):
     Model.metric.reset_states()
 
