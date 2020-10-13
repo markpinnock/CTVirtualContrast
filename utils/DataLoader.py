@@ -1,3 +1,4 @@
+import glob
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -5,41 +6,47 @@ import sys
 import tensorflow as tf
 
 
-def imgLoader(file_path, mb_size, shuffle):
-    CE_path = file_path.decode("utf-8")  + 'VAEImages/'
-    NCE_path = file_path.decode("utf-8")  + 'VAESegs/'
-    CE_list = os.listdir(CE_path)
+def imgLoader(file_path, shuffle):
+    ACE_path = file_path.decode("utf-8")  + "AC/"
+    NCE_path = file_path.decode("utf-8")  + "VC/"
+    ACE_list = os.listdir(ACE_path)
     NCE_list = os.listdir(NCE_path)
-    CE_list.sort()
+    ACE_list.sort()
     NCE_list.sort()
 
     if shuffle == True:
-        temp_list = list(zip(CE_list, NCE_list))
+        temp_list = list(zip(ACE_list, NCE_list))
         np.random.shuffle(temp_list)
-        CE_list, NCE_list = zip(*temp_list)
+        ACE_list, NCE_list = zip(*temp_list)
 
-    N = len(CE_list)
+    N = len(ACE_list)
     i = 0
 
-    while i < int(N / mb_size):
-        CE_mb = CE_list[i*mb_size:(i+1)*mb_size]
-        NCE_mb = NCE_list[i*mb_size:(i+1)*mb_size]
-        CE_img = [np.load(CE_path + img) for img in CE_mb]
-        NCE_img = [np.load(NCE_path + img) for img in NCE_mb]
-        # CE_img = [img[::4, ::4, ::2] for img in CE_img]
-        # NCE_img = [img[::4, ::4, ::2] for img in NCE_img]
-        CE_img = [img[::4, ::4] for img in CE_img]
-        NCE_img = [img[::4, ::4] for img in NCE_img]
+    while i < N:
+        try:
+            ACE_name = ACE_list[i]
+            name_start = ACE_name[0:6]
+            name_end = ACE_name[-6:]
+            ACE_vol = np.load(ACE_path + ACE_name).astype(np.float32)
+            NCE_name = glob.glob(f"{NCE_path}{name_start}VC*_{name_end}")
+            assert len(NCE_name) == 1
+            NCE_vol = np.load(NCE_name[0])
 
-        i += 1
-        yield CE_img, NCE_img
+        except Exception as e:
+            print(f"IMAGE LOAD FAILURE: {ACE_name} {NCE_name} ({e})")
+        
+        else:
+            ACE_vol = ACE_vol[::4, ::4, ::2, np.newaxis]
+            NCE_vol = NCE_vol[::4, ::4, ::2, np.newaxis]
+            yield (ACE_vol, NCE_vol)
+        
+        finally:
+            i += 1
 
 
 if __name__ == "__main__":
-    FILE_PATH = "Z:/Virtual_Contrast_Data/"
-    data = tf.data.Dataset.from_generator(imgLoader, args=[FILE_PATH, 4, True], output_types=tf.float32)
+    FILE_PATH = "C:/ProjectImages/VirtualContrast/"
+    data = tf.data.Dataset.from_generator(imgLoader, args=[FILE_PATH, True], output_types=(tf.float32, tf.float32)).batch(4)
 
-    for imgs in data:
-        CE = imgs[0, :, :, :, :, tf.newaxis]
-        NCE = imgs[1, :, :, :, :, tf.newaxis]
-        print(CE.shape, NCE.shape)
+    for ACE, NCE in data:
+        print(ACE.shape, NCE.shape)

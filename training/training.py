@@ -15,7 +15,7 @@ from utils.DataLoader import imgLoader
 """ Training script """
 
 SAVE_PATH = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/"
-FILE_PATH = "D:/"
+FILE_PATH = "C:/ProjectImages/VirtualContrast/"
 
 # Hyperparameters
 MB_SIZE = 4
@@ -25,10 +25,10 @@ ETA = 1e-4
 
 # Initialise datasets
 train_ds = tf.data.Dataset.from_generator(
-    imgLoader, args=[FILE_PATH, MB_SIZE, True], output_types=tf.float32)
+    imgLoader, args=[FILE_PATH, True], output_types=(tf.float32, tf.float32)).batch(MB_SIZE)
 
 val_ds = tf.data.Dataset.from_generator(
-    imgLoader, args=[FILE_PATH, MB_SIZE, False], output_types=tf.float32)
+    imgLoader, args=[FILE_PATH, False], output_types=(tf.float32, tf.float32)).batch(MB_SIZE)
 
 # Compile model
 Model = UNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
@@ -39,10 +39,8 @@ start_time = time.time()
 for epoch in range(EPOCHS):
     Model.metric.reset_states()
 
-    for imgs in train_ds:
-        CE = imgs[0, :, :, :, :, tf.newaxis]
-        NCE = imgs[1, :, :, :, :, tf.newaxis]
-        Model.train_step((NCE, CE))
+    for data in train_ds:
+        Model.train_step(data, training=True)
 
     print("Epoch {}, Loss {}".format(epoch, Model.metric.result()))
 
@@ -50,16 +48,13 @@ for epoch in range(EPOCHS):
 print(f"Time taken: {time.time() - start_time}")
 count = 0
 
-for imgs in train_ds:
-    CE = imgs[0, :, :, :, :, tf.newaxis]
-    NCE = imgs[1, :, :, :, :, tf.newaxis]
-    pred = Model(NCE, training=False).numpy()
+for data in val_ds:
+    pred = Model(data, training=False).numpy()
     # print(tf.reshape(thetas, [MB_SIZE, 3, 4]))
-    CE = imgs[0, :, :, :, :, tf.newaxis].numpy()
-    NCE = imgs[1, :, :, :, :, tf.newaxis].numpy()
+    ACE, NCE = data
 
     fig, axs = plt.subplots(2, 3)
-    axs[0, 0].imshow(np.flipud(CE[0, :, :, 0, 0]), cmap='gray', origin='lower', vmin=0.12, vmax=0.18)
+    axs[0, 0].imshow(np.flipud(ACE[0, :, :, 0, 0]), cmap='gray', origin='lower', vmin=0.12, vmax=0.18)
     axs[0, 1].imshow(np.flipud(NCE[0, :, :, 0, 0]), cmap='gray', origin='lower', vmin=0.12, vmax=0.18)
     axs[0, 2].imshow(np.flipud(pred[0, :, :, 0, 0]), cmap='gray', origin='lower', vmin=0.12, vmax=0.18)
     axs[1, 0].imshow(np.flipud(pred[0, :, :, 0, 0] - CE[0, :, :, 0, 0]), cmap='gray', origin='lower')
