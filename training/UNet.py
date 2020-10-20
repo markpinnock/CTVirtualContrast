@@ -2,47 +2,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.keras as keras
 
-from utils.Transformation import affineTransformation
-
-
-class DownBlock(keras.layers.Layer):
-
-    """ Implements encoding block for U-Net
-        - nc: number of channels in block
-        - pool_strides: number of pooling strides e.g. (2, 2, 1) """
-
-    def __init__(self, nc, pool_strides):
-        super(DownBlock, self).__init__(self)
-
-        self.conv1 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
-        self.conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
-        self.pool = keras.layers.MaxPool3D((2, 2, 2), strides=pool_strides, padding='same')
-        # Consider group normalisation
-        # Consider pool -> conv3
-    def call(self, x):
-        x = self.conv1(x)
-        x = self.conv2(x)
-        return self.pool(x), x
-
-
-class UpBlock(keras.layers.Layer):
-
-    """ Implements encoding block for U-Net
-        - nc: number of channels in block
-        - tconv_strides: number of transpose conv  strides e.g. (2x2x1) """
-    
-    def __init__(self, nc, tconv_strides):
-        super(UpBlock, self).__init__(self)
-
-        self.tconv = keras.layers.Conv3DTranspose(nc, (2, 2, 2), strides=tconv_strides, padding='same', activation='relu')
-        self.conv1 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
-        self.conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
-    
-    def call(self, x, skip):
-        x = self.tconv(x)
-        x = keras.layers.concatenate([x, skip], axis=4)
-        x = self.conv1(x)
-        return self.conv2(x)
+from Layers import DownBlock, UpBlock
 
 
 class UNet(keras.Model):
@@ -64,17 +24,17 @@ class UNet(keras.Model):
         self.up1 = UpBlock(nc * 4, (2, 2, 1))
         self.up2 = UpBlock(nc * 2, (2, 2, 2))
         self.up3 = UpBlock(nc, (2, 2, 2))
-        self.out = keras.layers.Conv3D(1, (1, 1, 1), strides=(1, 1, 1), padding='same', activation='relu')
+        self.out = keras.layers.Conv3D(1, (1, 1, 1), strides=(1, 1, 1), padding='same', activation='linear')
 
     def call(self, x):
-        x, skip1 = self.down1(x)
-        x, skip2 = self.down2(x)
-        x, skip3 = self.down3(x)
-        x = self.down4(x)
-        x = self.up1(x, skip3)
-        x = self.up2(x, skip2)
-        x = self.up3(x, skip1)
-        return self.out(x)
+        h, skip1 = self.down1(x)
+        h, skip2 = self.down2(h)
+        h, skip3 = self.down3(h)
+        h = self.down4(h)
+        h = self.up1(h, skip3)
+        h = self.up2(h, skip2)
+        h = self.up3(h, skip1)
+        return self.out(h)
     
     def train_step(self, data):
         imgs, labels = data
