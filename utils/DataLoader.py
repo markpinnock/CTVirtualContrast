@@ -6,7 +6,7 @@ import sys
 import tensorflow as tf
 
 
-def imgLoader(file_path, shuffle):
+def img_loader(file_path, shuffle):
     ACE_path = file_path.decode("utf-8")  + "AC/"
     NCE_path = file_path.decode("utf-8")  + "VC/"
     ACE_list = os.listdir(ACE_path)
@@ -36,9 +36,9 @@ def imgLoader(file_path, shuffle):
             print(f"IMAGE LOAD FAILURE: {ACE_name} {NCE_name} ({e})")
         
         else:
-            ACE_vol = ACE_vol[::4, ::4, ::2, np.newaxis]
-            NCE_vol = NCE_vol[::4, ::4, ::2, np.newaxis]
-            yield (ACE_vol, NCE_vol)
+            ACE_vol = ACE_vol[::4, ::4, :, np.newaxis]
+            NCE_vol = NCE_vol[::4, ::4, :, np.newaxis]
+            yield (NCE_vol)
         
         finally:
             i += 1
