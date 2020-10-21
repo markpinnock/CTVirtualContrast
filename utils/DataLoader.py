@@ -83,7 +83,7 @@ class ImgLoader:
                 ACE_vol = ACE_vol[::4, ::4, :, np.newaxis]
                 NCE_vol = NCE_vol[::4, ::4, :, np.newaxis]
                 seg_vol = seg_vol[::4, ::4, :, np.newaxis]
-                yield (NCE_vol, (ACE_vol - NCE_vol) * seg_vol)
+                yield (NCE_vol, ACE_vol, seg_vol)
             
             finally:
                 i += 1

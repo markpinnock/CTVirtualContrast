@@ -1,8 +1,12 @@
 import numpy as np
+import sys
 import tensorflow as tf
 import tensorflow.keras as keras
 
+sys.path.append("..")
+
 from Layers import DownBlock, UpBlock
+from utils.Losses import FocusedMSELoss
 
 
 class UNet(keras.Model):
@@ -14,7 +18,8 @@ class UNet(keras.Model):
     def __init__(self, nc, optimiser):
         super(UNet, self).__init__(self)
         self.optimiser = optimiser
-        self.loss = keras.losses.MeanSquaredError()
+        # self.loss = keras.losses.MeanSquaredError()
+        self.loss = FocusedMSELoss(0.5)
         self.metric = keras.metrics.MeanSquaredError()
 
         self.down1 = DownBlock(nc, (2, 2, 2))
@@ -36,12 +41,15 @@ class UNet(keras.Model):
         h = self.up3(h, skip1)
         return self.out(h)
     
+    def compile(self, optimiser, loss, metrics):
+        raise NotImplementedError
+    
     def train_step(self, data):
-        imgs, labels = data
+        imgs, labels, segs = data
 
         with tf.GradientTape() as tape:
             predictions = self(imgs, training=True)
-            loss = self.loss(labels, predictions)
+            loss = self.loss(labels, predictions, segs)
         
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimiser.apply_gradients(zip(gradients, self.trainable_variables))

@@ -39,12 +39,12 @@ ValGenerator = ImgLoader(
 # TODO: convert to have one generator for train and val
 train_ds = tf.data.Dataset.from_generator(
     generator=TrainGenerator.data_generator,
-    output_types=(tf.float32, tf.float32)
+    output_types=(tf.float32, tf.float32, tf.float32)
     ).batch(MB_SIZE)
 
 val_ds = tf.data.Dataset.from_generator(
     generator=ValGenerator.data_generator,
-    output_types=(tf.float32, tf.float32)
+    output_types=(tf.float32, tf.float32, tf.float32)
     ).batch(MB_SIZE)
 
 # Compile model
@@ -67,7 +67,7 @@ print(f"Time taken: {time.time() - start_time}")
 count = 0
 
 for data in val_ds:
-    NCE, ACE = data
+    NCE, ACE, _ = data
     pred = Model(NCE, training=False).numpy()
 
     fig, axs = plt.subplots(2, 3)
