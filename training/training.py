@@ -48,7 +48,7 @@ val_ds = tf.data.Dataset.from_generator(
     ).batch(MB_SIZE)
 
 # Compile model
-Model = UNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
+Model = UNet(nc=NC, lambda_=0.1, optimiser=keras.optimizers.Adam(ETA))
 # Model = ResNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
 
 start_time = time.time()

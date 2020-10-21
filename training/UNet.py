@@ -6,21 +6,23 @@ import tensorflow.keras as keras
 sys.path.append("..")
 
 from Layers import DownBlock, UpBlock
-from utils.Losses import FocusedMSELoss
+from utils.Losses import FocalLoss, FocalMetric
 
 
 class UNet(keras.Model):
 
     """ Implements U-Net
         - nc: number of channels in first layer
+        - lambda_: hyperparameter for focal loss on range [0, 1]
         - optimiser: of type e.g. keras.optimizers.Adam """
     
-    def __init__(self, nc, optimiser):
+    def __init__(self, nc, lambda_, optimiser):
         super(UNet, self).__init__(self)
         self.optimiser = optimiser
         # self.loss = keras.losses.MeanSquaredError()
-        self.loss = FocusedMSELoss(0.5)
-        self.metric = keras.metrics.MeanSquaredError()
+        self.loss = FocalLoss(lambda_)
+        # self.metric = keras.metrics.MeanSquaredError()
+        self.metric = FocalMetric(lambda_)
 
         self.down1 = DownBlock(nc, (2, 2, 2))
         self.down2 = DownBlock(nc * 2, (2, 2, 2))
@@ -53,7 +55,7 @@ class UNet(keras.Model):
         
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimiser.apply_gradients(zip(gradients, self.trainable_variables))
-        self.metric.update_state(labels, predictions)
+        self.metric.update_state(labels, predictions, segs)
     
     def test_step(self, data):
         imgs, labels = data
