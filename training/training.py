@@ -10,7 +10,7 @@ sys.path.append('..')
 
 from ResidualNet import ResNet
 from UNet import UNet
-from utils.DataLoader import img_loader
+from utils.DataLoader import ImgLoader
 
 
 """ Training script """
@@ -21,19 +21,35 @@ FILE_PATH = "C:/ProjectImages/VirtualContrast/"
 # Hyperparameters
 MB_SIZE = 4
 NC = 4
-EPOCHS = 20
+EPOCHS = 50
 ETA = 1e-4
 
 # Initialise datasets
+TrainGenerator = ImgLoader(
+    file_path=FILE_PATH,
+    dataset_type="training",
+    num_folds=0,
+    fold=0)
+
+ValGenerator = ImgLoader(
+    file_path=FILE_PATH,
+    dataset_type="validation",
+    num_folds=0,
+    fold=0)
+# TODO: convert to have one generator for train and val
 train_ds = tf.data.Dataset.from_generator(
-    img_loader, args=[FILE_PATH, True], output_types=(tf.float32, tf.float32)).batch(MB_SIZE)
+    generator=TrainGenerator.data_generator,
+    output_types=(tf.float32, tf.float32)
+    ).batch(MB_SIZE)
 
 val_ds = tf.data.Dataset.from_generator(
-    img_loader, args=[FILE_PATH, False], output_types=(tf.float32, tf.float32)).batch(MB_SIZE)
+    generator=ValGenerator.data_generator,
+    output_types=(tf.float32, tf.float32)
+    ).batch(MB_SIZE)
 
 # Compile model
-# Model = UNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
-Model = ResNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
+Model = UNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
+# Model = ResNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
 
 start_time = time.time()
 
