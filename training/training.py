@@ -1,3 +1,4 @@
+import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 # import os
@@ -21,7 +22,7 @@ FILE_PATH = "C:/ProjectImages/VirtualContrast/"
 # Hyperparameters
 MB_SIZE = 4
 NC = 4
-EPOCHS = 50
+EPOCHS = 100
 ETA = 1e-4
 
 # Initialise datasets
@@ -48,9 +49,25 @@ val_ds = tf.data.Dataset.from_generator(
     ).batch(MB_SIZE)
 
 # Compile model
-Model = UNet(nc=NC, lambda_=0.1, optimiser=keras.optimizers.Adam(ETA))
+Model = UNet(nc=NC, lambda_=0.5, optimiser=keras.optimizers.Adam(ETA))
 # Model = ResNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
 
+# curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+# log_dir = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/logs/" + curr_time
+# writer = tf.summary.create_file_writer(log_dir)
+
+# @tf.function
+# def trace(x):
+#     return Model(x)
+
+# tf.summary.trace_on(graph=True)
+# trace(tf.zeros((1, 128, 128, 12, 1)))
+# # print(Model.summary())
+
+
+# with writer.as_default():
+#     tf.summary.trace_export('graph', step=0)
+# exit()
 start_time = time.time()
 
 # Training loop

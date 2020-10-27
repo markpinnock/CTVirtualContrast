@@ -19,9 +19,7 @@ class UNet(keras.Model):
     def __init__(self, nc, lambda_, optimiser):
         super(UNet, self).__init__(self)
         self.optimiser = optimiser
-        # self.loss = keras.losses.MeanSquaredError()
         self.loss = FocalLoss(lambda_)
-        # self.metric = keras.metrics.MeanSquaredError()
         self.metric = FocalMetric(lambda_)
 
         self.down1 = DownBlock(nc, (2, 2, 2))
@@ -46,8 +44,10 @@ class UNet(keras.Model):
     def compile(self, optimiser, loss, metrics):
         raise NotImplementedError
     
+    @tf.function
     def train_step(self, data):
         imgs, labels, segs = data
+        # labels *= segs
 
         with tf.GradientTape() as tape:
             predictions = self(imgs, training=True)
@@ -57,7 +57,8 @@ class UNet(keras.Model):
         self.optimiser.apply_gradients(zip(gradients, self.trainable_variables))
         self.metric.update_state(labels, predictions, segs)
     
+    @tf.function
     def test_step(self, data):
-        imgs, labels = data
+        imgs, labels, segs = data
         predictions = self(imgs, training=False)
-        self.metric.update_state(labels, predictions)
+        self.metric.update_state(labels, predictions, segs)
