@@ -16,7 +16,9 @@ class FocalLoss(keras.layers.Layer):
         assert not lambda_ > 1.0, "Lambda must be in range [0, 1]"
         self.lambda_ = lambda_
 
-    def call(self, y, x, mask):
+    def call(self, y, x, mask=None):
+        if mask == None:
+            mask = tf.zeros(x.shape)
         global_loss, focal_loss = focused_mse(x, y, mask)
         return (1 - self.lambda_) * global_loss + self.lambda_ * focal_loss
 
@@ -29,7 +31,9 @@ class FocalMetric(keras.metrics.Metric):
         self.global_loss = self.add_weight(name="global", initializer="zeros")
         self.focal_loss = self.add_weight(name="focal", initializer="zeros")
     
-    def update_state(self, y, x, mask):
+    def update_state(self, y, x, mask=None):
+        if mask == None:
+            mask = tf.zeros(x.shape)
         global_loss, focal_loss = focused_mse(x, y, mask)
         self.global_loss.assign_add(global_loss)
         self.focal_loss.assign_add(focal_loss)
@@ -40,3 +44,32 @@ class FocalMetric(keras.metrics.Metric):
     def reset_states(self):
         self.global_loss.assign(0.0)
         self.focal_loss.assign(0.0)
+
+
+class DiceLoss(keras.losses.Loss):
+    def __init__(self, name="dice_loss"):
+        super(DiceLoss, self).__init__(name=name)
+
+    def call(self, x, y):
+        numer = tf.reduce_sum(x * y, axis=[1, 2, 3, 4]) * 2
+        denom = tf.reduce_sum(x, axis=[1, 2, 3, 4]) + tf.reduce_sum(y, axis=[1, 2, 3, 4]) + 1e-6
+        dice = tf.reduce_mean(numer / denom)
+        return 1 - dice
+
+
+class DiceMetric(keras.metrics.Metric):
+    def __init__(self, name="dice_metric"):
+        super(DiceMetric, self).__init__(name=name)
+        self.loss = self.add_weight(name="dice", initializer="zeros")
+    
+    def update_state(self, x, y):
+        numer = tf.reduce_sum(x * y, axis=[1, 2, 3, 4]) * 2
+        denom = tf.reduce_sum(x, axis=[1, 2, 3, 4]) + tf.reduce_sum(y, axis=[1, 2, 3, 4]) + 1e-6
+        dice = tf.reduce_mean(numer / denom)
+        self.loss.assign_add(1 - dice)
+
+    def result(self):
+        return tf.reduce_mean(self.loss)
+
+    def reset_states(self):
+        self.loss.assign(0.0)
