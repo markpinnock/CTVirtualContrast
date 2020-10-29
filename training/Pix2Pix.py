@@ -1,93 +1,91 @@
 import tensorflow as tf
 import tensorflow.keras as keras
 
-
-class DownBlock(keras.layers.Layer):
-    def __init__(self, nc, pool_strides):
-        super(DownBlock, self).__init__(self)
-
-        self.conv1 = keras.layers.Conv3D(nc, (4, 4, 2), strides=(1, 1, 1), padding='same', activation='relu')
-        self.conv2 = keras.layers.Conv3D(nc, (4, 4, 2), strides=(1, 1, 1), padding='same', activation='relu')
-        self.pool = keras.layers.MaxPool3D((2, 2, 2), strides=pool_strides, padding='same')
-        # Consider pool -> conv3
-        # Consider dropout, normalisation
-        # Leaky ReLU
-    def call(self, x):
-        x = self.conv1(x)
-        x = self.conv2(x)
-        return self.pool(x), x
-
-
-class UpBlock(keras.layers.Layer):
-    def __init__(self, nc, tconv_strides):
-        super(UpBlock, self).__init__(self)
-
-        self.tconv = keras.layers.Conv3DTranspose(nc, (4, 4, 2), strides=tconv_strides, padding='same', activation='relu')
-        self.conv1 = keras.layers.Conv3D(nc, (4, 4, 2), strides=(1, 1, 1), padding='same', activation='relu')
-        self.conv2 = keras.layers.Conv3D(nc, (4, 4, 2), strides=(1, 1, 1), padding='same', activation='relu')
-    
-    def call(self, x, skip):
-        x = self.tconv(x)
-        x = keras.layers.concatenate([x, skip], axis=4)
-        x = self.conv1(x)
-        return self.conv2(x)
+from Layers import GANDownBlock, GANUpBlock
 
 
 class Discriminator(keras.Model):
-    def __init__(self, image_dims):
+    def __init__(self, initializer):
+
+        """ Implementation of PatchGAN discriminator
+            Input:
+                - initialiser e.g. keras.initializers.RandomNormal """
+
         super(Discriminator, self).__init__()
-        
-        self.conv1 = DownBlock(64, (2, 2, 2)) # 128 128 6
-        self.conv2 = DownBlock(128, (2, 2, 1)) # 64 64 6
-        self.conv3 = DownBlock(256, (2, 2, 2)) # 32 32 3
-        self.conv4 = DownBlock(512, (2, 2, 1)) # 16 16 3
-        self.conv5 = DownBlock(512, (2, 2, 2)) # 8 8 1
-        self.conv6 = DownBlock(512, (2, 2, 1)) # 4 4 1
-        self.conv7 = keras.layers.Conv3D(1, (4, 4, 1), strides=(1, 1, 1), padding='VALID', activation='linear')(dconv6)
-        # Convert to Leaky ReLU
+        # TODO: make disc arbitrary patch size
+        self.conv1 = GANDownBlock(64, (2, 2, 2), initialiser=initialiser, batch_norm=False)
+        self.conv2 = GANDownBlock(128, (2, 2, 1), initialiser=initialiser)
+        self.conv3 = GANDownBlock(256, (2, 2, 2), initialiser=initialiser)
+        self.conv4 = GANDownBlock(512, (2, 2, 1), initialiser=initialiser)
+        self.conv5 = GANDownBlock(512, (2, 2, 2), initialiser=initialiser)
+        self.conv6 = keras.layers.Conv3D(
+            1, (4, 4, 1), (1, 1, 1),
+            padding='same',
+            initializer=initialiser)
+
     def call(self, fake, real):
-        concat = keras.layers.concatenate([fake, real], axis=4)
-        conv1 = self.conv1(concat)
-        conv2 = self.conv2(conv1)
-        conv3 = self.conv3(conv2)
-        conv4 = self.conv4(conv3)
-        conv5 = self.conv5(conv4)
-        conv6 = self.conv6(conv5)
-    
-        return self.conv7(conv6)
+        # Input 128 128 12
+        x = keras.layers.concatenate([fake, real], axis=4)
+        dn1 = self.conv1(x) # 64 64 6
+        dn2 = self.conv2(dn1, training) # 32 32 6
+        dn3 = self.conv3(dn2, training) # 16 16 3
+        dn4 = self.conv4(dn3, training) # 8 8 3
+        dn5 = self.conv5(dn4, training) # 4 4 1
+        dn6 = self.conv6(dn5)
+        
+        return dn6
 
 
-def generatorModel(input_dims):
-    # Encoder
-    self.dn1 = DownBlock(64, (2, 2, 2)) # 256 256 6
-    self.dn2 = DownBlock(128, (2, 2, 1)) 
-    self.dn3 = DownBlock(256, (2, 2, 2)) # 64 64 3
-    self.dn4 = DownBlock(512, (2, 2, 1))
-    self.dn5 = DownBlock(512, (2, 2, 1)) # 16 16 3
-    self.dn6 = DownBlock(512, dn5, (2, 2, 1)) # 8 8 3
+class Generator(keras.Model):
 
-    # Decoder
-    self.up1 = UpBlock(512, (2, 2, 1))
-    self.up2 = upBlock(512, (2, 2, 1))
-    self.up3 = upBlock(256, (2, 2, 1)) 
-    self.up4 = upBlock(128, (2, 2, 2))
-    self.up5 = upBlock(64, (2, 2, 1))
-    self.out = keras.layers.Conv3DTranspose(1, (4, 4, 4), strides=(2, 2, 2), padding='same', activation='tanh')(up1)
+    """ Implementation of generator
+        Input:
+            - initialiser e.g. keras.initializers.RandomNormal """
 
-    def call(img):
-        # Encode
-        dn1 = self.dn1(img)
-        dn2 = self.dn1(dn1)
-        dn3 = self.dn1(dn2)
-        dn4 = self.dn1(dn3)
-        dn5 = self.dn1(dn4)
-        dn6 = self.dn1(dn5)
+    def __init__(initialiser):
+        super(Generator, self).__init__()
+
+        # Encoder
+        self.conv1 = GANDownBlock(64, (2, 2, 2), initialiser=initialiser, batch_norm=False)
+        self.conv2 = GANDownBlock(128, (2, 2, 1), initialiser=initialiser)
+        self.conv3 = GANDownBlock(256, (2, 2, 2), initialiser=initialiser)
+        self.conv4 = GANDownBlock(512, (2, 2, 1), initialiser=initialiser)
+        self.conv5 = GANDownBlock(512, (2, 2, 1), initialiser=initialiser)
+        self.conv6 = GANDownBlock(512, (2, 2, 1), initialiser=initialiser)
+        self.conv8 = keras.layers.Conv3D(
+            512, (4, 4, 2), (2, 2, 1),
+            padding="same", activation="relu",
+            initializer=initialiser)
+
+        # Decoder
+        self.tconv1 = GANUpBlock(512, (2, 2, 1), initialiser=initialiser, dropout=True)
+        self.tconv2 = GANUpBlock(512, (2, 2, 1), initialiser=initialiser, dropout=True)
+        self.tconv3 = GANUpBlock(512, (2, 2, 1), initialiser=initialiser, dropout=True)
+        self.tconv4 = GANUpBlock(256, (2, 2, 1), initialiser=initialiser)
+        self.tconv6 = GANUpBlock(128, (2, 2, 2), initialiser=initialiser)
+        self.tconv7 = GANUpBlock(64, (2, 2, 1), initialiser=initialiser)
+        self.tconv8 = keras.layers.Conv3DTranspose(
+            1, (4, 4, 4), (2, 2, 2),
+            padding='same', activation='tanh',
+            initializer=initialiser)
+
+    def call(x, training):
+        # Encode 128 128 12
+        dn1 = self.conv1(x) # 64 64 6
+        dn2 = self.conv2(dn1, training=True) # 32 32 6
+        dn3 = self.conv3(dn2, training=True) # 16 16 3
+        dn4 = self.conv4(dn3, training=True) # 8 8 3
+        dn5 = self.conv5(dn4, training=True) # 4 4 3
+        dn6 = self.conv6(dn5, training=True) # 2 2 3
+        dn8 = self.conv8(dn6) # 1 1 3
 
         # Decode
-        up1 = self.up1(dn6, dn5)
-        up2 = self.up1(up1, dn4)
-        up3 = self.up1(up2, dn3)
-        up4 = self.up1(up3, dn2)
-        up5 = self.up1(up4, dn1)
+        up1 = self.tconv1(dn8, dn6, training=True) # 2 2 3
+        up2 = self.tconv2(up1, dn5, training=True) # 4 4 3
+        up3 = self.tconv3(up2, dn4, training=True) # 8 8 3
+        up4 = self.tconv4(up3, dn3, training=True) # 16 16 3
+        up5 = self.tconv6(up4, dn2, training=True) # 32 32 6
+        up7 = self.tconv7(up5, dn1, training=True) # 64 64 6
+        up8 = self.tconv8(up7) # 128 128 12
 
-        return self.up6(up5)
+        return up8
