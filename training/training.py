@@ -140,7 +140,7 @@ if __name__ == __main__:
         ).batch(MB_SIZE)
 
     # Compile model
-    Model = UNet(nc=NC, lambda_=0.0, optimiser=keras.optimizers.Adam(ETA))
+    # Model = UNet(nc=NC, lambda_=0.0, optimiser=keras.optimizers.Adam(ETA))
     # Model = ResNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
     Model = GAN(
         g_optimiser=keras.optimizers.Adam(2e-4, 0.5, 0.999),
