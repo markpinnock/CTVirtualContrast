@@ -6,7 +6,7 @@ import tensorflow.keras as keras
 sys.path.append("..")
 
 from Layers import DownBlock, UpBlock
-from utils.Losses import FocalLoss, FocalMetric
+from utils.Losses import FocalLoss, FocalMetric, DiceLoss, DiceMetric
 
 
 class UNet(keras.Model):
@@ -19,8 +19,14 @@ class UNet(keras.Model):
     def __init__(self, nc, lambda_, optimiser):
         super(UNet, self).__init__(self)
         self.optimiser = optimiser
-        self.loss = FocalLoss(lambda_)
-        self.metric = FocalMetric(lambda_)
+        self.loss = {
+            "seg": DiceLoss(),
+            "vc": FocalLoss(lambda_)
+        }
+        self.metric = {
+            "seg": DiceMetric(),
+            "vc": FocalMetric(lambda_)
+        }
 
         self.down1 = DownBlock(nc, (2, 2, 2))
         self.down2 = DownBlock(nc * 2, (2, 2, 2))
@@ -31,7 +37,7 @@ class UNet(keras.Model):
         self.up3 = UpBlock(nc, (2, 2, 2))
         self.out = keras.layers.Conv3D(1, (1, 1, 1), strides=(1, 1, 1), padding='same', activation='linear')
 
-    def call(self, x):
+    def call(self, x, phase):
         h, skip1 = self.down1(x)
         h, skip2 = self.down2(h)
         h, skip3 = self.down3(h)
@@ -39,26 +45,45 @@ class UNet(keras.Model):
         h = self.up1(h, skip3)
         h = self.up2(h, skip2)
         h = self.up3(h, skip1)
-        return self.out(h)
+        
+        if phase == "seg":
+            return tf.nn.sigmoid(self.out(h))
+        else:
+            return self.out(h)
     
     def compile(self, optimiser, loss, metrics):
         raise NotImplementedError
     
     @tf.function
-    def train_step(self, data):
-        imgs, labels, segs = data
-        # labels *= segs
+    def train_step(self, data, phase):
+        # Data: (NCE, ACE, seg)
+        imgs = data[0]
+        
+        if phase == "seg":
+            labels = data[2]
+        elif phase == "vc":
+            labels = data[1] - data[0]
+        else:
+            raise ValueError("phase must be 'seg' or 'vc'")
 
         with tf.GradientTape() as tape:
-            predictions = self(imgs, training=True)
-            loss = self.loss(labels, predictions, segs)
-        
+            predictions = self(imgs, phase, training=True)
+            loss = self.loss[phase](labels, predictions)
+
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimiser.apply_gradients(zip(gradients, self.trainable_variables))
-        self.metric.update_state(labels, predictions, segs)
+        self.metric[phase].update_state(labels, predictions)
     
-    @tf.function
-    def test_step(self, data):
-        imgs, labels, segs = data
-        predictions = self(imgs, training=False)
-        self.metric.update_state(labels, predictions, segs)
+    # @tf.function
+    def test_step(self, data, phase):
+        imgs = data[0]
+
+        if phase == "seg":
+            labels = data[2]
+        elif phase == "vc":
+            labels = data[1]
+        else:
+            raise ValueError("phase must be 'seg' or 'vc'")
+        
+        predictions = self(imgs, phase, training=False)
+        self.metric[phase].update_state(labels, predictions)

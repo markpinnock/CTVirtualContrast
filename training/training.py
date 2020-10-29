@@ -21,7 +21,7 @@ FILE_PATH = "C:/ProjectImages/VirtualContrast/"
 
 # Hyperparameters
 MB_SIZE = 4
-NC = 4
+NC = 8
 EPOCHS = 100
 ETA = 1e-4
 
@@ -49,7 +49,7 @@ val_ds = tf.data.Dataset.from_generator(
     ).batch(MB_SIZE)
 
 # Compile model
-Model = UNet(nc=NC, lambda_=0.5, optimiser=keras.optimizers.Adam(ETA))
+Model = UNet(nc=NC, lambda_=0.0, optimiser=keras.optimizers.Adam(ETA))
 # Model = ResNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
 
 # curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -70,14 +70,47 @@ Model = UNet(nc=NC, lambda_=0.5, optimiser=keras.optimizers.Adam(ETA))
 # exit()
 start_time = time.time()
 
-# Training loop
+# Seg phase training loop
+phase = "seg"
+
 for epoch in range(EPOCHS):
-    Model.metric.reset_states()
+    Model.metric[phase].reset_states()
 
     for data in train_ds:
-        Model.train_step(data)
+        Model.train_step(data, phase)
 
-    print(f"Epoch {epoch + 1}, Loss {Model.metric.result()}")
+    print(f"Epoch {epoch + 1}, Loss {Model.metric[phase].result()}")
+
+
+print(f"Time taken: {time.time() - start_time}")
+count = 0
+
+for data in val_ds:
+    NCE, ACE, seg = data
+    pred = Model(NCE, phase, training=False).numpy()
+
+    fig, axs = plt.subplots(2, 3)
+    axs[0, 0].imshow(np.flipud(NCE[0, :, :, 0, 0]), cmap='gray', origin='lower')
+    axs[0, 1].imshow(np.flipud(ACE[0, :, :, 0, 0]), cmap='gray', origin='lower')
+    axs[0, 2].imshow(np.flipud(pred[0, :, :, 0, 0]), cmap='hot', origin='lower')
+    axs[1, 0].imshow(np.flipud(pred[0, :, :, 0, 0] * NCE[0, :, :, 0, 0]), cmap='gray', origin='lower')
+    axs[1, 1].imshow(np.flipud(pred[0, :, :, 0, 0] * (NCE[0, :, :, 0, 0] - ACE[0, :, :, 0, 0])), cmap='gray', origin='lower')
+    axs[1, 2].imshow(np.flipud(pred[0, :, :, 0, 0] - seg[0, :, :, 0, 0]), cmap='hot', origin='lower')
+    plt.savefig(f"{SAVE_PATH}S{count:03d}.png", dpi=250)
+    plt.close()
+    # plt.show()
+    count += 1
+
+# Virtual contrast phase training loop
+phase = "vc"
+
+for epoch in range(EPOCHS):
+    Model.metric[phase].reset_states()
+
+    for data in train_ds:
+        Model.train_step(data, phase)
+
+    print(f"Epoch {epoch + 1}, Loss {Model.metric[phase].result()}")
 
 
 print(f"Time taken: {time.time() - start_time}")
@@ -85,16 +118,17 @@ count = 0
 
 for data in val_ds:
     NCE, ACE, _ = data
-    pred = Model(NCE, training=False).numpy()
+    diff = ACE - NCE
+    pred = Model(NCE, phase, training=False).numpy()
 
     fig, axs = plt.subplots(2, 3)
     axs[0, 0].imshow(np.flipud(NCE[0, :, :, 0, 0]), cmap='gray', origin='lower')
-    axs[0, 1].imshow(np.flipud(ACE[0, :, :, 0, 0]), cmap='gray', origin='lower')
+    axs[0, 1].imshow(np.flipud(diff[0, :, :, 0, 0]), cmap='gray', origin='lower')
     axs[0, 2].imshow(np.flipud(pred[0, :, :, 0, 0]), cmap='gray', origin='lower')
     axs[1, 0].imshow(np.flipud(pred[0, :, :, 0, 0] + NCE[0, :, :, 0, 0]), cmap='gray', origin='lower')
-    axs[1, 1].imshow(np.flipud(pred[0, :, :, 0, 0] + NCE[0, :, :, 0, 0] - ACE[0, :, :, 0, 0]), cmap='gray', origin='lower')
-    axs[1, 2].imshow(np.flipud(pred[0, :, :, 0, 0] - ACE[0, :, :, 0, 0]), cmap='gray', origin='lower')
-    # plt.savefig(f"{SAVE_PATH}{count:03d}.png", dpi=250)
-    # plt.close()
-    plt.show()
+    axs[1, 1].imshow(np.flipud(pred[0, :, :, 0, 0] + NCE[0, :, :, 0, 0] - diff[0, :, :, 0, 0]), cmap='gray', origin='lower')
+    axs[1, 2].imshow(np.flipud(pred[0, :, :, 0, 0] - diff[0, :, :, 0, 0]), cmap='gray', origin='lower')
+    plt.savefig(f"{SAVE_PATH}V{count:03d}.png", dpi=250)
+    plt.close()
+    # plt.show()
     count += 1
