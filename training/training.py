@@ -8,10 +8,11 @@ import tensorflow as tf
 import time
 
 sys.path.append('..')
+sys.path.append("C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/scripts/")
 
-from GANWrapper import GAN
-from ResidualNet import ResNet
-from UNet import UNet
+from networks.GANWrapper import GAN
+from networks.ResidualNet import ResNet
+from networks.UNet import UNet
 from utils.DataLoader import ImgLoader
 
 
@@ -70,40 +71,46 @@ def training_loop_GAN(epochs, model, ds, show):
 
     for epoch in range(epochs):
         model.metric_dict["g_metric"].reset_states()
-        model.metric_dict["d_metric1"].reset_states()
-        model.metric_dict["d_metric2"].reset_states()
+        model.metric_dict["d_metric_1"].reset_states()
+        model.metric_dict["d_metric_2"].reset_states()
         model.L1metric.reset_states()
 
         for data in ds_train:
-            model.train_step(data)
+            NCE, ACE, _ = data
+            model.train_step(NCE, ACE)
 
-        print(f"Epoch {epoch + 1}, Loss {model.metric[phase].result()}")
+        print(f"Epoch {epoch + 1}, G: {model.metric_dict['g_metric'].result():.4f} D1: {model.metric_dict['d_metric_1'].result():.4f}, D2: {model.metric_dict['d_metric_2'].result():.4f}, L1: {model.L1metric.result():.4f}")
 
+        for data in ds_val:
+            NCE, ACE, seg = data
+            pred = model.Generator(NCE, training=False).numpy()
+
+            fig, axs = plt.subplots(2, 3)
+            axs[0, 0].imshow(np.flipud(NCE[0, :, :, 0, 0]), cmap='gray', origin='lower')
+            axs[0, 0].axis("off")
+            axs[0, 1].imshow(np.flipud(ACE[0, :, :, 0, 0]), cmap='gray', origin='lower')
+            axs[0, 1].axis("off")
+            axs[0, 2].imshow(np.flipud(pred[0, :, :, 0, 0]), cmap='gray', origin='lower')
+            axs[0, 2].axis("off")
+            axs[1, 0].imshow(np.flipud(pred[0, :, :, 0, 0] + NCE[0, :, :, 0, 0]), cmap='gray', origin='lower')
+            axs[1, 0].axis("off")
+            axs[1, 1].imshow(np.flipud(pred[0, :, :, 0, 0] + NCE[0, :, :, 0, 0] - ACE[0, :, :, 0, 0]), cmap='gray', origin='lower')
+            axs[1, 1].axis("off")
+            axs[1, 2].imshow(np.flipud(pred[0, :, :, 0, 0] - ACE[0, :, :, 0, 0]), cmap='gray', origin='lower')
+            axs[1, 2].axis("off")
+
+            if show:
+                plt.show()
+            else:
+                plt.savefig(f"{SAVE_PATH}GAN/{epoch + 1}.png", dpi=250)
+                plt.close()
+            
+            break
 
     print(f"Time taken: {time.time() - start_time}")
-    count = 0
-
-    for data in ds_val:
-        NCE, ACE, seg = data
-        pred = model.Generator(NCE, training=False).numpy()
-
-        fig, axs = plt.subplots(2, 3)
-        axs[0, 0].imshow(np.flipud(NCE[0, :, :, 0, 0]), cmap='gray', origin='lower')
-        axs[0, 1].imshow(np.flipud(diff[0, :, :, 0, 0]), cmap='gray', origin='lower')
-        axs[0, 2].imshow(np.flipud(pred[0, :, :, 0, 0]), cmap='gray', origin='lower')
-        axs[1, 0].imshow(np.flipud(pred[0, :, :, 0, 0] + NCE[0, :, :, 0, 0]), cmap='gray', origin='lower')
-        axs[1, 1].imshow(np.flipud(pred[0, :, :, 0, 0] + NCE[0, :, :, 0, 0] - diff[0, :, :, 0, 0]), cmap='gray', origin='lower')
-        axs[1, 2].imshow(np.flipud(pred[0, :, :, 0, 0] - diff[0, :, :, 0, 0]), cmap='gray', origin='lower')
-
-    if show:
-        plt.show()
-    else:
-        plt.savefig(f"{SAVE_PATH}{phase}/{count:03d}.png", dpi=250)
-        plt.close()
-        count += 1
 
 
-if __name__ == __main__:
+if __name__ == "__main__":
 
     """ Training script """
 
@@ -173,4 +180,4 @@ if __name__ == __main__:
     # training_loop_UNet(EPOCHS, "vc", Model, (train_ds, val_ds))
 
     # GAN training loop
-    training_loop_GAN(EPOCHS, Model, (train_ds, val_ds))
+    training_loop_GAN(EPOCHS, Model, (train_ds, val_ds), False)

@@ -1,4 +1,3 @@
-import numpy as np
 import tensorflow as tf
 import tensorflow.keras as keras
 
@@ -54,7 +53,7 @@ class GANDownBlock(keras.layers.Layer):
             - batch_norm: True/False """
 
     def __init__(self, nc, strides, initialiser, batch_norm=True):
-        super(DownBlock, self).__init__(self)
+        super(GANDownBlock, self).__init__(self)
         self.batch_norm = batch_norm
 
         self.conv = keras.layers.Conv3D(nc, (4, 4, 2), strides=strides, padding='same', kernel_initializer=initialiser)
@@ -83,11 +82,11 @@ class GANUpBlock(keras.layers.Layer):
             - dropout: True/False """
 
     def __init__(self, nc, strides, initialiser, batch_norm=True, dropout=False):
-        super(UpBlock, self).__init__(self)
+        super(GANUpBlock, self).__init__(self)
         self.batch_norm = batch_norm
         self.dropout = dropout
 
-        self.tconv = keras.layers.Conv3DTranspose(nc, (4, 4, 2), strides=tconv_strides, padding='same')
+        self.tconv = keras.layers.Conv3DTranspose(nc, (4, 4, 2), strides=strides, padding='same')
 
         if batch_norm:
             self.bn = keras.layers.BatchNormalization()
@@ -100,7 +99,7 @@ class GANUpBlock(keras.layers.Layer):
         x = self.tconv(x)
 
         if self.batch_norm:
-            x = self.batch_norm(x, training=training)
+            x = self.bn(x, training=training)
         
         if self.dropout:
             x = self.dropout(x, training=training)

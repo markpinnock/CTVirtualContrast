@@ -1,11 +1,14 @@
+import sys
 import tensorflow as tf
 import tensorflow.keras as keras
 
-from Layers import GANDownBlock, GANUpBlock
+sys.path.append("..")
+
+from networks.Layers import GANDownBlock, GANUpBlock
 
 
 class Discriminator(keras.Model):
-    def __init__(self, initializer):
+    def __init__(self, initialiser):
 
         """ Implementation of PatchGAN discriminator
             Input:
@@ -21,9 +24,9 @@ class Discriminator(keras.Model):
         self.conv6 = keras.layers.Conv3D(
             1, (4, 4, 1), (1, 1, 1),
             padding='same',
-            initializer=initialiser)
+            kernel_initializer=initialiser)
 
-    def call(self, source, target):
+    def call(self, source, target, training):
         # Input 128 128 12
         x = keras.layers.concatenate([source, target], axis=4)
         dn1 = self.conv1(x) # 64 64 6
@@ -42,7 +45,7 @@ class Generator(keras.Model):
         Input:
             - initialiser e.g. keras.initializers.RandomNormal """
 
-    def __init__(initialiser):
+    def __init__(self, initialiser):
         super(Generator, self).__init__()
 
         # Encoder
@@ -55,7 +58,7 @@ class Generator(keras.Model):
         self.conv8 = keras.layers.Conv3D(
             512, (4, 4, 2), (2, 2, 1),
             padding="same", activation="relu",
-            initializer=initialiser)
+            kernel_initializer=initialiser)
 
         # Decoder
         self.tconv1 = GANUpBlock(512, (2, 2, 1), initialiser=initialiser, dropout=True)
@@ -67,9 +70,9 @@ class Generator(keras.Model):
         self.tconv8 = keras.layers.Conv3DTranspose(
             1, (4, 4, 4), (2, 2, 2),
             padding='same', activation='tanh',
-            initializer=initialiser)
+            kernel_initializer=initialiser)
 
-    def call(x, training):
+    def call(self, x, training):
         # Encode 128 128 12
         dn1 = self.conv1(x) # 64 64 6
         dn2 = self.conv2(dn1, training=True) # 32 32 6

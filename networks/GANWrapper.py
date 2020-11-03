@@ -1,3 +1,4 @@
+import sys
 import tensorflow as tf
 import tensorflow.keras as keras
 
@@ -17,19 +18,20 @@ class GAN(keras.Model):
         - n_critic: number of discriminator/critic training runs (5 in WGAN, 1 otherwise)
         - lambda_: L1 hyperparameter """
 
-    def __init__(self, g_optimiser, d_optimiser, lambda_, n_critic=1):
+    def __init__(self, g_optimiser, d_optimiser, lambda_, GAN_type="original", n_critic=1):
         super(GAN, self).__init__()
         self.initialiser = keras.initializers.RandomNormal(0, 0.02)
 
         # Choose appropriate loss and initialise metrics
-        self.loss_dict = {
-            "original": keras.losses.BinaryCrossentropy(from_logits=True),
-            "least_square": least_square_loss,
-            "wasserstein": wasserstein_loss,
-            "wasserstein-GP": wasserstein_loss,
-            "progressive": wasserstein_loss
-            }
-
+        # self.loss_dict = {
+        #     "original": keras.losses.BinaryCrossentropy(from_logits=True),
+        #     "least_square": least_square_loss,
+        #     "wasserstein": wasserstein_loss,
+        #     "wasserstein-GP": wasserstein_loss,
+        #     "progressive": wasserstein_loss
+        #     }
+        self.loss_dict = {"original": keras.losses.BinaryCrossentropy(from_logits=True)}
+        # TODO: import losses
         self.metric_dict = {
             "g_metric": keras.metrics.Mean(),
             "d_metric_1": keras.metrics.Mean(),
@@ -59,11 +61,16 @@ class GAN(keras.Model):
             cons = False
         # TODO: IMPLEMENT CONSTRAINT TYPE
         self.loss = self.loss_dict[GAN_type]
+        self.GAN_type = GAN_type
         self.L1 = keras.losses.MeanAbsoluteError()
         self.lambda_ = lambda_
         self.L1metric = keras.metrics.MeanAbsoluteError()
         self.Generator = Generator(self.initialiser)
         self.Discriminator = Discriminator(self.initialiser)
+        self.patch_size = self.Discriminator(
+            tf.zeros((1, 128, 128, 12, 1)),
+            tf.zeros((1, 128, 128, 12, 1)),
+            training=True).shape
         self.g_optimiser = g_optimiser
         self.d_optimiser = d_optimiser
         self.n_critic = n_critic
@@ -76,31 +83,32 @@ class GAN(keras.Model):
         self.d_optimiser = d_optimiser
         self.loss = self.loss_dict[loss_key]
     
-    def train_step(self, source, target, scale):
+    @tf.function
+    def train_step(self, source, target):
         # Determine labels and size of mb for each critic training run
         # (size of real_images = minibatch size * number of critic runs)
         mb_size = source.shape[0] // self.n_critic
-
+        # TODO: ensure different G and D minibatch
         d_labels = tf.concat(
-            [tf.ones(source.shape) * self.d_fake_label,
-             tf.ones(source.shape) * self.d_real_label
+            [tf.ones([source.shape[0]] + self.patch_size[1:]) * self.d_fake_label,
+             tf.ones([source.shape[0]] + self.patch_size[1:]) * self.d_real_label
              ], axis=0)
             
-        g_labels = tf.ones(source.shape) * self.g_label
+        g_labels = tf.ones([source.shape[0]] + self.patch_size[1:]) * self.g_label
 
         # TODO: ADD NOISE TO LABELS AND/OR IMAGES
 
         # Critic training loop
         for idx in range(self.n_critic):
             # Select minibatch of real images and generate fake images
-            d_source_batch = source_images[idx * mb_size:(idx + 1) * mb_size, :, :, :]
-            d_target_batch = target_images[idx * mb_size:(idx + 1) * mb_size, :, :, :]
+            d_source_batch = source[idx * mb_size:(idx + 1) * mb_size, :, :, :]
+            d_target_batch = target[idx * mb_size:(idx + 1) * mb_size, :, :, :]
             d_fake_target = self.Generator(d_source_batch, training=True)
 
             # Get gradients from critic predictions and update weights
             with tf.GradientTape() as d_tape:
-                d_pred_fake = self.Discriminator(d_source_batch, d_target_batch, training=True)
-                d_pred_real = self.Discriminator(d_source_batch, d_fake_target, training=True)
+                d_pred_fake = self.Discriminator(d_source_batch, d_fake_target, training=True)
+                d_pred_real = self.Discriminator(d_source_batch, d_target_batch, training=True)
                 d_predictions = tf.concat([d_pred_fake, d_pred_real], axis=0)
                 d_loss_1 = self.loss(d_labels[0:mb_size, ...], d_predictions[0:mb_size, ...]) # Fake
                 d_loss_2 = self.loss(d_labels[mb_size:, ...], d_predictions[mb_size:, ...]) # Real
@@ -108,9 +116,9 @@ class GAN(keras.Model):
             
                 # Gradient penalty if indicated
                 # TODO: tidy up loss selection
-                if self.GAN_type == "wasserstein-GP" or "progressive":
-                    grad_penalty = gradient_penalty(d_real_batch, d_fake_images, self.Discriminator)
-                    d_loss += 10 * grad_penalty
+                # if self.GAN_type == "wasserstein-GP" or "progressive":
+                #     grad_penalty = gradient_penalty(d_real_batch, d_fake_images, self.Discriminator)
+                    # d_loss += 10 * grad_penalty
             
             d_grads = d_tape.gradient(d_loss, self.Discriminator.trainable_variables)
             self.d_optimiser.apply_gradients(zip(d_grads, self.Discriminator.trainable_variables))
@@ -123,15 +131,15 @@ class GAN(keras.Model):
         # TODO: ADD NOISE TO LABELS AND/OR IMAGES
         # Get gradients from critic predictions of generated fake images and update weights
         with tf.GradientTape() as g_tape:
-            g_fake_target = self.Generator(noise, training=True)
+            g_fake_target = self.Generator(d_source_batch, training=True)
             g_predictions = self.Discriminator(d_source_batch, g_fake_target, training=True)
             g_loss = self.loss(g_labels, g_predictions)
             g_L1 = self.L1(d_target_batch, g_fake_target)
-            g_total_loss = g_loss + self.lambda_ * L1
+            g_total_loss = g_loss + self.lambda_ * g_L1
         
         g_grads = g_tape.gradient(g_loss, self.Generator.trainable_variables)
         self.g_optimiser.apply_gradients(zip(g_grads, self.Generator.trainable_variables))
 
         # Update metric
         self.metric_dict["g_metric"].update_state(g_loss)
-        self.L1metric.update_state(L1)
+        self.L1metric.update_state(d_target_batch, g_fake_target)
