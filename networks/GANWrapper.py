@@ -4,6 +4,7 @@ import tensorflow.keras as keras
 
 from networks.Pix2Pix import Discriminator, Generator
 # from utils.TrainFuncs import least_square_loss, wasserstein_loss, gradient_penalty
+from utils.Losses import FocalLoss, FocalMetric
 
 
 class GAN(keras.Model):
@@ -62,9 +63,9 @@ class GAN(keras.Model):
         # TODO: IMPLEMENT CONSTRAINT TYPE
         self.loss = self.loss_dict[GAN_type]
         self.GAN_type = GAN_type
-        self.L1 = keras.losses.MeanAbsoluteError()
+        self.L1 = FocalLoss(1.0, "mae")
         self.lambda_ = lambda_
-        self.L1metric = keras.metrics.MeanAbsoluteError()
+        self.L1metric = FocalMetric(1.0, "mae")
         self.Generator = Generator(self.initialiser)
         self.Discriminator = Discriminator(self.initialiser)
         self.patch_size = self.Discriminator(
@@ -84,7 +85,7 @@ class GAN(keras.Model):
         self.loss = self.loss_dict[loss_key]
     
     @tf.function
-    def train_step(self, source, target):
+    def train_step(self, source, target, mask):
         # Determine labels and size of mb for each critic training run
         # (size of real_images = minibatch size * number of critic runs)
         mb_size = source.shape[0] // self.n_critic
@@ -134,7 +135,7 @@ class GAN(keras.Model):
             g_fake_target = self.Generator(d_source_batch, training=True)
             g_predictions = self.Discriminator(d_source_batch, g_fake_target, training=True)
             g_loss = self.loss(g_labels, g_predictions)
-            g_L1 = self.L1(d_target_batch, g_fake_target)
+            g_L1 = self.L1(d_target_batch, g_fake_target, mask)
             g_total_loss = g_loss + self.lambda_ * g_L1
         
         g_grads = g_tape.gradient(g_loss, self.Generator.trainable_variables)
@@ -142,4 +143,4 @@ class GAN(keras.Model):
 
         # Update metric
         self.metric_dict["g_metric"].update_state(g_loss)
-        self.L1metric.update_state(d_target_batch, g_fake_target)
+        self.L1metric.update_state(d_target_batch, g_fake_target, mask)

@@ -76,27 +76,27 @@ def training_loop_GAN(epochs, model, ds, show):
         model.L1metric.reset_states()
 
         for data in ds_train:
-            NCE, ACE, _ = data
-            model.train_step(NCE, ACE)
+            NCE, ACE, mask = data
+            model.train_step(NCE, ACE, mask)
 
-        print(f"Epoch {epoch + 1}, G: {model.metric_dict['g_metric'].result():.4f} D1: {model.metric_dict['d_metric_1'].result():.4f}, D2: {model.metric_dict['d_metric_2'].result():.4f}, L1: {model.L1metric.result():.4f}")
+        print(f"Epoch {epoch + 1}, G: {model.metric_dict['g_metric'].result():.4f} D1: {model.metric_dict['d_metric_1'].result():.4f}, D2: {model.metric_dict['d_metric_2'].result():.4f}, L1 [global focal]: {model.L1metric.result()}")
 
         for data in ds_val:
             NCE, ACE, seg = data
             pred = model.Generator(NCE, training=False).numpy()
 
             fig, axs = plt.subplots(2, 3)
-            axs[0, 0].imshow(np.flipud(NCE[0, :, :, 0, 0]), cmap='gray', origin='lower')
+            axs[0, 0].imshow(np.flipud(NCE[3, :, :, 11, 0]), cmap='gray', origin='lower')
             axs[0, 0].axis("off")
-            axs[0, 1].imshow(np.flipud(ACE[0, :, :, 0, 0]), cmap='gray', origin='lower')
+            axs[0, 1].imshow(np.flipud(ACE[3, :, :, 11, 0]), cmap='gray', origin='lower')
             axs[0, 1].axis("off")
-            axs[0, 2].imshow(np.flipud(pred[0, :, :, 0, 0]), cmap='gray', origin='lower')
+            axs[0, 2].imshow(np.flipud(pred[3, :, :, 11, 0]), cmap='gray', origin='lower')
             axs[0, 2].axis("off")
-            axs[1, 0].imshow(np.flipud(pred[0, :, :, 0, 0] + NCE[0, :, :, 0, 0]), cmap='gray', origin='lower')
+            axs[1, 0].imshow(np.flipud(seg[3, :, :, 11, 0], cmap='gray', origin='lower')
             axs[1, 0].axis("off")
-            axs[1, 1].imshow(np.flipud(pred[0, :, :, 0, 0] + NCE[0, :, :, 0, 0] - ACE[0, :, :, 0, 0]), cmap='gray', origin='lower')
+            axs[1, 1].imshow(np.flipud(pred[3, :, :, 11, 0] + NCE[3, :, :, 11, 0] - ACE[3, :, :, 11, 0]), cmap='gray', origin='lower')
             axs[1, 1].axis("off")
-            axs[1, 2].imshow(np.flipud(pred[0, :, :, 0, 0] - ACE[0, :, :, 0, 0]), cmap='gray', origin='lower')
+            axs[1, 2].imshow(np.flipud(pred[3, :, :, 11, 0] - ACE[3, :, :, 11, 0]), cmap='gray', origin='lower')
             axs[1, 2].axis("off")
 
             if show:
