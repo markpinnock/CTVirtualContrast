@@ -1,3 +1,5 @@
-test/test_vols
 __pycache__
 .pytest_cache
+.idea
+.vscode
+.ipynb_checkpoints
