@@ -7,7 +7,8 @@ import tensorflow as tf
 
 
 class ImgLoader:
-    def __init__(self, file_path, dataset_type, num_folds, fold):
+    def __init__(self, config, dataset_type, fold):
+        file_path = config["DATA_PATH"]
         self.ACE_path = f"{file_path}AC/"
         self.NCE_path = f"{file_path}VC/"
         self.seg_path = f"{file_path}Segs/"
@@ -15,6 +16,8 @@ class ImgLoader:
         self.NCE_list = None
         self.seg_list = None
         self.dataset_type = dataset_type
+        self.down_sample = config["DOWN_SAMP"]
+        self.expt_type = config["EXPT"]["MODEL"]
 
         ACE_list = os.listdir(self.ACE_path)
         NCE_list = os.listdir(self.NCE_path)
@@ -22,7 +25,7 @@ class ImgLoader:
 
         # TODO: method to return example images
 
-        if num_folds > 0:
+        if config["CV_FOLDS"] > 0:
             ACE_list.sort()
             NCE_list.sort()
             seg_list.sort()
@@ -30,7 +33,7 @@ class ImgLoader:
             temp_list = list(zip(ACE_list, NCE_list, seg_list))
             np.random.shuffle(temp_list)
             ACE_list, NCE_list, seg_list = zip(*temp_list)
-            num_in_fold = N // num_folds
+            num_in_fold = N // config["CV_FOLDS"]
 
             if self.dataset_type == "training":
                 self.ACE_list = ACE_list[0:fold * num_in_fold] + ACE_list[(fold + 1) * num_in_fold:]
@@ -45,7 +48,7 @@ class ImgLoader:
 
             np.random.seed()
         
-        elif num_folds == 0:
+        elif config["CV_FOLDS"] == 0:
             self.ACE_list = ACE_list
             self.NCE_list = NCE_list
             self.seg_list = seg_list
@@ -80,11 +83,14 @@ class ImgLoader:
                 print(f"IMAGE LOAD FAILURE: {ACE_name} {NCE_name} {seg_name} ({e})")
             
             else:
-                ACE_vol = ACE_vol[::4, ::4, :, np.newaxis]
-                NCE_vol = NCE_vol[::4, ::4, :, np.newaxis]
-                seg_vol = seg_vol[::4, ::4, :, np.newaxis]
-                ACE_vol = ACE_vol * 2 - 1
-                NCE_vol = NCE_vol * 2 - 1
+                ACE_vol = ACE_vol[::self.down_sample, ::self.down_sample, :, np.newaxis]
+                NCE_vol = NCE_vol[::self.down_sample, ::self.down_sample, :, np.newaxis]
+                seg_vol = seg_vol[::self.down_sample, ::self.down_sample, :, np.newaxis]
+                
+                if self.expt_type == "GAN":
+                    ACE_vol = ACE_vol * 2 - 1
+                    NCE_vol = NCE_vol * 2 - 1
+
                 yield (NCE_vol, ACE_vol, seg_vol)
             
             finally:
