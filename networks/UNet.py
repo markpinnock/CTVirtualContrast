@@ -5,7 +5,7 @@ import tensorflow.keras as keras
 
 sys.path.append("..")
 
-from Layers import DownBlock, UpBlock
+from networks.Layers import DownBlock, UpBlock
 from utils.Losses import FocalLoss, FocalMetric, DiceLoss, DiceMetric
 
 

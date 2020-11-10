@@ -92,7 +92,7 @@ def training_loop_GAN(epochs, model, ds, show):
             axs[0, 1].axis("off")
             axs[0, 2].imshow(np.flipud(pred[3, :, :, 11, 0]), cmap='gray', origin='lower')
             axs[0, 2].axis("off")
-            axs[1, 0].imshow(np.flipud(seg[3, :, :, 11, 0], cmap='gray', origin='lower')
+            axs[1, 0].imshow(np.flipud(seg[3, :, :, 11, 0]), cmap='gray', origin='lower')
             axs[1, 0].axis("off")
             axs[1, 1].imshow(np.flipud(pred[3, :, :, 11, 0] + NCE[3, :, :, 11, 0] - ACE[3, :, :, 11, 0]), cmap='gray', origin='lower')
             axs[1, 1].axis("off")

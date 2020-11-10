@@ -71,6 +71,7 @@ class GAN(keras.Model):
         self.patch_size = self.Discriminator(
             tf.zeros((1, 128, 128, 12, 1)),
             tf.zeros((1, 128, 128, 12, 1)),
+            tf.zeros((1, 128, 128, 12, 1)),
             training=True).shape
         self.g_optimiser = g_optimiser
         self.d_optimiser = d_optimiser
@@ -108,8 +109,8 @@ class GAN(keras.Model):
 
             # Get gradients from critic predictions and update weights
             with tf.GradientTape() as d_tape:
-                d_pred_fake = self.Discriminator(d_source_batch, d_fake_target, training=True)
-                d_pred_real = self.Discriminator(d_source_batch, d_target_batch, training=True)
+                d_pred_fake = self.Discriminator(d_source_batch, d_fake_target, mask, training=True)
+                d_pred_real = self.Discriminator(d_source_batch, d_target_batch, mask, training=True)
                 d_predictions = tf.concat([d_pred_fake, d_pred_real], axis=0)
                 d_loss_1 = self.loss(d_labels[0:mb_size, ...], d_predictions[0:mb_size, ...]) # Fake
                 d_loss_2 = self.loss(d_labels[mb_size:, ...], d_predictions[mb_size:, ...]) # Real
@@ -133,7 +134,7 @@ class GAN(keras.Model):
         # Get gradients from critic predictions of generated fake images and update weights
         with tf.GradientTape() as g_tape:
             g_fake_target = self.Generator(d_source_batch, training=True)
-            g_predictions = self.Discriminator(d_source_batch, g_fake_target, training=True)
+            g_predictions = self.Discriminator(d_source_batch, g_fake_target, mask, training=True)
             g_loss = self.loss(g_labels, g_predictions)
             g_L1 = self.L1(d_target_batch, g_fake_target, mask)
             g_total_loss = g_loss + self.lambda_ * g_L1

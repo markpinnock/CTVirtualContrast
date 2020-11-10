@@ -26,9 +26,9 @@ class Discriminator(keras.Model):
             padding='same',
             kernel_initializer=initialiser)
 
-    def call(self, source, target, training):
+    def call(self, source, target, mask, training):
         # Input 128 128 12
-        x = keras.layers.concatenate([source, target], axis=4)
+        x = keras.layers.concatenate([source, target, mask], axis=4)
         dn1 = self.conv1(x) # 64 64 6
         dn2 = self.conv2(dn1, training) # 32 32 6
         dn3 = self.conv3(dn2, training) # 16 16 3
