@@ -51,6 +51,7 @@ val_ds = tf.data.Dataset.from_generator(
 # Model = UNet(nc=NC, lambda_=0.0, optimiser=keras.optimizers.Adam(ETA))
 # Model = ResNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
 Model = GAN(
+    config=CONFIG,
     g_optimiser=keras.optimizers.Adam(2e-4, 0.5, 0.999),
     d_optimiser=keras.optimizers.Adam(2e-4, 0.5, 0.999),
     lambda_=100)

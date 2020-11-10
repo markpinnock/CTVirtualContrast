@@ -19,7 +19,7 @@ class GAN(keras.Model):
         - n_critic: number of discriminator/critic training runs (5 in WGAN, 1 otherwise)
         - lambda_: L1 hyperparameter """
 
-    def __init__(self, g_optimiser, d_optimiser, lambda_, GAN_type="original", n_critic=1):
+    def __init__(self, config, g_optimiser, d_optimiser, lambda_, GAN_type="original", n_critic=1):
         super(GAN, self).__init__()
         self.initialiser = keras.initializers.RandomNormal(0, 0.02)
 
@@ -69,9 +69,9 @@ class GAN(keras.Model):
         self.Generator = Generator(self.initialiser)
         self.Discriminator = Discriminator(self.initialiser)
         self.patch_size = self.Discriminator(
-            tf.zeros((1, 128, 128, 12, 1)),
-            tf.zeros((1, 128, 128, 12, 1)),
-            tf.zeros((1, 128, 128, 12, 1)),
+            tf.zeros((1, 512 // config["DOWN_SAMP"], 512 // config["DOWN_SAMP"], 12, 1)),
+            tf.zeros((1, 512 // config["DOWN_SAMP"], 512 // config["DOWN_SAMP"], 12, 1)),
+            tf.zeros((1, 512 // config["DOWN_SAMP"], 512 // config["DOWN_SAMP"], 12, 1)),
             training=True).shape
         self.g_optimiser = g_optimiser
         self.d_optimiser = d_optimiser
