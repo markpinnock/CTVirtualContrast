@@ -69,10 +69,19 @@ def training_loop_GAN(config, model, ds, show):
     if not os.path.exists(f"{SAVE_PATH}GAN/"):
         os.mkdir(f"{SAVE_PATH}GAN/")
 
+    results = {}
+    results["config"] = config
+    results["epochs"] = []
+    results["losses"] = {"G": [], "D1": [], "D2": []}
+    results["train_metrics"] = {"global": [], "focal": []}
+    results["val_metrics"] = {"global": [], "focal": []}
+    results["time"] = 0
+
     ds_train, ds_val = ds
     start_time = time.time()
 
     for epoch in range(EPOCHS):
+        results["epochs"].append(epoch)
         model.metric_dict["g_metric"].reset_states()
         model.metric_dict["d_metric_1"].reset_states()
         model.metric_dict["d_metric_2"].reset_states()
@@ -82,8 +91,27 @@ def training_loop_GAN(config, model, ds, show):
             NCE, ACE, mask = data
             model.train_step(NCE, ACE, mask)
 
-        print(f"Epoch {epoch + 1}, G: {model.metric_dict['g_metric'].result():.4f} D1: {model.metric_dict['d_metric_1'].result():.4f}, D2: {model.metric_dict['d_metric_2'].result():.4f}, L1 [global focal]: {model.L1metric.result()}")
+        results["losses"]["G"].append(float(model.metric_dict['g_metric'].result()))
+        results["losses"]["D1"].append(float(model.metric_dict['d_metric_1'].result()))
+        results["losses"]["D2"].append(float(model.metric_dict['d_metric_2'].result()))
+        results["train_metrics"]["global"].append(float(model.L1metric.result()[0]))
+        results["train_metrics"]["focal"].append(float(model.L1metric.result()[1]))
 
+        print(f"Train epoch {epoch + 1}, G: {model.metric_dict['g_metric'].result():.4f} D1: {model.metric_dict['d_metric_1'].result():.4f}, D2: {model.metric_dict['d_metric_2'].result():.4f}, L1 [global focal]: {model.L1metric.result()}")
+        
+        if config["CV_FOLDS"] != 0:
+            model.L1metric.reset_states()
+
+            for data in ds_val:
+                NCE, ACE, mask = data
+                model.val_step(NCE, ACE, mask)
+            
+            results["val_metrics"]["global"].append(float(model.L1metric.result()[0]))
+            results["val_metrics"]["focal"].append(float(model.L1metric.result()[1]))
+
+            print(f"Val epoch {epoch + 1}, L1 [global focal]: {model.L1metric.result()}")
+
+        # TODO: RANDOM EXAMPLE IMAGES
         for data in ds_val:
             NCE, ACE, seg = data
             pred = model.Generator(NCE, training=False).numpy()
@@ -110,4 +138,6 @@ def training_loop_GAN(config, model, ds, show):
             
             break
 
-    print(f"Time taken: {time.time() - start_time}")
+    results["time"] = (time.time() - start_time) / 3600
+
+    return results

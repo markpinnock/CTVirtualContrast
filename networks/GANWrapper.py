@@ -145,3 +145,8 @@ class GAN(keras.Model):
         # Update metric
         self.metric_dict["g_metric"].update_state(g_loss)
         self.L1metric.update_state(d_target_batch, g_fake_target, mask)
+
+    @tf.function
+    def val_step(self, source, target, mask):
+        g_fake = self.Generator(source, training=False)
+        self.L1metric.update_state(target, g_fake, mask)

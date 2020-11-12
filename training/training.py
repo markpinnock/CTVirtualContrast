@@ -1,7 +1,9 @@
 import argparse
 import datetime
 import json
+import matplotlib.pyplot as plt
 import numpy as np
+import os
 import sys
 import tensorflow.keras as keras
 import tensorflow as tf
@@ -26,16 +28,20 @@ arguments = parser.parse_args()
 with open(arguments.config_path, 'r') as infile:
     CONFIG = json.load(infile)
 
+if not os.path.exists(f"{CONFIG['SAVE_PATH']}logs/"):
+    os.mkdir(f"{CONFIG['SAVE_PATH']}logs/")
+
 # Initialise datasets
 TrainGenerator = ImgLoader(
     config=CONFIG,
     dataset_type="training",
-    fold=0)
+    fold=5)
 
 ValGenerator = ImgLoader(
     config=CONFIG,
     dataset_type="validation",
-    fold=0)
+    fold=5)
+
 # TODO: convert to have one generator for train and val
 train_ds = tf.data.Dataset.from_generator(
     generator=TrainGenerator.data_generator,
@@ -82,4 +88,29 @@ Model = GAN(
 # training_loop_UNet(EPOCHS, "vc", Model, (train_ds, val_ds))
 
 # GAN training loop
-training_loop_GAN(CONFIG, Model, (train_ds, val_ds), False)
+stats = training_loop_GAN(CONFIG, Model, (train_ds, val_ds), False)
+plt.figure()
+
+plt.subplot(2, 1, 1)
+plt.plot(stats["epochs"], stats["losses"]["G"], 'k', label="G")
+plt.plot(stats["epochs"], stats["losses"]["D1"], 'r', label="D1")
+plt.plot(stats["epochs"], stats["losses"]["D2"], 'g', label="D2")
+plt.xlabel("Epochs")
+plt.ylabel("Loss")
+plt.title("Losses")
+plt.legend()
+
+plt.subplot(2, 1, 2)
+plt.plot(stats["epochs"], stats["train_metrics"]["global"], 'k--', label="Train global L1")
+plt.plot(stats["epochs"], stats["train_metrics"]["focal"], 'r--', label="Train focal L1")
+plt.plot(stats["epochs"], stats["val_metrics"]["global"], 'k', label="Val global L1")
+plt.plot(stats["epochs"], stats["val_metrics"]["focal"], 'r', label="Val focal L1")
+plt.xlabel("Epochs")
+plt.ylabel("L1")
+plt.title("Metrics")
+plt.legend()
+
+plt.savefig(f"{CONFIG['SAVE_PATH']}logs/GAN/losses.png")
+
+with open(f"{CONFIG['SAVE_PATH']}logs/GAN/results.json", 'w') as outfile:
+    json.dump(stats, outfile)

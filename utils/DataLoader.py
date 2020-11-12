@@ -23,29 +23,32 @@ class ImgLoader:
         NCE_list = os.listdir(self.NCE_path)
         seg_list = os.listdir(self.seg_path)
 
+        unique_ids = []
+
+        for img_id in ACE_list:
+            if img_id[0:4] not in unique_ids:
+                unique_ids.append(img_id[0:4])
+
+        N = len(unique_ids)
         # TODO: method to return example images
 
         if config["CV_FOLDS"] > 0:
-            ACE_list.sort()
-            NCE_list.sort()
-            seg_list.sort()
             np.random.seed(5)
-            temp_list = list(zip(ACE_list, NCE_list, seg_list))
-            np.random.shuffle(temp_list)
-            ACE_list, NCE_list, seg_list = zip(*temp_list)
+
+            np.random.shuffle(unique_ids)
             num_in_fold = N // config["CV_FOLDS"]
 
             if self.dataset_type == "training":
-                self.ACE_list = ACE_list[0:fold * num_in_fold] + ACE_list[(fold + 1) * num_in_fold:]
-                self.NCE_list = NCE_list[0:fold * num_in_fold] + NCE_list[(fold + 1) * num_in_fold:]
-                self.seg_list = seg_list[0:fold * num_in_fold] + seg_list[(fold + 1) * num_in_fold:]
+                fold_ids = unique_ids[0:fold * num_in_fold] + unique_ids[(fold + 1) * num_in_fold:]
             elif self.dataset_type == "validation":
-                self.ACE_list = ACE_list[fold * num_in_fold:(fold + 1) * num_in_fold]
-                self.NCE_list = NCE_list[fold * num_in_fold:(fold + 1) * num_in_fold]
-                self.seg_list = seg_list[fold * num_in_fold:(fold + 1) * num_in_fold]
+                fold_ids = unique_ids[fold * num_in_fold:(fold + 1) * num_in_fold]
             else:
                 raise ValueError("Select 'training' or 'validation'")
-
+            
+            self.ACE_list = [img_id for img_id in ACE_list if img_id[0:4] in fold_ids]
+            self.NCE_list = [img_id for img_id in NCE_list if img_id[0:4] in fold_ids]
+            self.seg_list = [img_id for img_id in seg_list if img_id[0:4] in fold_ids]
+            
             np.random.seed()
         
         elif config["CV_FOLDS"] == 0:
@@ -55,8 +58,8 @@ class ImgLoader:
         
         else:
             raise ValueError("Number of folds must be >= 0")
-        
-        assert len(ACE_list) == len(NCE_list) and len(ACE_list) == len(seg_list), f"{N} {len(NCE_list)} {len(seg_list)}"
+
+        assert len(self.ACE_list) == len(self.NCE_list) and len(self.ACE_list) == len(self.seg_list), f"{self.ACE_list} {len(self.NCE_list)} {len(self.seg_list)}"
         
     def data_generator(self):
         if self.dataset_type == "training":
