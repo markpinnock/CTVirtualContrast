@@ -4,47 +4,45 @@ import tensorflow.keras as keras
 
 @tf.function
 def focused_mse(x, y, m):
-    global_mse = tf.reduce_mean(tf.square(x - y))
+    global_mse = tf.reduce_mean(tf.square(x - y) * (1 - m))
     focal_mse = tf.reduce_mean(tf.square(x - y) * m)
     return global_mse, focal_mse
 
 
 @tf.function
 def focused_mae(x, y, m):
-    global_mae = tf.reduce_mean(tf.abs(x - y))
+    global_mae = tf.reduce_mean(tf.abs(x - y) * (1 - m))
     focal_mae = tf.reduce_mean(tf.abs(x - y) * m)
     return global_mae, focal_mae
 
 
 class FocalLoss(keras.layers.Layer):
-    def __init__(self, lambda_, loss, name="focus_loss"):
+    def __init__(self, mu, loss_fn, name="focus_loss"):
         super(FocalLoss, self).__init__(name=name)
-        assert not lambda_ > 1.0, "Lambda must be in range [0, 1]"
-        self.lambda_ = lambda_
+        assert not mu > 1.0, "Lambda must be in range [0, 1]"
+        self.mu = mu
 
-        if loss == "mse":
+        if loss_fn == "mse":
             self.focal = focused_mse
-        elif loss == "mae":
+        elif loss_fn == "mae":
             self.focal = focused_mae
         else:
             raise ValueError("'mse' or 'mae'")
 
     def call(self, y, x, mask):
         global_loss, focal_loss = self.focal(x, y, mask)
-        return (1 - self.lambda_) * global_loss + self.lambda_ * focal_loss
+        return (1 - self.mu) * global_loss + self.mu * focal_loss
 
 
 class FocalMetric(keras.metrics.Metric):
-    def __init__(self, lambda_, loss, name="focus_metric"):
+    def __init__(self, loss_fn, name="focus_metric"):
         super(FocalMetric, self).__init__(name=name)
-        assert not lambda_ > 1.0, "Lambda must be in range [0, 1]"
-        self.lambda_ = lambda_
         self.global_loss = self.add_weight(name="global", initializer="zeros")
         self.focal_loss = self.add_weight(name="focal", initializer="zeros")
         
-        if loss == "mse":
+        if loss_fn == "mse":
             self.focal = focused_mse
-        elif loss == "mae":
+        elif loss_fn == "mae":
             self.focal = focused_mae
         else:
             raise ValueError("'mse' or 'mae'") 

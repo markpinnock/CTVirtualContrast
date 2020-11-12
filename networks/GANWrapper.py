@@ -63,9 +63,9 @@ class GAN(keras.Model):
         # TODO: IMPLEMENT CONSTRAINT TYPE
         self.loss = self.loss_dict[GAN_type]
         self.GAN_type = GAN_type
-        self.L1 = FocalLoss(1.0, "mae")
+        self.L1 = FocalLoss(mu=0.5, loss_fn="mae")
         self.lambda_ = lambda_
-        self.L1metric = FocalMetric(1.0, "mae")
+        self.L1metric = FocalMetric(loss_fn="mae")
         self.Generator = Generator(self.initialiser)
         self.Discriminator = Discriminator(self.initialiser)
         self.patch_size = self.Discriminator(
@@ -138,8 +138,8 @@ class GAN(keras.Model):
             g_loss = self.loss(g_labels, g_predictions)
             g_L1 = self.L1(d_target_batch, g_fake_target, mask)
             g_total_loss = g_loss + self.lambda_ * g_L1
-        
-        g_grads = g_tape.gradient(g_loss, self.Generator.trainable_variables)
+
+        g_grads = g_tape.gradient(g_total_loss, self.Generator.trainable_variables)
         self.g_optimiser.apply_gradients(zip(g_grads, self.Generator.trainable_variables))
 
         # Update metric
