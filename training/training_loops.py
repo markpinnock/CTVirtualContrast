@@ -1,3 +1,4 @@
+import json
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -66,8 +67,18 @@ def training_loop_GAN(config, model, ds, show):
     EPOCHS = config["HYPERPARAMS"]["EPOCHS"]
     SAVE_PATH = config["SAVE_PATH"]
 
-    if not os.path.exists(f"{SAVE_PATH}GAN/"):
-        os.mkdir(f"{SAVE_PATH}GAN/")
+    if not os.path.exists(f"{SAVE_PATH}images/"):
+        os.mkdir(f"{SAVE_PATH}images/GAN/")
+    if not os.path.exists(f"{SAVE_PATH}images/"):
+        os.mkdir(f"{SAVE_PATH}images/GAN/")
+    if not os.path.exists(f"{SAVE_PATH}models/"):
+        os.mkdir(f"{SAVE_PATH}models/")
+    if not os.path.exists(f"{SAVE_PATH}models/GAN/"):
+        os.mkdir(f"{SAVE_PATH}models/GAN/")
+    if not os.path.exists(f"{SAVE_PATH}logs/"):
+        os.mkdir(f"{SAVE_PATH}logs/")
+    if not os.path.exists(f"{SAVE_PATH}logs/GAN/"):
+        os.mkdir(f"{SAVE_PATH}logs/GAN/")
 
     results = {}
     results["config"] = config
@@ -79,6 +90,7 @@ def training_loop_GAN(config, model, ds, show):
 
     ds_train, ds_val = ds
     start_time = time.time()
+    best_L1 = 1e3
 
     for epoch in range(EPOCHS):
         results["epochs"].append(epoch)
@@ -111,6 +123,13 @@ def training_loop_GAN(config, model, ds, show):
 
             print(f"Val epoch {epoch + 1}, L1 [global focal]: {model.L1metric.result()}")
 
+            if model.L1metric.result()[1] < best_L1:
+                model.save_weights(f"{SAVE_PATH}models/GAN/GAN")
+                best_L1 = model.L1metric.result()[1]
+                
+                with open(f"{SAVE_PATH}logs/GAN/best_results.json", 'w') as outfile:
+                    json.dump(results, outfile, indent=4)
+
         # TODO: RANDOM EXAMPLE IMAGES
         for data in ds_val:
             NCE, ACE, seg = data
@@ -133,7 +152,7 @@ def training_loop_GAN(config, model, ds, show):
             if show:
                 plt.show()
             else:
-                plt.savefig(f"{SAVE_PATH}GAN/{epoch + 1}.png", dpi=250)
+                plt.savefig(f"{SAVE_PATH}images/GAN/{epoch + 1}.png", dpi=250)
                 plt.close()
             
             break
