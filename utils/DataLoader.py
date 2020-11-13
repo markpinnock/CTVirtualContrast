@@ -16,7 +16,7 @@ class ImgLoader:
         self.NCE_list = None
         self.seg_list = None
         self.dataset_type = dataset_type
-        self.down_sample = config["DOWN_SAMP"]
+        self.down_sample = config["EXPT"]["DOWN_SAMP"]
         self.expt_type = config["EXPT"]["MODEL"]
 
         ACE_list = os.listdir(self.ACE_path)
@@ -32,11 +32,11 @@ class ImgLoader:
         N = len(unique_ids)
         # TODO: method to return example images
 
-        if config["CV_FOLDS"] > 0:
+        if config["EXPT"]["CV_FOLDS"] > 0:
             np.random.seed(5)
 
             np.random.shuffle(unique_ids)
-            num_in_fold = N // config["CV_FOLDS"]
+            num_in_fold = N // config["EXPT"]["CV_FOLDS"]
 
             if self.dataset_type == "training":
                 fold_ids = unique_ids[0:fold * num_in_fold] + unique_ids[(fold + 1) * num_in_fold:]
@@ -51,7 +51,7 @@ class ImgLoader:
             
             np.random.seed()
         
-        elif config["CV_FOLDS"] == 0:
+        elif config["EXPT"]["CV_FOLDS"] == 0:
             self.ACE_list = ACE_list
             self.NCE_list = NCE_list
             self.seg_list = seg_list

@@ -10,16 +10,13 @@ from utils.Losses import FocalLoss, FocalMetric
 class GAN(keras.Model):
 
     """ GAN class
-        - latent_dims: size of generator latent distribution
-        - g_nc: number of channels in generator first layer
-        - d_nc: number of channels in discriminator first layer
+        - config: configuration json
         - g_optimiser: generator optimiser e.g. keras.optimizers.Adam()
         - d_optimiser: discriminator optimiser e.g. keras.optimizers.Adam()
         - GAN_type: 'original', 'least_square', 'wasserstein' or 'wasserstein-GP'
-        - n_critic: number of discriminator/critic training runs (5 in WGAN, 1 otherwise)
-        - lambda_: L1 hyperparameter """
+        - n_critic: number of discriminator/critic training runs (5 in WGAN, 1 otherwise) """
 
-    def __init__(self, config, g_optimiser, d_optimiser, lambda_, GAN_type="original", n_critic=1):
+    def __init__(self, config, g_optimiser, d_optimiser, GAN_type="original", n_critic=1):
         super(GAN, self).__init__()
         self.initialiser = keras.initializers.RandomNormal(0, 0.02)
 
@@ -63,16 +60,16 @@ class GAN(keras.Model):
         # TODO: IMPLEMENT CONSTRAINT TYPE
         self.loss = self.loss_dict[GAN_type]
         self.GAN_type = GAN_type
-        self.L1 = FocalLoss(mu=0.5, loss_fn="mae")
-        self.lambda_ = lambda_
+        self.L1 = FocalLoss(mu=config["HYPERPARAMS"]["MU"], loss_fn="mae")
+        self.lambda_ = config["HYPERPARAMS"]["LAMBDA"]
         self.L1metric = FocalMetric(loss_fn="mae")
         self.Generator = Generator(self.initialiser)
         self.Discriminator = Discriminator(self.initialiser)
         self.patch_size = self.Discriminator(
-            tf.zeros((1, 512 // config["DOWN_SAMP"], 512 // config["DOWN_SAMP"], 12, 1)),
-            tf.zeros((1, 512 // config["DOWN_SAMP"], 512 // config["DOWN_SAMP"], 12, 1)),
-            tf.zeros((1, 512 // config["DOWN_SAMP"], 512 // config["DOWN_SAMP"], 12, 1)),
-            training=True).shape
+            tf.zeros((1, 512 // config["EXPT"]["DOWN_SAMP"], 512 // config["EXPT"]["DOWN_SAMP"], 12, 1)),
+            tf.zeros((1, 512 // config["EXPT"]["DOWN_SAMP"], 512 // config["EXPT"]["DOWN_SAMP"], 12, 1)),
+            tf.zeros((1, 512 // config["EXPT"]["DOWN_SAMP"], 512 // config["EXPT"]["DOWN_SAMP"], 12, 1))
+            ).shape
         self.g_optimiser = g_optimiser
         self.d_optimiser = d_optimiser
         self.n_critic = n_critic

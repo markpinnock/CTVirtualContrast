@@ -111,7 +111,7 @@ def training_loop_GAN(config, model, ds, show):
 
         print(f"Train epoch {epoch + 1}, G: {model.metric_dict['g_metric'].result():.4f} D1: {model.metric_dict['d_metric_1'].result():.4f}, D2: {model.metric_dict['d_metric_2'].result():.4f}, L1 [global focal]: {model.L1metric.result()}")
         
-        if config["CV_FOLDS"] != 0:
+        if config["EXPT"]["CV_FOLDS"] != 0:
             model.L1metric.reset_states()
 
             for data in ds_val:
@@ -123,7 +123,7 @@ def training_loop_GAN(config, model, ds, show):
 
             print(f"Val epoch {epoch + 1}, L1 [global focal]: {model.L1metric.result()}")
 
-            if model.L1metric.result()[1] < best_L1:
+            if model.L1metric.result()[1] < best_L1 and epoch > 75:
                 model.save_weights(f"{SAVE_PATH}models/GAN/GAN")
                 best_L1 = model.L1metric.result()[1]
                 
