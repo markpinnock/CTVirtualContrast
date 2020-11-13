@@ -93,7 +93,7 @@ def training_loop_GAN(config, model, ds, show):
     best_L1 = 1e3
 
     for epoch in range(EPOCHS):
-        results["epochs"].append(epoch)
+        results["epochs"].append(epoch + 1)
         model.metric_dict["g_metric"].reset_states()
         model.metric_dict["d_metric_1"].reset_states()
         model.metric_dict["d_metric_2"].reset_states()
@@ -133,7 +133,7 @@ def training_loop_GAN(config, model, ds, show):
         # TODO: RANDOM EXAMPLE IMAGES
         for data in ds_val:
             NCE, ACE, seg = data
-            pred = model.Generator(NCE, training=False).numpy()
+            pred = model.Generator(NCE).numpy()
 
             fig, axs = plt.subplots(2, 3)
             axs[0, 0].imshow(np.flipud(NCE[3, :, :, 11, 0]), cmap='gray', origin='lower')

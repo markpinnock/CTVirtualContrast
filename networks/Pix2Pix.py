@@ -26,14 +26,14 @@ class Discriminator(keras.Model):
             padding='same',
             kernel_initializer=initialiser)
 
-    def call(self, source, target, mask, training):
+    def call(self, source, target, mask, training=True):
         # Input 128 128 12
         x = keras.layers.concatenate([source, target, mask], axis=4)
-        dn1 = self.conv1(x) # 64 64 6
-        dn2 = self.conv2(dn1, training) # 32 32 6
-        dn3 = self.conv3(dn2, training) # 16 16 3
-        dn4 = self.conv4(dn3, training) # 8 8 3
-        dn5 = self.conv5(dn4, training) # 4 4 1
+        dn1 = self.conv1(x, training=training) # 64 64 6
+        dn2 = self.conv2(dn1, training=training) # 32 32 6
+        dn3 = self.conv3(dn2, training=training) # 16 16 3
+        dn4 = self.conv4(dn3, training=training) # 8 8 3
+        dn5 = self.conv5(dn4, training=training) # 4 4 1
         dn6 = self.conv6(dn5)
         
         return dn6
@@ -72,23 +72,23 @@ class Generator(keras.Model):
             padding='same', activation='tanh',
             kernel_initializer=initialiser)
 
-    def call(self, x, training):
+    def call(self, x, training=True):
         # Encode 128 128 12
-        dn1 = self.conv1(x) # 64 64 6
-        dn2 = self.conv2(dn1, training=True) # 32 32 6
-        dn3 = self.conv3(dn2, training=True) # 16 16 3
-        dn4 = self.conv4(dn3, training=True) # 8 8 3
-        dn5 = self.conv5(dn4, training=True) # 4 4 3
-        dn6 = self.conv6(dn5, training=True) # 2 2 3
+        dn1 = self.conv1(x, training=training) # 64 64 6
+        dn2 = self.conv2(dn1, training=training) # 32 32 6
+        dn3 = self.conv3(dn2, training=training) # 16 16 3
+        dn4 = self.conv4(dn3, training=training) # 8 8 3
+        dn5 = self.conv5(dn4, training=training) # 4 4 3
+        dn6 = self.conv6(dn5, training=training) # 2 2 3
         dn8 = self.conv8(dn6) # 1 1 3
 
         # Decode
-        up1 = self.tconv1(dn8, dn6, training=True) # 2 2 3
-        up2 = self.tconv2(up1, dn5, training=True) # 4 4 3
-        up3 = self.tconv3(up2, dn4, training=True) # 8 8 3
-        up4 = self.tconv4(up3, dn3, training=True) # 16 16 3
-        up5 = self.tconv6(up4, dn2, training=True) # 32 32 6
-        up7 = self.tconv7(up5, dn1, training=True) # 64 64 6
+        up1 = self.tconv1(dn8, dn6, training=training) # 2 2 3
+        up2 = self.tconv2(up1, dn5, training=training) # 4 4 3
+        up3 = self.tconv3(up2, dn4, training=training) # 8 8 3
+        up4 = self.tconv4(up3, dn3, training=training) # 16 16 3
+        up5 = self.tconv6(up4, dn2, training=training) # 32 32 6
+        up7 = self.tconv7(up5, dn1, training=training) # 64 64 6
         up8 = self.tconv8(up7) # 128 128 12
 
         return up8

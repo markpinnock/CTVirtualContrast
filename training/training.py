@@ -107,6 +107,7 @@ plt.ylabel("L1")
 plt.title("Metrics")
 plt.legend()
 
+plt.tight_layout()
 plt.savefig(f"{CONFIG['SAVE_PATH']}logs/GAN/losses.png")
 
 with open(f"{CONFIG['SAVE_PATH']}logs/GAN/results.json", 'w') as outfile:

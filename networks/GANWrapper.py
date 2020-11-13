@@ -109,8 +109,8 @@ class GAN(keras.Model):
 
             # Get gradients from critic predictions and update weights
             with tf.GradientTape() as d_tape:
-                d_pred_fake = self.Discriminator(d_source_batch, d_fake_target, mask, training=True)
-                d_pred_real = self.Discriminator(d_source_batch, d_target_batch, mask, training=True)
+                d_pred_fake = self.Discriminator(d_source_batch, d_fake_target, mask)
+                d_pred_real = self.Discriminator(d_source_batch, d_target_batch, mask)
                 d_predictions = tf.concat([d_pred_fake, d_pred_real], axis=0)
                 d_loss_1 = self.loss(d_labels[0:mb_size, ...], d_predictions[0:mb_size, ...]) # Fake
                 d_loss_2 = self.loss(d_labels[mb_size:, ...], d_predictions[mb_size:, ...]) # Real
@@ -133,8 +133,8 @@ class GAN(keras.Model):
         # TODO: ADD NOISE TO LABELS AND/OR IMAGES
         # Get gradients from critic predictions of generated fake images and update weights
         with tf.GradientTape() as g_tape:
-            g_fake_target = self.Generator(d_source_batch, training=True)
-            g_predictions = self.Discriminator(d_source_batch, g_fake_target, mask, training=True)
+            g_fake_target = self.Generator(d_source_batch)
+            g_predictions = self.Discriminator(d_source_batch, g_fake_target, mask)
             g_loss = self.loss(g_labels, g_predictions)
             g_L1 = self.L1(d_target_batch, g_fake_target, mask)
             g_total_loss = g_loss + self.lambda_ * g_L1
@@ -148,5 +148,5 @@ class GAN(keras.Model):
 
     @tf.function
     def val_step(self, source, target, mask):
-        g_fake = self.Generator(source, training=False)
+        g_fake = self.Generator(source)
         self.L1metric.update_state(target, g_fake, mask)
