@@ -1,83 +1,114 @@
+import argparse
+import datetime
+import json
 import matplotlib.pyplot as plt
 import numpy as np
-# import os
+import os
 import sys
 import tensorflow.keras as keras
 import tensorflow as tf
-import time
 
-sys.path.append('..')
+sys.path.append("..")
 
-from ResidualNet import ResNet
-from UNet import UNet
+from training_loops import training_loop_UNet, training_loop_GAN
+from networks.GANWrapper import GAN
+from networks.ResidualNet import ResNet
+from networks.UNet import UNet
 from utils.DataLoader import ImgLoader
 
 
 """ Training script """
 
-SAVE_PATH = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/"
-FILE_PATH = "C:/ProjectImages/VirtualContrast/"
+# Handle arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("--config_path", "-cp", help="Config json path", type=str)
+arguments = parser.parse_args()
 
-# Hyperparameters
-MB_SIZE = 4
-NC = 4
-EPOCHS = 50
-ETA = 1e-4
+# Parse config json
+with open(arguments.config_path, 'r') as infile:
+    CONFIG = json.load(infile)
 
 # Initialise datasets
 TrainGenerator = ImgLoader(
-    file_path=FILE_PATH,
+    config=CONFIG,
     dataset_type="training",
-    num_folds=0,
-    fold=0)
+    fold=5)
 
 ValGenerator = ImgLoader(
-    file_path=FILE_PATH,
+    config=CONFIG,
     dataset_type="validation",
-    num_folds=0,
-    fold=0)
+    fold=5)
+
 # TODO: convert to have one generator for train and val
 train_ds = tf.data.Dataset.from_generator(
     generator=TrainGenerator.data_generator,
-    output_types=(tf.float32, tf.float32)
-    ).batch(MB_SIZE)
+    output_types=(tf.float32, tf.float32, tf.float32)
+    ).batch(CONFIG["HYPERPARAMS"]["MB_SIZE"])
 
 val_ds = tf.data.Dataset.from_generator(
     generator=ValGenerator.data_generator,
-    output_types=(tf.float32, tf.float32)
-    ).batch(MB_SIZE)
+    output_types=(tf.float32, tf.float32, tf.float32)
+    ).batch(CONFIG["HYPERPARAMS"]["MB_SIZE"])
 
 # Compile model
-Model = UNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
+# Model = UNet(nc=NC, lambda_=0.0, optimiser=keras.optimizers.Adam(ETA))
 # Model = ResNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
+Model = GAN(
+    config=CONFIG,
+    g_optimiser=keras.optimizers.Adam(2e-4, 0.5, 0.999),
+    d_optimiser=keras.optimizers.Adam(2e-4, 0.5, 0.999)
+    )
 
-start_time = time.time()
+# curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+# log_dir = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/logs/" + curr_time
+# writer = tf.summary.create_file_writer(log_dir)
 
-# Training loop
-for epoch in range(EPOCHS):
-    Model.metric.reset_states()
+# @tf.function
+# def trace(x):
+#     return Model(x)
 
-    for data in train_ds:
-        Model.train_step(data)
+# tf.summary.trace_on(graph=True)
+# trace(tf.zeros((1, 128, 128, 12, 1)))
+# # print(Model.summary())
 
-    print(f"Epoch {epoch + 1}, Loss {Model.metric.result()}")
+
+# with writer.as_default():
+#     tf.summary.trace_export('graph', step=0)
+# exit()
 
 
-print(f"Time taken: {time.time() - start_time}")
-count = 0
 
-for data in val_ds:
-    NCE, ACE = data
-    pred = Model(NCE, training=False).numpy()
+# Seg phase training loop
+# training_loop_UNet(EPOCHS, "seg", Model, (train_ds, val_ds))
 
-    fig, axs = plt.subplots(2, 3)
-    axs[0, 0].imshow(np.flipud(NCE[0, :, :, 0, 0]), cmap='gray', origin='lower')
-    axs[0, 1].imshow(np.flipud(ACE[0, :, :, 0, 0]), cmap='gray', origin='lower')
-    axs[0, 2].imshow(np.flipud(pred[0, :, :, 0, 0]), cmap='gray', origin='lower')
-    axs[1, 0].imshow(np.flipud(pred[0, :, :, 0, 0] + NCE[0, :, :, 0, 0]), cmap='gray', origin='lower')
-    axs[1, 1].imshow(np.flipud(pred[0, :, :, 0, 0] + NCE[0, :, :, 0, 0] - ACE[0, :, :, 0, 0]), cmap='gray', origin='lower')
-    axs[1, 2].imshow(np.flipud(pred[0, :, :, 0, 0] - ACE[0, :, :, 0, 0]), cmap='gray', origin='lower')
-    # plt.savefig(f"{SAVE_PATH}{count:03d}.png", dpi=250)
-    # plt.close()
-    plt.show()
-    count += 1
+# Virtual contrast phase training loop
+# training_loop_UNet(EPOCHS, "vc", Model, (train_ds, val_ds))
+
+# GAN training loop
+results = training_loop_GAN(CONFIG, Model, (train_ds, val_ds), False)
+plt.figure()
+
+plt.subplot(2, 1, 1)
+plt.plot(results["epochs"], results["losses"]["G"], 'k', label="G")
+plt.plot(results["epochs"], results["losses"]["D1"], 'r', label="D1")
+plt.plot(results["epochs"], results["losses"]["D2"], 'g', label="D2")
+plt.xlabel("Epochs")
+plt.ylabel("Loss")
+plt.title("Losses")
+plt.legend()
+
+plt.subplot(2, 1, 2)
+plt.plot(results["epochs"], results["train_metrics"]["global"], 'k--', label="Train global L1")
+plt.plot(results["epochs"], results["train_metrics"]["focal"], 'r--', label="Train focal L1")
+plt.plot(results["epochs"], results["val_metrics"]["global"], 'k', label="Val global L1")
+plt.plot(results["epochs"], results["val_metrics"]["focal"], 'r', label="Val focal L1")
+plt.xlabel("Epochs")
+plt.ylabel("L1")
+plt.title("Metrics")
+plt.legend()
+
+plt.tight_layout()
+plt.savefig(f"{CONFIG['SAVE_PATH']}logs/GAN/losses.png")
+
+with open(f"{CONFIG['SAVE_PATH']}logs/GAN/results.json", 'w') as outfile:
+    json.dump(results, outfile, indent=4)

@@ -1,7 +1,10 @@
+import sys
 import tensorflow as tf
 import tensorflow.keras as keras
 
-from Layers import DownBlock
+sys.path.append("..")
+
+from networks.Layers import DownBlock
 
 
 class ResNet(keras.Model):
