@@ -4,13 +4,10 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-import sys
 import tensorflow.keras as keras
 import tensorflow as tf
 
-sys.path.append("..")
-
-from training_loops import training_loop_UNet, training_loop_GAN
+from TrainingLoops import training_loop_UNet, training_loop_GAN
 from networks.GANWrapper import GAN
 from networks.ResidualNet import ResNet
 from networks.UNet import UNet
