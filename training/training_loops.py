@@ -123,12 +123,12 @@ def training_loop_GAN(config, model, ds, show):
 
             print(f"Val epoch {epoch + 1}, L1 [global focal]: {model.L1metric.result()}")
 
-            if model.L1metric.result()[1] < best_L1 and epoch > 75:
-                model.save_weights(f"{SAVE_PATH}models/GAN/GAN")
-                best_L1 = model.L1metric.result()[1]
-                
-                with open(f"{SAVE_PATH}logs/GAN/best_results.json", 'w') as outfile:
-                    json.dump(results, outfile, indent=4)
+        if model.L1metric.result()[1] < best_L1 and epoch > 75:
+            model.save_weights(f"{SAVE_PATH}models/GAN/GAN")
+            best_L1 = model.L1metric.result()[1]
+            
+            with open(f"{SAVE_PATH}logs/GAN/best_results.json", 'w') as outfile:
+                json.dump(results, outfile, indent=4)
 
         # TODO: RANDOM EXAMPLE IMAGES
         for data in ds_val:
