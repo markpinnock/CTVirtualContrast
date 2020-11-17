@@ -102,7 +102,7 @@ class GAN(keras.Model):
             # Select minibatch of real images and generate fake images
             d_source_batch = source[idx * mb_size:(idx + 1) * mb_size, :, :, :]
             d_target_batch = target[idx * mb_size:(idx + 1) * mb_size, :, :, :]
-            d_fake_target = self.Generator(d_source_batch, training=True)
+            d_fake_target = self.Generator(d_source_batch)
 
             # Get gradients from critic predictions and update weights
             with tf.GradientTape() as d_tape:
