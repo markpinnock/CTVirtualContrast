@@ -19,11 +19,25 @@ from utils.DataLoader import ImgLoader
 # Handle arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("--config_path", "-cp", help="Config json path", type=str)
+parser.add_argument("--expt_name", "-en", help="Expt name", type=str)
+parser.add_argument("--lambda_", "-l", help="Lambda", type=float)
+parser.add_argument("--mu", "-m", help="Mu", type=float)
 arguments = parser.parse_args()
 
 # Parse config json
 with open(arguments.config_path, 'r') as infile:
     CONFIG = json.load(infile)
+
+if arguments.expt_name is not None:
+    CONFIG["EXPT_NAME"] = arguments.expt_name
+else:
+    CONFIG["EXPT_NAME"] = "test"
+
+if arguments.lambda_ is not None:
+    CONFIG["HYPERPARAMS"]["LAMBDA"] = arguments.lambda_
+
+if arguments.mu is not None:
+    CONFIG["HYPERPARAMS"]["LAMBDA"] = arguments.mu
 
 # Initialise datasets
 TrainGenerator = ImgLoader(
@@ -105,7 +119,7 @@ plt.title("Metrics")
 plt.legend()
 
 plt.tight_layout()
-plt.savefig(f"{CONFIG['SAVE_PATH']}logs/GAN/losses.png")
+plt.savefig(f"{CONFIG['SAVE_PATH']}logs/GAN/{CONFIG['EXPT_NAME']}/losses.png")
 
-with open(f"{CONFIG['SAVE_PATH']}logs/GAN/results.json", 'w') as outfile:
+with open(f"{CONFIG['SAVE_PATH']}logs/GAN/{CONFIG['EXPT_NAME']}/results.json", 'w') as outfile:
     json.dump(results, outfile, indent=4)
