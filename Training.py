@@ -7,7 +7,7 @@ import os
 import tensorflow.keras as keras
 import tensorflow as tf
 
-from TrainingLoops import training_loop_UNet, training_loop_GAN
+from TrainingLoops import training_loop_UNet, training_loop_GAN, print_model_summary
 from networks.GANWrapper import GAN
 from networks.ResidualNet import ResNet
 from networks.UNet import UNet
@@ -69,6 +69,10 @@ Model = GAN(
     g_optimiser=keras.optimizers.Adam(2e-4, 0.5, 0.999),
     d_optimiser=keras.optimizers.Adam(2e-4, 0.5, 0.999)
     )
+
+if CONFIG["EXPT"]["VERBOSE"]:
+    print_model_summary(Model.Generator, CONFIG)
+    print_model_summary(Model.Discriminator, CONFIG)
 
 # curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 # log_dir = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/logs/" + curr_time

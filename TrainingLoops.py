@@ -6,6 +6,37 @@ import sys
 import time
 
 
+def print_model_summary(model, config):
+    print("===================================")
+    print(model.name)
+    print("===================================")
+
+    weight_dict = {}
+    total_weights = 0
+    x = np.zeros((1, 512 // config["EXPT"]["DOWN_SAMP"], 512 // config["EXPT"]["DOWN_SAMP"], 3, 1), dtype=np.float32)
+
+    try:
+        output_shapes = model(x, test=True)
+    except TypeError:
+        output_shapes = model(x, x, x, test=True)    
+
+    for layer in model.layers:
+        weight_dict[layer.name] = []
+
+        for weight in layer.trainable_weights:
+            total_weights += np.prod(weight.shape.as_list())
+            weight_dict[layer.name].append(weight.shape.as_list())
+    
+    assert len(output_shapes) == len(weight_dict), "Weight list and output shape list do not match"
+
+    for idx, layer in enumerate(model.layers):
+        print(f"{layer.name}: {weight_dict[layer.name]} {output_shapes[idx]}")
+
+    print("===================================")
+    print(f"Total weights: {total_weights}")
+    print("===================================")
+
+
 def training_loop_UNet(config, phase, model, ds, show):
     EPOCHS = config["HYPERPARAMS"]["EPOCHS"]
     SAVE_PATH = config["SAVE_PATH"]

@@ -26,7 +26,7 @@ class Discriminator(keras.Model):
             padding='same',
             kernel_initializer=initialiser)
 
-    def call(self, source, target, mask):
+    def call(self, source, target, mask, test=False):
         # Input 128 128 12
         x = keras.layers.concatenate([source, target, mask], axis=4)
         dn1 = self.conv1(x, training=True) # 64 64 6
@@ -36,6 +36,9 @@ class Discriminator(keras.Model):
         dn5 = self.conv5(dn4, training=True) # 4 4 1
         dn6 = self.conv6(dn5)
         
+        if test:
+            return [dn1.shape, dn2.shape, dn3.shape, dn4.shape, dn5.shape, dn6.shape]
+
         return dn6
 
 
@@ -72,7 +75,7 @@ class Generator(keras.Model):
             padding='same', activation='tanh',
             kernel_initializer=initialiser)
 
-    def call(self, x):
+    def call(self, x, test=False):
         # Encode 128 128 12
         dn1 = self.conv1(x, training=True) # 64 64 6
         dn2 = self.conv2(dn1, training=True) # 32 32 6
@@ -90,5 +93,9 @@ class Generator(keras.Model):
         up5 = self.tconv6(up4, dn2, training=True) # 32 32 6
         up7 = self.tconv7(up5, dn1, training=True) # 64 64 6
         up8 = self.tconv8(up7) # 128 128 12
+        
+        if test:
+            output_shapes = [dn1.shape, dn2.shape, dn3.shape, dn4.shape, dn5.shape, dn6.shape, dn8.shape, up1.shape, up2.shape, up3.shape, up4.shape, up5.shape, up7.shape, up8.shape]
+            return output_shapes
 
         return up8
