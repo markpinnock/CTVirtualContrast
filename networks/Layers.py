@@ -81,12 +81,12 @@ class GANUpBlock(keras.layers.Layer):
             - batch_norm: True/False
             - dropout: True/False """
 
-    def __init__(self, nc, strides, initialiser, batch_norm=True, dropout=False):
+    def __init__(self, nc, weights, strides, initialiser, batch_norm=True, dropout=False):
         super(GANUpBlock, self).__init__(self)
         self.batch_norm = batch_norm
         self.dropout = dropout
 
-        self.tconv = keras.layers.Conv3DTranspose(nc, (4, 4, 2), strides=strides, padding='same')
+        self.tconv = keras.layers.Conv3DTranspose(nc, weights, strides=strides, padding='same', kernel_initializer=initialiser)
 
         if batch_norm:
             self.bn = keras.layers.BatchNormalization()
