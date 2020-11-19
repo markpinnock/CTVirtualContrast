@@ -13,7 +13,7 @@ def print_model_summary(model, config):
 
     weight_dict = {}
     total_weights = 0
-    x = np.zeros((1, 512 // config["EXPT"]["DOWN_SAMP"], 512 // config["EXPT"]["DOWN_SAMP"], 3, 1), dtype=np.float32)
+    x = np.zeros((1, 512 // config["EXPT"]["DOWN_SAMP"], 512 // config["EXPT"]["DOWN_SAMP"], 12, 1), dtype=np.float32)
 
     try:
         output_shapes = model(x, test=True)

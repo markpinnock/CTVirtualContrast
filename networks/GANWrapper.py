@@ -63,7 +63,7 @@ class GAN(keras.Model):
         self.L1 = FocalLoss(mu=config["HYPERPARAMS"]["MU"], loss_fn="mae")
         self.lambda_ = config["HYPERPARAMS"]["LAMBDA"]
         self.L1metric = FocalMetric(loss_fn="mae")
-        self.Generator = Generator(self.initialiser)
+        self.Generator = Generator(self.initialiser, config["HYPERPARAMS"]["NGF"], config["HYPERPARAMS"]["G_LAYERS"])
         self.Discriminator = Discriminator(self.initialiser, config["HYPERPARAMS"]["NDF"], config["HYPERPARAMS"]["D_LAYERS"])
         self.patch_size = self.Discriminator(
             tf.zeros((1, 512 // config["EXPT"]["DOWN_SAMP"], 512 // config["EXPT"]["DOWN_SAMP"], 12, 1)),
