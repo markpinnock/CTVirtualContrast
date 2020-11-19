@@ -52,11 +52,11 @@ class GANDownBlock(keras.layers.Layer):
             - initialiser: e.g. keras.initializers.RandomNormal
             - batch_norm: True/False """
 
-    def __init__(self, nc, strides, initialiser, batch_norm=True):
+    def __init__(self, nc, weights, strides, initialiser, batch_norm=True):
         super(GANDownBlock, self).__init__(self)
         self.batch_norm = batch_norm
 
-        self.conv = keras.layers.Conv3D(nc, (4, 4, 2), strides=strides, padding='same', kernel_initializer=initialiser)
+        self.conv = keras.layers.Conv3D(nc, weights, strides=strides, padding='same', kernel_initializer=initialiser)
         
         if batch_norm:
             self.bn = keras.layers.BatchNormalization()
