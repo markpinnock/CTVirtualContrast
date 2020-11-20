@@ -84,15 +84,14 @@ class Discriminator(keras.Model):
                 padding='valid',
                 kernel_initializer=initialiser))
 
+
     def call(self, source, target, mask, test=False):
         # Test returns model parameters and feature map sizes
         if test: output_shapes = []
-
         x = keras.layers.concatenate([source, target, mask], axis=4)
 
         for conv in self.conv_list:
             x = conv(x, training=True)
-
             if test: output_shapes.append(x.shape)
         
         if test:
@@ -130,7 +129,7 @@ class Generator(keras.Model):
         cache = {"channels": [], "strides": [], "kernels": []}
 
         for i in range(0, num_layers - 1):
-            channels = tf.minimum(nc * 2 ** i, 512)
+            channels = np.min([nc * 2 ** i, 512])
 
             if i > max_z_downsample - 1:
                 strides = (2, 2, 1)
@@ -148,7 +147,8 @@ class Generator(keras.Model):
                     channels,
                     kernel,
                     strides,
-                    initialiser=initialiser))
+                    initialiser=initialiser,
+                    batch_norm=True))
         
         self.bottom_layer = keras.layers.Conv3D(
                 channels, kernel, strides,
@@ -193,7 +193,6 @@ class Generator(keras.Model):
         for conv in self.encoder:
             x = conv(x, training=True)
             skip_layers.append(x)
-            
             if test: output_shapes.append(x.shape)
         
         x = self.bottom_layer(x, training=True)
@@ -202,7 +201,6 @@ class Generator(keras.Model):
 
         for skip, tconv in zip(skip_layers, self.decoder):
             x = tconv(x, skip, training=True)
-            
             if test: output_shapes.append(x.shape)
         
         x = self.final_layer(x, training=True)
