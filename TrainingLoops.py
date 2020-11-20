@@ -161,17 +161,17 @@ def training_loop_GAN(config, model, ds, show):
             pred = model.Generator(NCE).numpy()
 
             fig, axs = plt.subplots(2, 3)
-            axs[0, 0].imshow(np.flipud(NCE[3, :, :, 11, 0]), cmap='gray', origin='lower')
+            axs[0, 0].imshow(np.flipud(NCE[0, :, :, 11, 0]), cmap='gray', origin='lower')
             axs[0, 0].axis("off")
-            axs[0, 1].imshow(np.flipud(ACE[3, :, :, 11, 0]), cmap='gray', origin='lower')
+            axs[0, 1].imshow(np.flipud(ACE[0, :, :, 11, 0]), cmap='gray', origin='lower')
             axs[0, 1].axis("off")
-            axs[0, 2].imshow(np.flipud(pred[3, :, :, 11, 0]), cmap='gray', origin='lower')
+            axs[0, 2].imshow(np.flipud(pred[0, :, :, 11, 0]), cmap='gray', origin='lower')
             axs[0, 2].axis("off")
-            axs[1, 0].imshow(np.flipud(seg[3, :, :, 11, 0]), cmap='gray', origin='lower')
+            axs[1, 0].imshow(np.flipud(seg[0, :, :, 11, 0]), cmap='gray', origin='lower')
             axs[1, 0].axis("off")
-            axs[1, 1].imshow(np.flipud(pred[3, :, :, 11, 0] + NCE[3, :, :, 11, 0] - ACE[3, :, :, 11, 0]), cmap='gray', origin='lower')
+            axs[1, 1].imshow(np.flipud(pred[0, :, :, 11, 0] + NCE[0, :, :, 11, 0] - ACE[0, :, :, 11, 0]), cmap='gray', origin='lower')
             axs[1, 1].axis("off")
-            axs[1, 2].imshow(np.flipud(pred[3, :, :, 11, 0] - ACE[3, :, :, 11, 0]), cmap='gray', origin='lower')
+            axs[1, 2].imshow(np.flipud(pred[0, :, :, 11, 0] - ACE[0, :, :, 11, 0]), cmap='gray', origin='lower')
             axs[1, 2].axis("off")
 
             if show:

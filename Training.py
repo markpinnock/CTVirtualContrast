@@ -22,6 +22,8 @@ parser.add_argument("--config_path", "-cp", help="Config json path", type=str)
 parser.add_argument("--expt_name", "-en", help="Expt name", type=str)
 parser.add_argument("--lambda_", "-l", help="Lambda", type=float)
 parser.add_argument("--mu", "-m", help="Mu", type=float)
+parser.add_argument("--d_layers", "-dl", help="Discriminator layers", type=int)
+parser.add_argument("--g_layers", "-gl", help="Generator layers", type=int)
 arguments = parser.parse_args()
 
 # Parse config json
@@ -37,7 +39,13 @@ if arguments.lambda_ is not None:
     CONFIG["HYPERPARAMS"]["LAMBDA"] = arguments.lambda_
 
 if arguments.mu is not None:
-    CONFIG["HYPERPARAMS"]["LAMBDA"] = arguments.mu
+    CONFIG["HYPERPARAMS"]["MU"] = arguments.mu
+
+if arguments.d_layers is not None:
+    CONFIG["HYPERPARAMS"]["D_LAYERS"] = arguments.d_layers
+
+if arguments.g_layers is not None:
+    CONFIG["HYPERPARAMS"]["G_LAYERS"] = arguments.g_layers
 
 # Initialise datasets
 TrainGenerator = ImgLoader(
