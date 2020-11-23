@@ -4,16 +4,28 @@ import tensorflow.keras as keras
 
 @tf.function
 def focused_mse(x, y, m):
-    global_mse = tf.reduce_mean(tf.square(x - y) * (1 - m))
-    focal_mse = tf.reduce_mean(tf.square(x - y) * m)
-    return global_mse, focal_mse
+    global_squared_err = tf.reshape(tf.square(x - y) * (1 - m), (x.shape[0], -1))
+    focal_squared_err = tf.reshape(tf.square(x - y) * m, (x.shape[0], -1))
+    flat_m = tf.reshape(m, (x.shape[0], -1))
+    global_mse = tf.reduce_sum(global_squared_err, -1) / (tf.reduce_sum(1 - flat_m, -1) + 1e-12)
+    focal_mse = tf.reduce_sum(focal_squared_err, -1) / (tf.reduce_sum(flat_m, -1) + 1e-12)
+    mb_global_mse = tf.reduce_sum(global_mse)
+    mb_focal_mse = tf.reduce_sum(focal_mse)
+    
+    return mb_global_mse, mb_focal_mse
 
 
 @tf.function
 def focused_mae(x, y, m):
-    global_mae = tf.reduce_mean(tf.abs(x - y) * (1 - m))
-    focal_mae = tf.reduce_mean(tf.abs(x - y) * m)
-    return global_mae, focal_mae
+    global_absolute_err = tf.reshape(tf.abs(x - y) * (1 - m), (x.shape[0], -1))
+    focal_absolute_err = tf.reshape(tf.abs(x - y) * m, (x.shape[0], -1))
+    flat_m = tf.reshape(m, (x.shape[0], -1))
+    global_mae = tf.reduce_sum(global_absolute_err, -1) / (tf.reduce_sum(1 - flat_m, -1) + 1e-12)
+    focal_mae = tf.reduce_sum(focal_absolute_err, -1) / (tf.reduce_sum(flat_m, -1) + 1e-12)
+    mb_global_mae = tf.reduce_sum(global_mae)
+    mb_focal_mae = tf.reduce_sum(focal_mae)
+
+    return mb_global_mae, mb_focal_mae
 
 
 class FocalLoss(keras.layers.Layer):
@@ -39,6 +51,7 @@ class FocalMetric(keras.metrics.Metric):
         super(FocalMetric, self).__init__(name=name)
         self.global_loss = self.add_weight(name="global", initializer="zeros")
         self.focal_loss = self.add_weight(name="focal", initializer="zeros")
+        self.N = self.add_weight(name="N", initializer="zeros")
         
         if loss_fn == "mse":
             self.focal = focused_mse
@@ -51,13 +64,15 @@ class FocalMetric(keras.metrics.Metric):
         global_loss, focal_loss = self.focal(x, y, mask)
         self.global_loss.assign_add(global_loss)
         self.focal_loss.assign_add(focal_loss)
+        self.N.assign_add(x.shape[0])
     
     def result(self):
-        return [tf.reduce_mean(self.global_loss), tf.reduce_mean(self.focal_loss)]
+        return [self.global_loss / self.N, self.focal_loss / self.N]
 
     def reset_states(self):
         self.global_loss.assign(0.0)
         self.focal_loss.assign(0.0)
+        self.N.assign(1e-12) # So no nans if result called after reset_states
 
 
 class DiceLoss(keras.losses.Loss):
