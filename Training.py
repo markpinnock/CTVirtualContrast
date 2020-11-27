@@ -31,9 +31,9 @@ with open(arguments.config_path, 'r') as infile:
     CONFIG = json.load(infile)
 
 if arguments.expt_name is not None:
-    CONFIG["EXPT_NAME"] = arguments.expt_name
+    CONFIG["EXPT"]["EXPT_NAME"] = arguments.expt_name
 else:
-    CONFIG["EXPT_NAME"] = "test"
+    CONFIG["EXPT"]["EXPT_NAME"] = "test"
 
 if arguments.lambda_ is not None:
     CONFIG["HYPERPARAMS"]["LAMBDA"] = arguments.lambda_
@@ -49,25 +49,28 @@ if arguments.g_layers is not None:
 
 # Initialise datasets
 TrainGenerator = ImgLoader(
-    config=CONFIG,
+    config=CONFIG["EXPT"],
     dataset_type="training",
     fold=5)
 
 ValGenerator = ImgLoader(
-    config=CONFIG,
+    config=CONFIG["EXPT"],
     dataset_type="validation",
     fold=5)
 
-# TODO: convert to have one generator for train and val
+# Batch size (separate batches for generator and critic runs)
+mb_size = CONFIG["HYPERPARAMS"]["MB_SIZE"] + CONFIG["HYPERPARAMS"]["MB_SIZE"] * CONFIG["HYPERPARAMS"]["N_CRITIC"]
+
+# Create dataloader
 train_ds = tf.data.Dataset.from_generator(
     generator=TrainGenerator.data_generator,
     output_types=(tf.float32, tf.float32, tf.float32)
-    ).batch(CONFIG["HYPERPARAMS"]["MB_SIZE"])
+    ).batch(mb_size)
 
 val_ds = tf.data.Dataset.from_generator(
     generator=ValGenerator.data_generator,
     output_types=(tf.float32, tf.float32, tf.float32)
-    ).batch(CONFIG["HYPERPARAMS"]["MB_SIZE"])
+    ).batch(mb_size)
 
 # Compile model
 # Model = UNet(nc=NC, lambda_=0.0, optimiser=keras.optimizers.Adam(ETA))
@@ -108,7 +111,7 @@ if CONFIG["EXPT"]["VERBOSE"]:
 # training_loop_UNet(EPOCHS, "vc", Model, (train_ds, val_ds))
 
 # GAN training loop
-results = training_loop_GAN(CONFIG, Model, (train_ds, val_ds), False)
+results = training_loop_GAN(CONFIG["EXPT"], Model, (train_ds, val_ds), False)
 plt.figure()
 
 plt.subplot(2, 1, 1)
@@ -131,7 +134,7 @@ plt.title("Metrics")
 plt.legend()
 
 plt.tight_layout()
-plt.savefig(f"{CONFIG['SAVE_PATH']}logs/GAN/{CONFIG['EXPT_NAME']}/losses.png")
+plt.savefig(f"{CONFIG['EXPT']['SAVE_PATH']}logs/GAN/{CONFIG['EXPT']['EXPT_NAME']}/losses.png")
 
-with open(f"{CONFIG['SAVE_PATH']}logs/GAN/{CONFIG['EXPT_NAME']}/results.json", 'w') as outfile:
+with open(f"{CONFIG['EXPT']['SAVE_PATH']}logs/GAN/{CONFIG['EXPT']['EXPT_NAME']}/results.json", 'w') as outfile:
     json.dump(results, outfile, indent=4)

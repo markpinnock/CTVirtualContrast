@@ -38,7 +38,7 @@ def print_model_summary(model, config):
 
 
 def training_loop_UNet(config, phase, model, ds, show):
-    EPOCHS = config["HYPERPARAMS"]["EPOCHS"]
+    EPOCHS = config["EPOCHS"]
     SAVE_PATH = config["SAVE_PATH"]
 
     if not os.path.exists(f"{SAVE_PATH}seg/"):
@@ -95,7 +95,7 @@ def training_loop_UNet(config, phase, model, ds, show):
 
 
 def training_loop_GAN(config, model, ds, show):
-    EPOCHS = config["HYPERPARAMS"]["EPOCHS"]
+    EPOCHS = config["EPOCHS"]
     SAVE_PATH = config["SAVE_PATH"]
 
     if not os.path.exists(f"{SAVE_PATH}images/GAN/{config['EXPT_NAME']}"):
@@ -136,7 +136,7 @@ def training_loop_GAN(config, model, ds, show):
 
         print(f"Train epoch {epoch + 1}, G: {model.metric_dict['g_metric'].result():.4f} D1: {model.metric_dict['d_metric_1'].result():.4f}, D2: {model.metric_dict['d_metric_2'].result():.4f}, L1 [global focal]: {model.L1metric.result()}")
         
-        if config["EXPT"]["CV_FOLDS"] != 0:
+        if config["CV_FOLDS"] != 0:
             model.L1metric.reset_states()
 
             for data in ds_val:
@@ -156,31 +156,32 @@ def training_loop_GAN(config, model, ds, show):
                 json.dump(results, outfile, indent=4)
 
         # TODO: RANDOM EXAMPLE IMAGES
-        for data in ds_val:
-            NCE, ACE, seg = data
-            pred = model.Generator(NCE).numpy()
+        if (epoch >= 70 and epoch % 10 == 0) or config["VERBOSE"]:
+            for data in ds_val:
+                NCE, ACE, seg = data
+                pred = model.Generator(NCE).numpy()
 
-            fig, axs = plt.subplots(2, 3)
-            axs[0, 0].imshow(np.flipud(NCE[0, :, :, 11, 0]), cmap='gray', origin='lower')
-            axs[0, 0].axis("off")
-            axs[0, 1].imshow(np.flipud(ACE[0, :, :, 11, 0]), cmap='gray', origin='lower')
-            axs[0, 1].axis("off")
-            axs[0, 2].imshow(np.flipud(pred[0, :, :, 11, 0]), cmap='gray', origin='lower')
-            axs[0, 2].axis("off")
-            axs[1, 0].imshow(np.flipud(seg[0, :, :, 11, 0]), cmap='gray', origin='lower')
-            axs[1, 0].axis("off")
-            axs[1, 1].imshow(np.flipud(pred[0, :, :, 11, 0] + NCE[0, :, :, 11, 0] - ACE[0, :, :, 11, 0]), cmap='gray', origin='lower')
-            axs[1, 1].axis("off")
-            axs[1, 2].imshow(np.flipud(pred[0, :, :, 11, 0] - ACE[0, :, :, 11, 0]), cmap='gray', origin='lower')
-            axs[1, 2].axis("off")
+                fig, axs = plt.subplots(2, 3)
+                axs[0, 0].imshow(np.flipud(NCE[0, :, :, 11, 0]), cmap='gray', origin='lower')
+                axs[0, 0].axis("off")
+                axs[0, 1].imshow(np.flipud(ACE[0, :, :, 11, 0]), cmap='gray', origin='lower')
+                axs[0, 1].axis("off")
+                axs[0, 2].imshow(np.flipud(pred[0, :, :, 11, 0]), cmap='gray', origin='lower')
+                axs[0, 2].axis("off")
+                axs[1, 0].imshow(np.flipud(seg[0, :, :, 11, 0]), cmap='gray', origin='lower')
+                axs[1, 0].axis("off")
+                axs[1, 1].imshow(np.flipud(pred[0, :, :, 11, 0] + NCE[0, :, :, 11, 0] - ACE[0, :, :, 11, 0]), cmap='gray', origin='lower')
+                axs[1, 1].axis("off")
+                axs[1, 2].imshow(np.flipud(pred[0, :, :, 11, 0] - ACE[0, :, :, 11, 0]), cmap='gray', origin='lower')
+                axs[1, 2].axis("off")
 
-            if show:
-                plt.show()
-            else:
-                plt.savefig(f"{SAVE_PATH}images/GAN/{config['EXPT_NAME']}/{epoch + 1}.png", dpi=250)
-                plt.close()
-            
-            break
+                if show:
+                    plt.show()
+                else:
+                    plt.savefig(f"{SAVE_PATH}images/GAN/{config['EXPT_NAME']}/{epoch + 1}.png", dpi=250)
+                    plt.close()
+                
+                break
 
     results["time"] = (time.time() - start_time) / 3600
 
