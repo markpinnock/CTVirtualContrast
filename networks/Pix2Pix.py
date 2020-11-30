@@ -8,22 +8,27 @@ sys.path.append("..")
 from networks.Layers import GANDownBlock, GANUpBlock
 
 
+#-------------------------------------------------------------------------
+""" PatchGAN discriminator for Pix2pix """
+
 class Discriminator(keras.Model):
 
-    """ Implementation of PatchGAN discriminator
-        Input:
-            - initialiser e.g. keras.initializers.RandomNormal
-            - nc: number of channels in first layer
-            - num_layers: number of layers
-            - img_dims: input image size """
+    """ Input:
+        - initialiser e.g. keras.initializers.RandomNormal
+        - nc: number of channels in first layer
+        - num_layers: number of layers
+        - img_dims: input image size
+        Returns:
+        - keras.Model """
 
     def __init__(
         self,
         initialiser,
         nc,
         num_layers,
-        img_dim=(512, 512, 12)):
-        super(Discriminator, self).__init__()
+        img_dim=(512, 512, 12), # TODO: make variable
+        name=None):
+        super(Discriminator, self).__init__(name=name)
     
         # Check network and image dimensions
         assert len(img_dim) == 3, "3D input only"
@@ -33,6 +38,7 @@ class Discriminator(keras.Model):
         
         self.conv_list = []
 
+        # TODO: FIX
         # PixelGAN i.e. 1x1 receptive field
         if num_layers == 0:
             self.conv_list.append(
@@ -49,7 +55,7 @@ class Discriminator(keras.Model):
                     (1, 1, 1),
                     initialiser=initialiser,
                     batch_norm=True))
-            
+
             self.conv_list.append(keras.layers.Conv3D(
                 1, (1, 1, 1), (1, 1, 1),
                 padding='same',
@@ -60,6 +66,7 @@ class Discriminator(keras.Model):
             batch_norm = False
 
             for i in range(0, num_layers):
+                if i > 0: batch_norm = True
                 channels = tf.minimum(nc * 2 ** i, 512)
 
                 if i > max_z_downsample:
@@ -75,20 +82,17 @@ class Discriminator(keras.Model):
                         kernel,
                         strides,
                         initialiser=initialiser,
-                        batch_norm=batch_norm))
-                
-                if i > 0: batch_norm = True
+                        batch_norm=batch_norm, name=f"downblock_{i}"))
             
             self.conv_list.append(keras.layers.Conv3D(
                 1, (4, 4, 1), (1, 1, 1),
                 padding='valid',
-                kernel_initializer=initialiser))
-
+                kernel_initializer=initialiser, name="output"))
 
     def call(self, source, target, mask, test=False):
         # Test returns model parameters and feature map sizes
         if test: output_shapes = []
-        x = keras.layers.concatenate([source, target, mask], axis=4)
+        x = keras.layers.concatenate([source, target, mask], axis=4, name="concat")
 
         for conv in self.conv_list:
             x = conv(x, training=True)
@@ -99,23 +103,27 @@ class Discriminator(keras.Model):
         else:
             return x
 
+#-------------------------------------------------------------------------
+""" Generator for Pix2pix """
 
 class Generator(keras.Model):
 
-    """ Implementation of generator
-        Input:
+    """ Input:
             - initialiser e.g. keras.initializers.RandomNormal
             - nc: number of channels in first layer
             - num_layers: number of layers
-            - img_dims: input image size """
+            - img_dims: input image size
+        Returns:
+            - keras.Model """
 
     def __init__(
         self,
         initialiser,
         nc,
         num_layers,
-        img_dim=(512, 512, 12)):
-        super(Generator, self).__init__()
+        img_dim=(512, 512, 12),
+        name=None):
+        super(Generator, self).__init__(name=name)
 
         # Check network and image dimensions
         assert len(img_dim) == 3, "3D input only"
@@ -148,12 +156,12 @@ class Generator(keras.Model):
                     kernel,
                     strides,
                     initialiser=initialiser,
-                    batch_norm=True))
-        
-        self.bottom_layer = keras.layers.Conv3D(
-                channels, kernel, strides,
-                padding="same", activation="relu",
-                kernel_initializer=initialiser)
+                    batch_norm=True, name=f"down_{i}"))
+            
+            self.bottom_layer = keras.layers.Conv3D(
+                    channels, kernel, strides,
+                    padding="same", activation="relu",
+                    kernel_initializer=initialiser, name="bottom")
 
         cache["strides"].append(strides)
         cache["kernels"].append(kernel)
@@ -166,6 +174,7 @@ class Generator(keras.Model):
         dropout = True
 
         for i in range(0, num_layers - 1):
+            if i > 2: dropout = False
             channels = cache["channels"][i]
             strides = cache["strides"][i]
             kernel = cache["kernels"][i]
@@ -177,14 +186,12 @@ class Generator(keras.Model):
                     strides,
                     initialiser=initialiser,
                     batch_norm=True,
-                    dropout=dropout))
-            
-            if i > 2: dropout = False
+                    dropout=dropout, name=f"up_block{i}"))
 
         self.final_layer = keras.layers.Conv3DTranspose(
             1, (4, 4, 4), (2, 2, 2),
             padding='same', activation='tanh',
-            kernel_initializer=initialiser)
+            kernel_initializer=initialiser, name="output")
 
     def call(self, x, test=False):
         skip_layers = []

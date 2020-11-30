@@ -16,8 +16,8 @@ class GAN(keras.Model):
         - d_optimiser: discriminator optimiser e.g. keras.optimizers.Adam()
         - GAN_type: 'original', 'least_square', 'wasserstein' or 'wasserstein-GP' """
 
-    def __init__(self, config, g_optimiser, d_optimiser, GAN_type="original"):
-        super(GAN, self).__init__()
+    def __init__(self, config, g_optimiser, d_optimiser, GAN_type="original", name="GAN"):
+        super(GAN, self).__init__(name=name)
         self.initialiser = keras.initializers.RandomNormal(0, 0.02)
 
         # Choose appropriate loss and initialise metrics
@@ -28,12 +28,12 @@ class GAN(keras.Model):
         #     "wasserstein-GP": wasserstein_loss,
         #     "progressive": wasserstein_loss
         #     }
-        self.loss_dict = {"original": keras.losses.BinaryCrossentropy(from_logits=True)}
+        self.loss_dict = {"original": keras.losses.BinaryCrossentropy(from_logits=True, name="bce_loss")}
         # TODO: import losses
         self.metric_dict = {
-            "g_metric": keras.metrics.Mean(),
-            "d_metric_1": keras.metrics.Mean(),
-            "d_metric_2": keras.metrics.Mean()
+            "g_metric": keras.metrics.Mean(name="g_metric"),
+            "d_metric_1": keras.metrics.Mean(name="d_metric_1"),
+            "d_metric_2": keras.metrics.Mean(name="d_metric_2")
         }
 
         # Set up real/fake labels
@@ -60,11 +60,11 @@ class GAN(keras.Model):
         # TODO: IMPLEMENT CONSTRAINT TYPE
         self.loss = self.loss_dict[GAN_type]
         self.GAN_type = GAN_type
-        self.L1 = FocalLoss(mu=config["HYPERPARAMS"]["MU"], loss_fn="mae")
+        self.L1 = FocalLoss(mu=config["HYPERPARAMS"]["MU"], loss_fn="mae", name="focal_loss")
         self.lambda_ = config["HYPERPARAMS"]["LAMBDA"]
-        self.L1metric = FocalMetric(loss_fn="mae")
-        self.Generator = Generator(self.initialiser, config["HYPERPARAMS"]["NGF"], config["HYPERPARAMS"]["G_LAYERS"])
-        self.Discriminator = Discriminator(self.initialiser, config["HYPERPARAMS"]["NDF"], config["HYPERPARAMS"]["D_LAYERS"])
+        self.L1metric = FocalMetric(loss_fn="mae", name="focal_metric")
+        self.Generator = Generator(self.initialiser, config["HYPERPARAMS"]["NGF"], config["HYPERPARAMS"]["G_LAYERS"], name="generator")
+        self.Discriminator = Discriminator(self.initialiser, config["HYPERPARAMS"]["NDF"], config["HYPERPARAMS"]["D_LAYERS"], name="discriminator")
         self.patch_size = self.Discriminator(
             tf.zeros((1, 512 // config["EXPT"]["DOWN_SAMP"], 512 // config["EXPT"]["DOWN_SAMP"], 12, 1)),
             tf.zeros((1, 512 // config["EXPT"]["DOWN_SAMP"], 512 // config["EXPT"]["DOWN_SAMP"], 12, 1)),
@@ -150,7 +150,7 @@ class GAN(keras.Model):
         with tf.GradientTape() as g_tape:
             g_fake_target = self.Generator(g_source)
 
-            # L1 before augmentation
+            # Calculate L1 before augmentation
             g_L1 = self.L1(g_real_target, g_fake_target, g_mask)
             self.L1metric.update_state(g_real_target, g_fake_target, g_mask)
             

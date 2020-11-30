@@ -77,8 +77,8 @@ val_ds = tf.data.Dataset.from_generator(
 # Model = ResNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
 Model = GAN(
     config=CONFIG,
-    g_optimiser=keras.optimizers.Adam(2e-4, 0.5, 0.999),
-    d_optimiser=keras.optimizers.Adam(2e-4, 0.5, 0.999)
+    g_optimiser=keras.optimizers.Adam(2e-4, 0.5, 0.999, name="g_opt"),
+    d_optimiser=keras.optimizers.Adam(2e-4, 0.5, 0.999, name="d_opt")
     )
 
 if CONFIG["EXPT"]["VERBOSE"]:
@@ -91,12 +91,10 @@ if CONFIG["EXPT"]["VERBOSE"]:
 
 # @tf.function
 # def trace(x):
-#     return Model(x)
+#     return Model.Generator(x)
 
 # tf.summary.trace_on(graph=True)
 # trace(tf.zeros((1, 128, 128, 12, 1)))
-# # print(Model.summary())
-
 
 # with writer.as_default():
 #     tf.summary.trace_export('graph', step=0)
@@ -112,6 +110,9 @@ if CONFIG["EXPT"]["VERBOSE"]:
 
 # GAN training loop
 results = training_loop_GAN(CONFIG["EXPT"], Model, (train_ds, val_ds), False)
+# with writer.as_default():
+#     tf.summary.trace_export("graph", step=0)
+
 plt.figure()
 
 plt.subplot(2, 1, 1)
@@ -126,8 +127,11 @@ plt.legend()
 plt.subplot(2, 1, 2)
 plt.plot(results["epochs"], results["train_metrics"]["global"], 'k--', label="Train global L1")
 plt.plot(results["epochs"], results["train_metrics"]["focal"], 'r--', label="Train focal L1")
-plt.plot(results["epochs"], results["val_metrics"]["global"], 'k', label="Val global L1")
-plt.plot(results["epochs"], results["val_metrics"]["focal"], 'r', label="Val focal L1")
+
+if CONFIG["EXPT"]["CV_FOLDS"]:
+    plt.plot(results["epochs"], results["val_metrics"]["global"], 'k', label="Val global L1")
+    plt.plot(results["epochs"], results["val_metrics"]["focal"], 'r', label="Val focal L1")
+
 plt.xlabel("Epochs")
 plt.ylabel("L1")
 plt.title("Metrics")

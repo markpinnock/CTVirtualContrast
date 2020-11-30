@@ -2,9 +2,12 @@ import tensorflow as tf
 import tensorflow.keras as keras
 
 
+#-------------------------------------------------------------------------
+""" Down-sampling convolutional block for U-Net"""
+
 class DownBlock(keras.layers.Layer):
 
-    """ Implements encoding block for U-Net
+    """ Input:
         - nc: number of channels in block
         - pool_strides: number of pooling strides e.g. (2, 2, 1) """
 
@@ -14,17 +17,19 @@ class DownBlock(keras.layers.Layer):
         self.conv1 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
         self.conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
         self.pool = keras.layers.MaxPool3D((2, 2, 2), strides=pool_strides, padding='same')
-        # Consider group normalisation
-        # Consider pool -> conv3
+        # TODO: Consider group normalisation
+        # TODO: Consider pool -> conv3
     def call(self, x):
         x = self.conv1(x)
         x = self.conv2(x)
         return self.pool(x), x
 
+#-------------------------------------------------------------------------
+""" Up-sampling convolutional block for U-Net"""
 
 class UpBlock(keras.layers.Layer):
 
-    """ Implements encoding block for U-Net
+    """ Inputs:
         - nc: number of channels in block
         - tconv_strides: number of transpose conv  strides e.g. (2x2x1) """
     
@@ -41,25 +46,25 @@ class UpBlock(keras.layers.Layer):
         x = self.conv1(x)
         return self.conv2(x)
 
+#-------------------------------------------------------------------------
+""" Down-sampling convolutional block for Pix2pix discriminator and generator """
 
 class GANDownBlock(keras.layers.Layer):
 
-    """ Implements down-sampling block for both
-        discriminator and generator
-        Input:
-            - nc: number of feature maps
-            - strides: tuple of strides e.g. (2, 2, 1)
-            - initialiser: e.g. keras.initializers.RandomNormal
-            - batch_norm: True/False """
+    """ Input:
+        - nc: number of feature maps
+        - strides: tuple of strides e.g. (2, 2, 1)
+        - initialiser: e.g. keras.initializers.RandomNormal
+        - batch_norm: True/False """
 
-    def __init__(self, nc, weights, strides, initialiser, batch_norm=True):
-        super(GANDownBlock, self).__init__(self)
+    def __init__(self, nc, weights, strides, initialiser, batch_norm=True, name=None):
+        super(GANDownBlock, self).__init__(name=name)
         self.batch_norm = batch_norm
 
-        self.conv = keras.layers.Conv3D(nc, weights, strides=strides, padding='same', kernel_initializer=initialiser)
+        self.conv = keras.layers.Conv3D(nc, weights, strides=strides, padding='same', kernel_initializer=initialiser, name="conv")
         
         if batch_norm:
-            self.bn = keras.layers.BatchNormalization()
+            self.bn = keras.layers.BatchNormalization(name="batchnorm")
 
     def call(self, x, training):
 
@@ -68,32 +73,33 @@ class GANDownBlock(keras.layers.Layer):
         if self.batch_norm:
             x = self.bn(x, training)
 
-        return tf.nn.leaky_relu(x, 0.2)
+        return tf.nn.leaky_relu(x, alpha=0.2, name="l_relu")
 
+#-------------------------------------------------------------------------
+""" Up-sampling convolutional block for Pix2pix generator """
 
 class GANUpBlock(keras.layers.Layer):
 
-    """ Implements up-sampling block for generator
-        Input:
-            - nc: number of feature maps
-            - strides: tuple of strides e.g. (2, 2, 1)
-            - initialiser: e.g. keras.initializers.RandomNormal
-            - batch_norm: True/False
-            - dropout: True/False """
+    """ Input:
+        - nc: number of feature maps
+        - strides: tuple of strides e.g. (2, 2, 1)
+        - initialiser: e.g. keras.initializers.RandomNormal
+        - batch_norm: True/False
+        - dropout: True/False """
 
-    def __init__(self, nc, weights, strides, initialiser, batch_norm=True, dropout=False):
-        super(GANUpBlock, self).__init__(self)
+    def __init__(self, nc, weights, strides, initialiser, batch_norm=True, dropout=False, name=None):
+        super(GANUpBlock, self).__init__(name=name)
         self.batch_norm = batch_norm
         self.dropout = dropout
 
-        self.tconv = keras.layers.Conv3DTranspose(nc, weights, strides=strides, padding='same', kernel_initializer=initialiser)
+        self.tconv = keras.layers.Conv3DTranspose(nc, weights, strides=strides, padding='same', kernel_initializer=initialiser, name="tconv")
 
         if batch_norm:
-            self.bn = keras.layers.BatchNormalization()
+            self.bn = keras.layers.BatchNormalization(name="batchnorm")
         if dropout:
-            self.dropout = keras.layers.Dropout(0.5)
+            self.dropout = keras.layers.Dropout(0.5, name="dropout")
         
-        self.concat = keras.layers.Concatenate()
+        self.concat = keras.layers.Concatenate(name="concat")
     
     def call(self, x, skip, training):
         x = self.tconv(x)

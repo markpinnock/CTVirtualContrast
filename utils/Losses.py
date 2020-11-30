@@ -2,6 +2,9 @@ import tensorflow as tf
 import tensorflow.keras as keras
 
 
+#-------------------------------------------------------------------------
+""" Focused L2 loss, calculates L2 inside and outside masked area """
+
 @tf.function
 def focused_mse(x, y, m):
     global_squared_err = tf.reshape(tf.square(x - y) * (1 - m), (x.shape[0], -1))
@@ -14,6 +17,8 @@ def focused_mse(x, y, m):
     
     return mb_global_mse, mb_focal_mse
 
+#-------------------------------------------------------------------------
+""" Focused L1 loss, calculates L1 inside and outside masked area """
 
 @tf.function
 def focused_mae(x, y, m):
@@ -27,9 +32,11 @@ def focused_mae(x, y, m):
 
     return mb_global_mae, mb_focal_mae
 
+#-------------------------------------------------------------------------
+""" Focal loss, weights loss according to masked area """
 
 class FocalLoss(keras.layers.Layer):
-    def __init__(self, mu, loss_fn, name="focus_loss"):
+    def __init__(self, mu, loss_fn, name=None):
         super(FocalLoss, self).__init__(name=name)
         assert not mu > 1.0, "Lambda must be in range [0, 1]"
         self.mu = mu
@@ -45,9 +52,11 @@ class FocalLoss(keras.layers.Layer):
         global_loss, focal_loss = self.focal(x, y, mask)
         return (1 - self.mu) * global_loss + self.mu * focal_loss
 
+#-------------------------------------------------------------------------
+""" Focal metric, weights loss according to masked area """
 
 class FocalMetric(keras.metrics.Metric):
-    def __init__(self, loss_fn, name="focus_metric"):
+    def __init__(self, loss_fn, name=None):
         super(FocalMetric, self).__init__(name=name)
         self.global_loss = self.add_weight(name="global", initializer="zeros")
         self.focal_loss = self.add_weight(name="focal", initializer="zeros")
@@ -74,9 +83,12 @@ class FocalMetric(keras.metrics.Metric):
         self.focal_loss.assign(0.0)
         self.N.assign(1e-12) # So no nans if result called after reset_states
 
+#-------------------------------------------------------------------------
+""" Dice coefficient-based loss """
+# TODO: FIX
 
 class DiceLoss(keras.losses.Loss):
-    def __init__(self, name="dice_loss"):
+    def __init__(self, name=None):
         super(DiceLoss, self).__init__(name=name)
 
     def call(self, x, y):
@@ -85,6 +97,9 @@ class DiceLoss(keras.losses.Loss):
         dice = tf.reduce_mean(numer / denom)
         return 1 - dice
 
+#-------------------------------------------------------------------------
+""" Dice coefficient-based metric """
+# TODO: FIX
 
 class DiceMetric(keras.metrics.Metric):
     def __init__(self, name="dice_metric"):
