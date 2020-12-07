@@ -75,15 +75,13 @@ val_ds = tf.data.Dataset.from_generator(
 # Compile model
 # Model = UNet(nc=NC, lambda_=0.0, optimiser=keras.optimizers.Adam(ETA))
 # Model = ResNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
-Model = GAN(
-    config=CONFIG,
-    g_optimiser=keras.optimizers.Adam(2e-4, 0.5, 0.999, name="g_opt"),
-    d_optimiser=keras.optimizers.Adam(2e-4, 0.5, 0.999, name="d_opt")
-    )
+Model = GAN(config=CONFIG)
 
 if CONFIG["EXPT"]["VERBOSE"]:
-    print_model_summary(Model.Generator, CONFIG)
-    print_model_summary(Model.Discriminator, CONFIG)
+    print_model_summary(Model.Generator, CONFIG, "G")
+    
+    for name, Discriminator in Model.Discriminators.items():
+        print_model_summary(Discriminator, CONFIG, "D")
 
 # curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 # log_dir = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/logs/" + curr_time
@@ -113,20 +111,25 @@ results = training_loop_GAN(CONFIG["EXPT"], Model, (train_ds, val_ds), False)
 # with writer.as_default():
 #     tf.summary.trace_export("graph", step=0)
 
+if len(Model.generator_metrics.keys()) == 2:
+    results_key = "Discriminator_G"
+else:
+    results_key = "Discriminator"
+
 plt.figure()
 
 plt.subplot(2, 1, 1)
-plt.plot(results["epochs"], results["losses"]["G"], 'k', label="G")
-plt.plot(results["epochs"], results["losses"]["D1"], 'r', label="D1")
-plt.plot(results["epochs"], results["losses"]["D2"], 'g', label="D2")
+plt.plot(results["epochs"], results[results_key]["losses"]["G"], 'k', label="G")
+plt.plot(results["epochs"], results[results_key]["losses"]["D1"], 'r', label="D1")
+plt.plot(results["epochs"], results[results_key]["losses"]["D2"], 'g', label="D2")
 plt.xlabel("Epochs")
 plt.ylabel("Loss")
 plt.title("Losses")
 plt.legend()
 
 plt.subplot(2, 1, 2)
-plt.plot(results["epochs"], results["train_metrics"]["global"], 'k--', label="Train global L1")
-plt.plot(results["epochs"], results["train_metrics"]["focal"], 'r--', label="Train focal L1")
+plt.plot(results["epochs"], results[results_key]["train_metrics"]["global"], 'k--', label="Train global L1")
+plt.plot(results["epochs"], results[results_key]["train_metrics"]["focal"], 'r--', label="Train focal L1")
 
 if CONFIG["EXPT"]["CV_FOLDS"]:
     plt.plot(results["epochs"], results["val_metrics"]["global"], 'k', label="Val global L1")

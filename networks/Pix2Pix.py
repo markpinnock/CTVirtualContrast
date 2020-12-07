@@ -14,28 +14,28 @@ from networks.Layers import GANDownBlock, GANUpBlock
 class Discriminator(keras.Model):
 
     """ Input:
-        - initialiser e.g. keras.initializers.RandomNormal
-        - nc: number of channels in first layer
-        - num_layers: number of layers
-        - img_dims: input image size
+        - initialiser: e.g. keras.initializers.RandomNormal
+        - config: configuration json
         Returns:
         - keras.Model """
 
-    def __init__(
-        self,
-        initialiser,
-        nc,
-        num_layers,
-        img_dim=(512, 512, 12), # TODO: make variable
-        name=None):
+    def __init__(self, initialiser, config, d_focal=False, name=None):
         super(Discriminator, self).__init__(name=name)
     
         # Check network and image dimensions
-        assert len(img_dim) == 3, "3D input only"
-        max_num_layers = int(np.log2(np.min([img_dim[0], img_dim[1]]) / 4))
-        max_z_downsample = np.ceil(np.log2(img_dim[2]))
-        assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum numnber of discriminator layers: {max_num_layers}"
+        img_dims = config["EXPT"]["IMG_DIMS"]
+        assert len(img_dims) == 3, "3D input only"
+        max_num_layers = int(np.log2(np.min([img_dims[0], img_dims[1]]) / 4))
+        max_z_downsample = int(np.floor(np.log2(img_dims[2])))
         
+        if d_focal:
+            ndf = config["HYPERPARAMS"]["NDF_F"]
+            num_layers = config["HYPERPARAMS"]["D_LAYERS_F"]
+        else:
+            ndf = config["HYPERPARAMS"]["NDF_G"]
+            num_layers = config["HYPERPARAMS"]["D_LAYERS_G"]
+       
+        assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum numnber of discriminator layers: {max_num_layers}"
         self.conv_list = []
 
         # TODO: FIX
@@ -43,14 +43,14 @@ class Discriminator(keras.Model):
         if num_layers == 0:
             self.conv_list.append(
                 GANDownBlock(
-                    nc, (1, 1, 1),
+                    ndf, (1, 1, 1),
                     (1, 1, 1),
                     initialiser=initialiser,
                     batch_norm=False)) 
             
             self.conv_list.append(
                 GANDownBlock(
-                    nc * 2,
+                    ndf * 2,
                     (1, 1, 1),
                     (1, 1, 1),
                     initialiser=initialiser,
@@ -67,7 +67,7 @@ class Discriminator(keras.Model):
 
             for i in range(0, num_layers):
                 if i > 0: batch_norm = True
-                channels = tf.minimum(nc * 2 ** i, 512)
+                channels = tf.minimum(ndf * 2 ** i, 512)
 
                 if i > max_z_downsample:
                     strides = (2, 2, 1)
@@ -89,10 +89,16 @@ class Discriminator(keras.Model):
                 padding='valid',
                 kernel_initializer=initialiser, name="output"))
 
-    def call(self, source, target, mask, test=False):
+    def build_model(self, x):
+
+        """ Build method takes tf.zeros((input_dims)) and returns
+            shape of output - all layers implicitly built and weights set to trainable """
+
+        return self(x).shape
+
+    def call(self, x, test=False):
         # Test returns model parameters and feature map sizes
         if test: output_shapes = []
-        x = keras.layers.concatenate([source, target, mask], axis=4, name="concat")
 
         for conv in self.conv_list:
             x = conv(x, training=True)
@@ -109,37 +115,33 @@ class Discriminator(keras.Model):
 class Generator(keras.Model):
 
     """ Input:
-            - initialiser e.g. keras.initializers.RandomNormal
-            - nc: number of channels in first layer
-            - num_layers: number of layers
-            - img_dims: input image size
+        - initialiser e.g. keras.initializers.RandomNormal
+        - nc: number of channels in first layer
+        - num_layers: number of layers
+        - img_dims: input image size
         Returns:
-            - keras.Model """
+        - keras.Model """
 
-    def __init__(
-        self,
-        initialiser,
-        nc,
-        num_layers,
-        img_dim=(512, 512, 12),
-        name=None):
+    def __init__(self, initialiser, config, name=None):
         super(Generator, self).__init__(name=name)
 
         # Check network and image dimensions
-        assert len(img_dim) == 3, "3D input only"
-        max_num_layers = int(np.log2(np.min([img_dim[0], img_dim[1]])))
-        max_z_downsample = 2
+        img_dims = config["EXPT"]["IMG_DIMS"]
+        assert len(img_dims) == 3, "3D input only"
+        max_num_layers = int(np.log2(np.min([img_dims[0], img_dims[1]])))
+        max_z_downsample = int(np.floor(np.log2(img_dims[2])))
+        ngf = config["HYPERPARAMS"]["NGF"]
+        num_layers = config["HYPERPARAMS"]["G_LAYERS"]
         assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum numnber of discriminator layers: {max_num_layers}"
-        
         self.encoder = []
 
         # Cache channels, strides and weights
         cache = {"channels": [], "strides": [], "kernels": []}
 
         for i in range(0, num_layers - 1):
-            channels = np.min([nc * 2 ** i, 512])
+            channels = np.min([ngf * 2 ** i, 512])
 
-            if i > max_z_downsample - 1:
+            if i >= max_z_downsample - 1:
                 strides = (2, 2, 1)
                 kernel = (4, 4, 1)
             else:
@@ -158,10 +160,10 @@ class Generator(keras.Model):
                     initialiser=initialiser,
                     batch_norm=True, name=f"down_{i}"))
             
-            self.bottom_layer = keras.layers.Conv3D(
-                    channels, kernel, strides,
-                    padding="same", activation="relu",
-                    kernel_initializer=initialiser, name="bottom")
+        self.bottom_layer = keras.layers.Conv3D(
+                channels, kernel, strides,
+                padding="same", activation="relu",
+                kernel_initializer=initialiser, name="bottom")
 
         cache["strides"].append(strides)
         cache["kernels"].append(kernel)
@@ -192,6 +194,13 @@ class Generator(keras.Model):
             1, (4, 4, 4), (2, 2, 2),
             padding='same', activation='tanh',
             kernel_initializer=initialiser, name="output")
+
+    def build_model(self, x):
+
+        """ Build method takes tf.zeros((input_dims)) and returns
+            shape of output - all layers implicitly built and weights set to trainable """
+        
+        return self(x).shape
 
     def call(self, x, test=False):
         skip_layers = []

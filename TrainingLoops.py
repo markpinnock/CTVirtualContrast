@@ -6,19 +6,20 @@ import sys
 import time
 
 
-def print_model_summary(model, config):
+def print_model_summary(model, config, model_type):
     print("===================================")
     print(model.name)
     print("===================================")
 
     weight_dict = {}
     total_weights = 0
-    x = np.zeros((1, 512 // config["EXPT"]["DOWN_SAMP"], 512 // config["EXPT"]["DOWN_SAMP"], 12, 1), dtype=np.float32)
+    if model_type == "G":
+        in_ch = 1
+    else:
+        in_ch = config["HYPERPARAMS"]["D_IN_CH"]
 
-    try:
-        output_shapes = model(x, test=True)
-    except TypeError:
-        output_shapes = model(x, x, x, test=True)    
+    x = np.zeros([1, 512 // config["EXPT"]["DOWN_SAMP"], 512 // config["EXPT"]["DOWN_SAMP"], 12, in_ch], dtype=np.float32)
+    output_shapes = model(x, test=True)
 
     for layer in model.layers:
         weight_dict[layer.name] = []
@@ -105,52 +106,66 @@ def training_loop_GAN(config, model, ds, show):
     if not os.path.exists(f"{SAVE_PATH}logs/GAN/{config['EXPT_NAME']}"):
         os.mkdir(f"{SAVE_PATH}logs/GAN/{config['EXPT_NAME']}")
 
-    results = {}
+    if len(model.generator_metrics.keys()) == 2:
+        results = {"Discriminator_G": {}, "Discriminator_F": {}}
+    else:
+        results = {"Discriminator": {}}
+
+    for val in results.values():
+        val["losses"] = {"G": [], "D1": [], "D2": []}
+        val["train_metrics"] = {"global": [], "focal": []}
+    
+    results["val_metrics"] = {"global": [], "focal": []}
     results["config"] = config
     results["epochs"] = []
-    results["losses"] = {"G": [], "D1": [], "D2": []}
-    results["train_metrics"] = {"global": [], "focal": []}
-    results["val_metrics"] = {"global": [], "focal": []}
     results["time"] = 0
 
     ds_train, ds_val = ds
     start_time = time.time()
-    best_L1 = 1e3
+    best_L1 = 1e6
 
     for epoch in range(EPOCHS):
         results["epochs"].append(epoch + 1)
-        model.metric_dict["g_metric"].reset_states()
-        model.metric_dict["d_metric_1"].reset_states()
-        model.metric_dict["d_metric_2"].reset_states()
-        model.L1metric.reset_states()
+
+        for key, value in model.generator_metrics.items():
+            value["g_metric"].reset_states()
+            value["g_L1"].reset_states()
+
+        for value in model.discriminator_metrics.values():
+            value["d_metric_1"].reset_states()
+            value["d_metric_2"].reset_states()
 
         for data in ds_train:
             NCE, ACE, mask = data
             model.train_step(NCE, ACE, mask)
 
-        results["losses"]["G"].append(float(model.metric_dict['g_metric'].result()))
-        results["losses"]["D1"].append(float(model.metric_dict['d_metric_1'].result()))
-        results["losses"]["D2"].append(float(model.metric_dict['d_metric_2'].result()))
-        results["train_metrics"]["global"].append(float(model.L1metric.result()[0]))
-        results["train_metrics"]["focal"].append(float(model.L1metric.result()[1]))
+        for key, value in model.generator_metrics.items():
+            results[key]["losses"]["G"].append(float(value['g_metric'].result()))
+            results[key]["train_metrics"]["global"].append(float(value["g_L1"].result()[0]))
+            results[key]["train_metrics"]["focal"].append(float(value["g_L1"].result()[1]))
+        
+        for key, value in model.discriminator_metrics.items():
+            results[key]["losses"]["D1"].append(float(value['d_metric_1'].result()))
+            results[key]["losses"]["D2"].append(float(value['d_metric_2'].result()))
 
-        print(f"Train epoch {epoch + 1}, G: {model.metric_dict['g_metric'].result():.4f} D1: {model.metric_dict['d_metric_1'].result():.4f}, D2: {model.metric_dict['d_metric_2'].result():.4f}, L1 [global focal]: {model.L1metric.result()}")
+        for key in model.discriminator_metrics.keys():
+            print(f"Train epoch {epoch + 1} {key}, G: {model.generator_metrics[key]['g_metric'].result():.4f} D1: {model.discriminator_metrics[key]['d_metric_1'].result():.4f}, D2: {model.discriminator_metrics[key]['d_metric_2'].result():.4f}, L1 [global focal]: {model.generator_metrics[key]['g_L1'].result()}")
         
         if config["CV_FOLDS"] != 0:
-            model.L1metric.reset_states()
+            model.generator_val_metric.reset_states()
 
             for data in ds_val:
                 NCE, ACE, mask = data
                 model.val_step(NCE, ACE, mask)
             
-            results["val_metrics"]["global"].append(float(model.L1metric.result()[0]))
-            results["val_metrics"]["focal"].append(float(model.L1metric.result()[1]))
+            results["val_metrics"]["global"].append(float(model.generator_val_metric.result()[0]))
+            results["val_metrics"]["focal"].append(float(model.generator_val_metric.result()[1]))
 
-            print(f"Val epoch {epoch + 1}, L1 [global focal]: {model.L1metric.result()}")
+            print(f"Val epoch {epoch + 1}, L1 [global focal]: {model.generator_val_metric.result()}")
 
-        if model.L1metric.result()[1] < best_L1 and epoch > 75:
+        if model.generator_val_metric.result()[1] < best_L1 and epoch > 75:
             model.save_weights(f"{SAVE_PATH}models/GAN/{config['EXPT_NAME']}/{config['EXPT_NAME']}")
-            best_L1 = model.L1metric.result()[1]
+            best_L1 = model.generator_val_metric.result()[1]
             
             with open(f"{SAVE_PATH}logs/GAN/{config['EXPT_NAME']}/best_results.json", 'w') as outfile:
                 json.dump(results, outfile, indent=4)
