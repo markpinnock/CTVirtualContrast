@@ -116,13 +116,15 @@ class GAN(keras.Model):
         self.d_optimiser = d_optimiser
         self.loss = self.loss_dict[loss_key]
     
-    @tf.function
+    # @tf.function
     def train_step(self, source, target, mask):
-        # Determine labels and size of mb for each critic training run
+        # Determine size of mb for each critic training run
         # (size of real_images = minibatch size * number of critic runs)
-        g_mb = self.mb_size
-        d_mb = (source.shape[0] - self.mb_size) // self.n_critic
-        
+        g_mb = source.shape[0] // (1 + self.n_critic)
+        if g_mb < 1: g_mb = source.shape[0]
+        d_mb = g_mb * self.n_critic # TODO: TEST WITH N_CRITIC > 1
+        print(g_mb, d_mb, source.shape[0])
+        # Labels
         d_labels = {name: tf.concat(
             [tf.ones([d_mb] + patch_size[1:]) * self.d_fake_label,
              tf.ones([d_mb] + patch_size[1:]) * self.d_real_label
@@ -140,10 +142,17 @@ class GAN(keras.Model):
         # Critic training loop
         for idx in range(self.n_critic):
             # Select minibatch of real images and generate fake images for critic run
-            d_source = source[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
-            d_real_target = target[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
-            d_fake_target = self.Generator(d_source)
-            d_mask = mask[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
+            # If not enough different images for both generator and discriminator, share minibatch
+            if g_mb == source.shape[0]:
+                d_source = source[0:d_mb, :, :, :, :]
+                d_fake_target = self.Generator(d_source)
+                d_real_target = target[0:d_mb, :, :, :, :]
+                d_mask = mask[0:d_mb, :, :, :, :]
+            else:
+                d_source = source[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
+                d_real_target = target[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
+                d_fake_target = self.Generator(d_source)
+                d_mask = mask[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
 
             # DiffAug if required
             if self.Aug:
