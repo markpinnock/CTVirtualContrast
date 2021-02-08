@@ -137,7 +137,7 @@ def training_loop_GAN(config, model, ds, show):
 
         for data in ds_train:
             NCE, ACE, mask, coords = data
-            model.train_step(NCE, ACE, mask, coords)
+            model.ROI_train_step(NCE, ACE, mask, coords)
 
         for key, value in model.generator_metrics.items():
             results[key]["losses"]["G"].append(float(value['g_metric'].result()))
@@ -175,7 +175,7 @@ def training_loop_GAN(config, model, ds, show):
             for data in ds_val:
                 NCE, ACE, seg, coords = data
                 # TODO: for loop
-                NCE, ACE, seg = model.crop_ROI(NCE, ACE, seg, coords[:, 0, :])
+                NCE, ACE, seg = model.crop_ROI(NCE, ACE, seg, coords[:, 1, :])
                 pred = model.Generator(NCE).numpy()
 
                 fig, axs = plt.subplots(2, 3)

@@ -8,7 +8,7 @@ import tensorflow.keras as keras
 import tensorflow as tf
 
 from TrainingLoops import training_loop_UNet, training_loop_GAN, print_model_summary
-from networks.GANWrapper import GAN
+from networks.GANWrapper import CropGAN
 from networks.ResidualNet import ResNet
 from networks.UNet import UNet
 from utils.DataLoader import ImgLoader
@@ -79,7 +79,7 @@ val_ds = tf.data.Dataset.from_generator(
 # Compile model
 # Model = UNet(nc=NC, lambda_=0.0, optimiser=keras.optimizers.Adam(ETA))
 # Model = ResNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
-Model = GAN(config=CONFIG)
+Model = CropGAN(config=CONFIG)
 
 if CONFIG["EXPT"]["VERBOSE"]:
     print_model_summary(Model.Generator, CONFIG, "G")
