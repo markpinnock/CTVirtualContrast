@@ -22,7 +22,8 @@ parser.add_argument("--config_path", "-cp", help="Config json path", type=str)
 parser.add_argument("--expt_name", "-en", help="Expt name", type=str)
 parser.add_argument("--lambda_", "-l", help="Lambda", type=float)
 parser.add_argument("--mu", "-m", help="Mu", type=float)
-parser.add_argument("--d_layers", "-dl", help="Discriminator layers", type=int)
+parser.add_argument("--d_layers_g", "-dgl", help="Global discriminator layers", type=int)
+parser.add_argument("--d_layers_f", "-dfl", help="Focal discriminator layers", type=int)
 parser.add_argument("--g_layers", "-gl", help="Generator layers", type=int)
 arguments = parser.parse_args()
 
@@ -41,8 +42,11 @@ if arguments.lambda_ is not None:
 if arguments.mu is not None:
     CONFIG["HYPERPARAMS"]["MU"] = arguments.mu
 
-if arguments.d_layers is not None:
-    CONFIG["HYPERPARAMS"]["D_LAYERS"] = arguments.d_layers
+if arguments.d_layers_g is not None:
+    CONFIG["HYPERPARAMS"]["D_LAYERS_G"] = arguments.d_layers_g
+
+if arguments.d_layers_f is not None:
+    CONFIG["HYPERPARAMS"]["D_LAYERS_F"] = arguments.d_layers_f
 
 if arguments.g_layers is not None:
     CONFIG["HYPERPARAMS"]["G_LAYERS"] = arguments.g_layers
@@ -64,12 +68,12 @@ mb_size = CONFIG["HYPERPARAMS"]["MB_SIZE"] + CONFIG["HYPERPARAMS"]["MB_SIZE"] * 
 # Create dataloader
 train_ds = tf.data.Dataset.from_generator(
     generator=TrainGenerator.data_generator,
-    output_types=(tf.float32, tf.float32, tf.float32)
+    output_types=(tf.float32, tf.float32, tf.float32, tf.float32)
     ).batch(mb_size)
 
 val_ds = tf.data.Dataset.from_generator(
     generator=ValGenerator.data_generator,
-    output_types=(tf.float32, tf.float32, tf.float32)
+    output_types=(tf.float32, tf.float32, tf.float32, tf.float32)
     ).batch(mb_size)
 
 # Compile model

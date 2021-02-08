@@ -58,6 +58,7 @@ class GAN(keras.Model):
         self.L1 = FocalLoss(mu=config["HYPERPARAMS"]["MU"], loss_fn="mae", name="focal_loss")
         self.lambda_ = config["HYPERPARAMS"]["LAMBDA"]
         self.d_in_ch = config["HYPERPARAMS"]["D_IN_CH"]
+        self.img_dims = config["EXPT"]["IMG_DIMS"]
         
         # Initialise generator and discriminators
         G_input_size = [1] + config["EXPT"]["IMG_DIMS"] + [1]
@@ -116,14 +117,49 @@ class GAN(keras.Model):
         self.d_optimiser = d_optimiser
         self.loss = self.loss_dict[loss_key]
     
-    # @tf.function
-    def train_step(self, source, target, mask):
+    def crop_ROI(self, source, target, mask, coords):
+        CROP_HEIGHT = self.img_dims[1]
+        CROP_WIDTH = self.img_dims[0]
+        MB_SIZE = source.shape[0]
+        XY_DIMS = source.shape[1:3]
+        IMG_DEPTH = source.shape[3]
+
+        x_coord = tf.reshape(tf.cast(coords[:, 0], tf.int32), [MB_SIZE, 1, 1, 1])
+        y_coord = tf.reshape(tf.cast(coords[:, 1], tf.int32), [MB_SIZE, 1, 1, 1])
+
+        N, X, Y, Z = tf.meshgrid(tf.range(MB_SIZE), tf.range(CROP_WIDTH, dtype=tf.int32), tf.range(CROP_HEIGHT, dtype=tf.int32), tf.range(IMG_DEPTH), indexing='ij')
+        X = X + x_coord - CROP_WIDTH // 2
+        Y = Y + y_coord - CROP_HEIGHT // 2
+
+        idx_grid = tf.stack([X, Y, Z], axis=-1)
+        idx_grid = tf.reshape(idx_grid, [MB_SIZE, CROP_WIDTH * CROP_HEIGHT * IMG_DEPTH, 3])
+        # TODO: prevent idx_grid extending past borders
+        source = tf.gather_nd(source, idx_grid, batch_dims=1)
+        source = tf.reshape(source, [MB_SIZE, CROP_HEIGHT, CROP_WIDTH, IMG_DEPTH, 1])
+        target = tf.gather_nd(target, idx_grid, batch_dims=1)
+        target = tf.reshape(target, [MB_SIZE, CROP_HEIGHT, CROP_WIDTH, IMG_DEPTH, 1])
+        mask = tf.gather_nd(mask, idx_grid, batch_dims=1)
+        mask = tf.reshape(mask, [MB_SIZE, CROP_HEIGHT, CROP_WIDTH, IMG_DEPTH, 1])
+
+        # ROI_shape = tf.reshape(tf.stack([MB_SIZE, XY_DIMS[0], XY_DIMS[1]]), [1, 1, 1, 3])
+        # ROI_grid = tf.maximum(ROI_grid, 0)
+        # ROI_grid = tf.minimum(ROI_grid, ROI_lims)
+
+        return source, target, mask        
+    
+    @tf.function
+    def train_step(self, source, target, mask, coords):
         # Determine size of mb for each critic training run
         # (size of real_images = minibatch size * number of critic runs)
+        
+        # Crop ROI if applicable
+        # TODO: for loop
+        source, target, mask = self.crop_ROI(source, target, mask, coords[:, 0, :])
+
         g_mb = source.shape[0] // (1 + self.n_critic)
         if g_mb < 1: g_mb = source.shape[0]
         d_mb = g_mb * self.n_critic # TODO: TEST WITH N_CRITIC > 1
-        print(g_mb, d_mb, source.shape[0])
+
         # Labels
         d_labels = {name: tf.concat(
             [tf.ones([d_mb] + patch_size[1:]) * self.d_fake_label,
@@ -229,6 +265,8 @@ class GAN(keras.Model):
             self.generator_metrics[d_name]["g_metric"].update_state(g_loss)
 
     @tf.function
-    def val_step(self, source, target, mask):
+    def val_step(self, source, target, mask, coords):
+        # TODO: for loop
+        source, target, mask = self.crop_ROI(source, target, mask, coords[:, 2, :])
         g_fake = self.Generator(source)
         self.generator_val_metric.update_state(target, g_fake, mask)

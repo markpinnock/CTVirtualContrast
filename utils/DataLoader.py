@@ -1,4 +1,5 @@
 import glob
+import json
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -21,6 +22,11 @@ class ImgLoader:
         self.dataset_type = dataset_type
         self.down_sample = config["DOWN_SAMP"]
         self.expt_type = config["MODEL"]
+
+        if config["CROP"]:
+            self.coords = json.load(open(f"{file_path}coords.json", 'r'))
+        else:
+            self.coords = None
 
         ACE_list = os.listdir(self.ACE_path)
         NCE_list = os.listdir(self.NCE_path)
@@ -47,7 +53,7 @@ class ImgLoader:
                 fold_ids = unique_ids[fold * num_in_fold:(fold + 1) * num_in_fold]
             else:
                 raise ValueError("Select 'training' or 'validation'")
-            
+
             self.ACE_list = [img_id for img_id in ACE_list if img_id[0:4] in fold_ids]
             self.NCE_list = [img_id for img_id in NCE_list if img_id[0:4] in fold_ids]
             self.seg_list = [img_id for img_id in seg_list if img_id[0:4] in fold_ids]
@@ -97,8 +103,11 @@ class ImgLoader:
                     ACE_vol = ACE_vol * 2 - 1
                     NCE_vol = NCE_vol * 2 - 1
 
-                yield (NCE_vol, ACE_vol, seg_vol)
-            
+                if self.coords:
+                    yield (NCE_vol, ACE_vol, seg_vol, np.array(self.coords[ACE_name[:-4]]) // self.down_sample)
+                else:
+                    yield (NCE_vol, ACE_vol, seg_vol)
+
             finally:
                 i += 1
 
@@ -164,14 +173,18 @@ class DiffAug:
         cutout_size = tf.cast(tf.cast(image_size, tf.float32) * ratio + 0.5, tf.int32)
         offset_x = tf.random.uniform([tf.shape(x)[0], 1, 1], maxval=image_size[0] + (1 - cutout_size[0] % 2), dtype=tf.int32)
         offset_y = tf.random.uniform([tf.shape(x)[0], 1, 1], maxval=image_size[1] + (1 - cutout_size[1] % 2), dtype=tf.int32)
+
         grid_batch, grid_x, grid_y = tf.meshgrid(tf.range(batch_size, dtype=tf.int32), tf.range(cutout_size[0], dtype=tf.int32), tf.range(cutout_size[1], dtype=tf.int32), indexing='ij')
         cutout_grid = tf.stack([grid_batch, grid_x + offset_x - cutout_size[0] // 2, grid_y + offset_y - cutout_size[1] // 2], axis=-1)
+
         mask_shape = tf.stack([batch_size, image_size[0], image_size[1]])
         cutout_grid = tf.maximum(cutout_grid, 0)
+
         cutout_grid = tf.minimum(cutout_grid, tf.reshape(mask_shape - 1, [1, 1, 1, 3]))
+
         mask = tf.maximum(1 - tf.scatter_nd(cutout_grid, tf.ones([batch_size, cutout_size[0], cutout_size[1]], dtype=tf.float32), mask_shape), 0)
         x = x * tf.expand_dims(tf.expand_dims(mask, axis=3), axis=4)
-        
+       
         imgs = [x[:, :, :, i * 12:(i + 1) * 12, :] for i in range(num_imgs)]
         seg = x[:, :, :, -12:, :]
 
@@ -189,29 +202,44 @@ class DiffAug:
 if __name__ == "__main__":
 
     FILE_PATH = "C:/ProjectImages/VirtualContrast/"
-    TestLoader = ImgLoader({"DATA_PATH": FILE_PATH, "DOWN_SAMP": 4, "CV_FOLDS": 0, "MODEL": "GAN"}, dataset_type="training", fold=0)
+    TestLoader = ImgLoader({"DATA_PATH": FILE_PATH, "DOWN_SAMP": 4, "CV_FOLDS": 6, "MODEL": "GAN", "CROP": 1}, dataset_type="training", fold=0)
     TestAug = DiffAug({"colour": True, "translation": True, "cutout": True})
 
     train_ds = tf.data.Dataset.from_generator(
-        TestLoader.data_generator, output_types=(tf.float32, tf.float32, tf.float32))
+        TestLoader.data_generator, output_types=(tf.float32, tf.float32, tf.float32, tf.float32))
 
     for data in train_ds.batch(4):
-        NCE, ACE, seg = data
+
+        NCE, ACE, seg, coords = data
+        print(coords[:, 0, :], coords[:, 0, 0])
         imgs, seg = TestAug.augment(imgs=[NCE, ACE], seg=seg)
         NCE, ACE = imgs
+        coords = tf.cast(coords, tf.int32)
+        c1 = coords[0][1]
+        c2 = coords[1][1]
+        NCE1, NCE2 = NCE[0, ...], NCE[1, ...]
+        ACE1, ACE2 = ACE[0, ...], ACE[1, ...]
+        seg1, seg2 = seg[0, ...], seg[1, ...]
+        # NCE1 = NCE[0, int(c1[0]) - 100:int(c1[0]) + 100, int(c1[1]) - 100:int(c1[1]) + 100, :, :]
+        # NCE2 = NCE[1, int(c2[0]) - 100:int(c2[0]) + 100, int(c2[1]) - 100:int(c2[1]) + 100, :, :]
+        # ACE1 = ACE[0, int(c1[0]) - 100:int(c1[0]) + 100, int(c1[1]) - 100:int(c1[1]) + 100, :, :]
+        # ACE2 = ACE[1, int(c2[0]) - 100:int(c2[0]) + 100, int(c2[1]) - 100:int(c2[1]) + 100, :, :]
+        # seg1 = seg[0, int(c1[0]) - 100:int(c1[0]) + 100, int(c1[1]) - 100:int(c1[1]) + 100, :, :]
+        # seg2 = seg[1, int(c2[0]) - 100:int(c2[0]) + 100, int(c2[1]) - 100:int(c2[1]) + 100, :, :]
+
         plt.subplot(2, 3, 1)
-        plt.imshow(NCE[0, :, :, 0, 0])
+        plt.imshow(NCE1[:, :, 0, 0])
         plt.subplot(2, 3, 4)
-        plt.imshow(NCE[1, :, :, 0, 0])
+        plt.imshow(NCE2[:, :, 0, 0])
         
         plt.subplot(2, 3, 2)
-        plt.imshow(ACE[0, :, :, 0, 0])
+        plt.imshow(ACE1[:, :, 0, 0])
         plt.subplot(2, 3, 5)
-        plt.imshow(ACE[1, :, :, 0, 0])
+        plt.imshow(ACE2[:, :, 0, 0])
 
         plt.subplot(2, 3, 3)
-        plt.imshow(seg[0, :, :, 0, 0])
+        plt.imshow(seg1[:, :, 0, 0])
         plt.subplot(2, 3, 6)
-        plt.imshow(seg[1, :, :, 0, 0])
+        plt.imshow(seg2[:, :, 0, 0])
 
         plt.show()

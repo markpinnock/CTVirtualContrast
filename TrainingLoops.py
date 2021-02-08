@@ -136,8 +136,8 @@ def training_loop_GAN(config, model, ds, show):
             value["d_metric_2"].reset_states()
 
         for data in ds_train:
-            NCE, ACE, mask = data
-            model.train_step(NCE, ACE, mask)
+            NCE, ACE, mask, coords = data
+            model.train_step(NCE, ACE, mask, coords)
 
         for key, value in model.generator_metrics.items():
             results[key]["losses"]["G"].append(float(value['g_metric'].result()))
@@ -155,8 +155,8 @@ def training_loop_GAN(config, model, ds, show):
             model.generator_val_metric.reset_states()
 
             for data in ds_val:
-                NCE, ACE, mask = data
-                model.val_step(NCE, ACE, mask)
+                NCE, ACE, mask, coords = data
+                model.val_step(NCE, ACE, mask, coords)
             
             results["val_metrics"]["global"].append(float(model.generator_val_metric.result()[0]))
             results["val_metrics"]["focal"].append(float(model.generator_val_metric.result()[1]))
@@ -173,7 +173,9 @@ def training_loop_GAN(config, model, ds, show):
         # TODO: RANDOM EXAMPLE IMAGES
         if (epoch >= 70 and epoch % 10 == 0) or config["VERBOSE"]:
             for data in ds_val:
-                NCE, ACE, seg = data
+                NCE, ACE, seg, coords = data
+                # TODO: for loop
+                NCE, ACE, seg = model.crop_ROI(NCE, ACE, seg, coords[:, 0, :])
                 pred = model.Generator(NCE).numpy()
 
                 fig, axs = plt.subplots(2, 3)
