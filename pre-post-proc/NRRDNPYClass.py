@@ -88,7 +88,7 @@ class ImgConv:
             VC = np.transpose(itk.GetArrayFromImage(VC), [2, 1, 0])
             seg = np.transpose(itk.GetArrayFromImage(seg), [2, 1, 0, 3])
             AC_idx = np.argwhere(~np.all(AC == 1e6, axis=(0, 1)) == True)
-        
+
             AC = AC[:, :, AC_idx[0][0]:AC_idx[-1][0]]
             VC = VC[:, :, AC_idx[0][0]:AC_idx[-1][0]]
             seg = seg[:, :, AC_idx[0][0]:AC_idx[-1][0], :]
@@ -114,7 +114,7 @@ class ImgConv:
 
                 self.ACs[key].append(AC[:, :, i:i + self.output_dims[2]])
                 self.VCs[key].append(VC[:, :, i:i + self.output_dims[2]])
-                self.segs[key].append(seg[:, :, i:i + self.output_dims[2]])
+                self.segs[key].append(seg[:, :, i:i + self.output_dims[2], :])
 
         return self
     
@@ -153,7 +153,7 @@ class ImgConv:
                     AC_stem = self.AC_names[key][0][-16:-5]
                     VC_stem = self.VC_names[key][0][-16:-5]
                     seg_stem = f"{AC_stem}M"
-                    
+
                     # Calculate centroids of segmentations
                     if seg.shape[3] == 5:
                         arteries = self.segmentation_com(seg[:, :, :, 0])
@@ -166,11 +166,11 @@ class ImgConv:
                     else:
                         raise ValueError("Incorrect seg dims")
 
-                    seg = np.bitwise_or.reduce(seg[:, :, :, :-1], axis=3).squeeze().transpose((1, 2, 0))
-                    
+                    seg = np.bitwise_or.reduce(seg[:, :, :, :-1], axis=3).squeeze()
+
                     if normalise:
-                        AC = (AC - self.HU_min) / (self.HU_max - self.HU_min) * 2 - 1
-                        VC = (VC - self.HU_min) / (self.HU_max - self.HU_min) * 2 - 1
+                        AC = (AC - self.HU_min) / (self.HU_max - self.HU_min)
+                        VC = (VC - self.HU_min) / (self.HU_max - self.HU_min)
 
                     np.save(f"{save_path}/AC/{AC_stem}_{idx:02d}.npy", AC)
                     np.save(f"{save_path}/VC/{VC_stem}_{idx:02d}.npy", VC)
