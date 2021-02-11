@@ -20,6 +20,7 @@ from utils.DataLoader import ImgLoader
 parser = argparse.ArgumentParser()
 parser.add_argument("--config_path", "-cp", help="Config json path", type=str)
 parser.add_argument("--expt_name", "-en", help="Expt name", type=str)
+parser.add_argument("--save_every", "-s", help="Save every _ epochs", type=int)
 parser.add_argument("--lambda_", "-l", help="Lambda", type=float)
 parser.add_argument("--mu", "-m", help="Mu", type=float)
 parser.add_argument("--d_layers_g", "-dgl", help="Global discriminator layers", type=int)
@@ -35,6 +36,11 @@ if arguments.expt_name is not None:
     CONFIG["EXPT"]["EXPT_NAME"] = arguments.expt_name
 else:
     CONFIG["EXPT"]["EXPT_NAME"] = "test"
+
+if arguments.save_every is not None:
+    CONFIG["EXPT"]["SAVE_EVERY"] = arguments.save_every
+else:
+    CONFIG["EXPT"]["SAVE_EVERY"] = 1
 
 if arguments.lambda_ is not None:
     CONFIG["HYPERPARAMS"]["LAMBDA"] = arguments.lambda_
@@ -81,11 +87,16 @@ val_ds = tf.data.Dataset.from_generator(
 # Model = ResNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
 Model = CropGAN(config=CONFIG)
 
-if CONFIG["EXPT"]["VERBOSE"]:
+if CONFIG["EXPT"]["VERBOSE"] and not CONFIG["HYPERPARAMS"]["D_LAYERS_F"]:
     print_model_summary(Model.Generator, CONFIG, "G")
-    
+    print_model_summary(Model.Discriminator, CONFIG, "D")
+elif CONFIG["EXPT"]["VERBOSE"] and CONFIG["HYPERPARAMS"]["D_LAYERS_F"]:
+    print_model_summary(Model.Generator, CONFIG, "G")
+
     for name, Discriminator in Model.Discriminators.items():
         print_model_summary(Discriminator, CONFIG, "D")
+else:
+    pass
 
 # curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 # log_dir = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/logs/" + curr_time
@@ -111,33 +122,27 @@ if CONFIG["EXPT"]["VERBOSE"]:
 # training_loop_UNet(EPOCHS, "vc", Model, (train_ds, val_ds))
 
 # GAN training loop
-results = training_loop_GAN(CONFIG["EXPT"], Model, (train_ds, val_ds), False)
+results = training_loop_GAN(CONFIG, Model, (train_ds, val_ds))
 # with writer.as_default():
 #     tf.summary.trace_export("graph", step=0)
-
-if len(Model.generator_metrics.keys()) == 2:
-    results_key = "Discriminator_G"
-else:
-    results_key = "Discriminator"
 
 plt.figure()
 
 plt.subplot(2, 1, 1)
-plt.plot(results["epochs"], results[results_key]["losses"]["G"], 'k', label="G")
-plt.plot(results["epochs"], results[results_key]["losses"]["D1"], 'r', label="D1")
-plt.plot(results["epochs"], results[results_key]["losses"]["D2"], 'g', label="D2")
+plt.plot(results["epochs"], results["g_metric"], 'k', label="G")
+plt.plot(results["epochs"], results["d_metric"], 'r', label="D")
 plt.xlabel("Epochs")
 plt.ylabel("Loss")
 plt.title("Losses")
 plt.legend()
 
 plt.subplot(2, 1, 2)
-plt.plot(results["epochs"], results[results_key]["train_metrics"]["global"], 'k--', label="Train global L1")
-plt.plot(results["epochs"], results[results_key]["train_metrics"]["focal"], 'r--', label="Train focal L1")
+plt.plot(results["epochs"], results["train_L1"]["global"], 'k--', label="Train global L1")
+plt.plot(results["epochs"], results["train_L1"]["focal"], 'r--', label="Train focal L1")
 
 if CONFIG["EXPT"]["CV_FOLDS"]:
-    plt.plot(results["epochs"], results["val_metrics"]["global"], 'k', label="Val global L1")
-    plt.plot(results["epochs"], results["val_metrics"]["focal"], 'r', label="Val focal L1")
+    plt.plot(results["epochs"], results["val_L1"]["global"], 'k', label="Val global L1")
+    plt.plot(results["epochs"], results["val_L1"]["focal"], 'r', label="Val focal L1")
 
 plt.xlabel("Epochs")
 plt.ylabel("L1")
