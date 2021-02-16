@@ -10,24 +10,24 @@ from utils.Losses import FocalLoss, FocalMetric, DiceLoss, DiceMetric
 
 
 class UNet(keras.Model):
-
-    """ Implements U-Net
-        - nc: number of channels in first layer
-        - lambda_: hyperparameter for focal loss on range [0, 1]
-        - optimiser: of type e.g. keras.optimizers.Adam """
     
-    def __init__(self, nc, lambda_, optimiser):
-        super(UNet, self).__init__(self)
-        self.optimiser = optimiser
-        self.loss = {
-            "seg": DiceLoss(),
-            "vc": FocalLoss(lambda_)
-        }
-        self.metric = {
-            "seg": DiceMetric(),
-            "vc": FocalMetric(lambda_)
-        }
+    def __init__(self, config):
+        super().__init__(name="UNet")
+        self.optimiser = keras.optimizers.Adam(config["HYPERPARAMS"]["ETA"], 0.5, 0.999, name="opt")
 
+        if config["HYPERPARAMS"]["MU"] > 0.0:
+            self.loss = FocalLoss(config["HYPERPARAMS"]["MU"], loss_fn=config["HYPERPARAMS"]["LOSS"])
+        elif config["HYPERPARAMS"]["MU"] == 0.0 and config["HYPERPARAMS"]["LOSS"] == "mae":
+            self.loss = keras.losses.MeanAbsoluteError()
+        elif config["HYPERPARAMS"]["MU"] == 0.0 and config["HYPERPARAMS"]["LOSS"] == "mse":
+            self.loss = keras.losses.MeanSquaredError()
+        else:
+            raise ValueError
+
+        self.metric = FocalMetric(loss_fn=config["HYPERPARAMS"]["LOSS"])
+        nc = config["HYPERPARAMS"]["NF"]
+
+        # TODO: arbitrary img dims and layers
         self.down1 = DownBlock(nc, (2, 2, 2))
         self.down2 = DownBlock(nc * 2, (2, 2, 2))
         self.down3 = DownBlock(nc * 4, (2, 2, 1))
@@ -37,7 +37,7 @@ class UNet(keras.Model):
         self.up3 = UpBlock(nc, (2, 2, 2))
         self.out = keras.layers.Conv3D(1, (1, 1, 1), strides=(1, 1, 1), padding='same', activation='linear')
 
-    def call(self, x, phase):
+    def call(self, x):
         h, skip1 = self.down1(x)
         h, skip2 = self.down2(h)
         h, skip3 = self.down3(h)
@@ -46,44 +46,26 @@ class UNet(keras.Model):
         h = self.up2(h, skip2)
         h = self.up3(h, skip1)
         
-        if phase == "seg":
-            return tf.nn.sigmoid(self.out(h))
-        else:
-            return self.out(h)
+        return self.out(h)
     
     def compile(self, optimiser, loss, metrics):
         raise NotImplementedError
     
     @tf.function
-    def train_step(self, data, phase):
-        # Data: (NCE, ACE, seg)
-        imgs = data[0]
-        
-        if phase == "seg":
-            labels = data[2]
-        elif phase == "vc":
-            labels = data[1] - data[0]
-        else:
-            raise ValueError("phase must be 'seg' or 'vc'")
+    def train_step(self, data):
+        NCE, ACE, seg, _ = data
 
         with tf.GradientTape() as tape:
-            predictions = self(imgs, phase, training=True)
-            loss = self.loss[phase](labels, predictions)
+            pred = self(NCE, training=True)
+            loss = self.loss(ACE, pred)
 
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimiser.apply_gradients(zip(gradients, self.trainable_variables))
-        self.metric[phase].update_state(labels, predictions)
+        self.metric.update_state(ACE, pred, seg)
     
-    # @tf.function
-    def test_step(self, data, phase):
-        imgs = data[0]
-
-        if phase == "seg":
-            labels = data[2]
-        elif phase == "vc":
-            labels = data[1]
-        else:
-            raise ValueError("phase must be 'seg' or 'vc'")
+    @tf.function
+    def val_step(self, data):
+        NCE, ACE, seg, _ = data
         
-        predictions = self(imgs, phase, training=False)
-        self.metric[phase].update_state(labels, predictions)
+        pred = self(NCE, training=False)
+        self.metric.update_state(ACE, pred, seg)

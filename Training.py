@@ -7,8 +7,8 @@ import os
 import tensorflow.keras as keras
 import tensorflow as tf
 
-from TrainingLoops import training_loop_UNet, training_loop_GAN, print_model_summary
-from networks.GANWrapper import CropGAN
+from TrainingLoops import TrainingLoopUNet, TrainingLoopGAN, print_model_summary
+from networks.GANWrapper import BaseGAN, CropGAN
 from networks.ResidualNet import ResNet
 from networks.UNet import UNet
 from utils.DataLoader import ImgLoader
@@ -69,34 +69,48 @@ ValGenerator = ImgLoader(
     fold=5)
 
 # Batch size (separate batches for generator and critic runs)
-mb_size = CONFIG["HYPERPARAMS"]["MB_SIZE"] + CONFIG["HYPERPARAMS"]["MB_SIZE"] * CONFIG["HYPERPARAMS"]["N_CRITIC"]
+if CONFIG["EXPT"]["MODEL"] == "GAN":
+    MB_SIZE = CONFIG["HYPERPARAMS"]["MB_SIZE"] + CONFIG["HYPERPARAMS"]["MB_SIZE"] * CONFIG["HYPERPARAMS"]["N_CRITIC"]
+else:
+    MB_SIZE = CONFIG["HYPERPARAMS"]["MB_SIZE"]
 
 # Create dataloader
 train_ds = tf.data.Dataset.from_generator(
     generator=TrainGenerator.data_generator,
     output_types=(tf.float32, tf.float32, tf.float32, tf.float32)
-    ).batch(mb_size)
+    ).batch(MB_SIZE)
 
 val_ds = tf.data.Dataset.from_generator(
     generator=ValGenerator.data_generator,
     output_types=(tf.float32, tf.float32, tf.float32, tf.float32)
-    ).batch(mb_size)
+    ).batch(MB_SIZE)
 
 # Compile model
-# Model = UNet(nc=NC, lambda_=0.0, optimiser=keras.optimizers.Adam(ETA))
-# Model = ResNet(nc=NC, optimiser=keras.optimizers.Adam(ETA))
-Model = CropGAN(config=CONFIG)
+if CONFIG["EXPT"]["MODEL"] == "UNet":
+    Model = UNet(config=CONFIG)
+    TrainingLoop = TrainingLoopUNet(Model=Model, dataset=(train_ds, val_ds), config=CONFIG)
 
-if CONFIG["EXPT"]["VERBOSE"] and not CONFIG["HYPERPARAMS"]["D_LAYERS_F"]:
-    print_model_summary(Model.Generator, CONFIG, "G")
-    print_model_summary(Model.Discriminator, CONFIG, "D")
-elif CONFIG["EXPT"]["VERBOSE"] and CONFIG["HYPERPARAMS"]["D_LAYERS_F"]:
-    print_model_summary(Model.Generator, CONFIG, "G")
+elif CONFIG["EXPT"]["MODEL"] == "GAN":
+    if not CONFIG["EXPT"]["CROP"]:
+        Model = BaseGAN(config=CONFIG)
+    elif CONFIG["EXPT"]["CROP"]:
+        Model = CropGAN(config=CONFIG)
 
-    for name, Discriminator in Model.Discriminators.items():
-        print_model_summary(Discriminator, CONFIG, "D")
+    TrainingLoop = TrainingLoopGAN(Model=Model, dataset=(train_ds, val_ds), config=CONFIG)
+
 else:
-    pass
+    raise ValueError
+
+# if CONFIG["EXPT"]["VERBOSE"] and not CONFIG["HYPERPARAMS"]["D_LAYERS_F"]:
+#     print_model_summary(Model.Generator, CONFIG, "G")
+#     print_model_summary(Model.Discriminator, CONFIG, "D")
+# elif CONFIG["EXPT"]["VERBOSE"] and CONFIG["HYPERPARAMS"]["D_LAYERS_F"]:
+#     print_model_summary(Model.Generator, CONFIG, "G")
+
+#     for name, Discriminator in Model.Discriminators.items():
+#         print_model_summary(Discriminator, CONFIG, "D")
+# else:
+#     pass
 
 # curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 # log_dir = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/logs/" + curr_time
@@ -113,44 +127,9 @@ else:
 #     tf.summary.trace_export('graph', step=0)
 # exit()
 
+# Run training loop
+TrainingLoop.training_loop()
+TrainingLoop.save_results()
 
-
-# Seg phase training loop
-# training_loop_UNet(EPOCHS, "seg", Model, (train_ds, val_ds))
-
-# Virtual contrast phase training loop
-# training_loop_UNet(EPOCHS, "vc", Model, (train_ds, val_ds))
-
-# GAN training loop
-results = training_loop_GAN(CONFIG, Model, (train_ds, val_ds))
 # with writer.as_default():
 #     tf.summary.trace_export("graph", step=0)
-
-plt.figure()
-
-plt.subplot(2, 1, 1)
-plt.plot(results["epochs"], results["g_metric"], 'k', label="G")
-plt.plot(results["epochs"], results["d_metric"], 'r', label="D")
-plt.xlabel("Epochs")
-plt.ylabel("Loss")
-plt.title("Losses")
-plt.legend()
-
-plt.subplot(2, 1, 2)
-plt.plot(results["epochs"], results["train_L1"]["global"], 'k--', label="Train global L1")
-plt.plot(results["epochs"], results["train_L1"]["focal"], 'r--', label="Train focal L1")
-
-if CONFIG["EXPT"]["CV_FOLDS"]:
-    plt.plot(results["epochs"], results["val_L1"]["global"], 'k', label="Val global L1")
-    plt.plot(results["epochs"], results["val_L1"]["focal"], 'r', label="Val focal L1")
-
-plt.xlabel("Epochs")
-plt.ylabel("L1")
-plt.title("Metrics")
-plt.legend()
-
-plt.tight_layout()
-plt.savefig(f"{CONFIG['EXPT']['SAVE_PATH']}logs/GAN/{CONFIG['EXPT']['EXPT_NAME']}/losses.png")
-
-with open(f"{CONFIG['EXPT']['SAVE_PATH']}logs/GAN/{CONFIG['EXPT']['EXPT_NAME']}/results.json", 'w') as outfile:
-    json.dump(results, outfile, indent=4)

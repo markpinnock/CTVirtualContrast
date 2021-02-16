@@ -23,10 +23,10 @@ class ImgLoader:
         self.down_sample = config["DOWN_SAMP"]
         self.expt_type = config["MODEL"]
 
-        if config["CROP"]:
-            self.coords = json.load(open(f"{file_path}coords.json", 'r'))
-        else:
-            self.coords = None
+        # if config["CROP"]:
+        self.coords = json.load(open(f"{file_path}coords.json", 'r'))
+        # else:
+            # self.coords = None
 
         ACE_list = os.listdir(self.ACE_path)
         NCE_list = os.listdir(self.NCE_path)
@@ -103,10 +103,7 @@ class ImgLoader:
                     ACE_vol = ACE_vol * 2 - 1
                     NCE_vol = NCE_vol * 2 - 1
 
-                if self.coords:
-                    yield (NCE_vol, ACE_vol, seg_vol, np.array(self.coords[ACE_name[:-4]]) // self.down_sample)
-                else:
-                    yield (NCE_vol, ACE_vol, seg_vol)
+                yield (NCE_vol, ACE_vol, seg_vol, np.array(self.coords[ACE_name[:-4]]) // self.down_sample)
 
             finally:
                 i += 1

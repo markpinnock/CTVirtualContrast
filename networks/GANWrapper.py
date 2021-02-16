@@ -56,7 +56,14 @@ class BaseGAN(keras.Model):
         # TODO: IMPLEMENT CONSTRAINT TYPE
         self.loss = self.loss_dict[GAN_type]
         self.GAN_type = GAN_type
-        self.L1 = FocalLoss(mu=config["HYPERPARAMS"]["MU"], loss_fn="mae", name="focal_loss")
+
+        if config["HYPERPARAMS"]["MU"] > 0.0:
+            self.L1 = FocalLoss(mu=config["HYPERPARAMS"]["MU"], loss_fn="mae", name="focal_loss")
+        elif config["HYPERPARAMS"]["MU"] == 0.0:
+            self.L1 = keras.losses.MeanAbsoluteError()
+        else:
+            raise ValueError
+
         self.lambda_ = config["HYPERPARAMS"]["LAMBDA"]
         self.d_in_ch = config["HYPERPARAMS"]["D_IN_CH"]
         self.img_dims = config["EXPT"]["IMG_DIMS"]
@@ -67,7 +74,6 @@ class BaseGAN(keras.Model):
             self.Aug = DiffAug({"colour": True, "translation": True, "cutout": True})
         else:
             self.Aug = None
- 
         # Initialise generator and discriminators
         self.generator_init(config)
         self.discriminator_init(config)
@@ -107,7 +113,8 @@ class BaseGAN(keras.Model):
         self.loss = self.loss_dict[loss_key]      
     
     @tf.function
-    def train_step(self, source, target, mask):
+    def train_step(self, data):
+        source, target, mask, _ = data
         # Determine size of mb for each critic training run
         # (size of real_images = minibatch size * number of critic runs)
 
@@ -208,7 +215,8 @@ class BaseGAN(keras.Model):
         self.generator_metric.update_state(g_loss)
 
     @tf.function
-    def val_step(self, source, target, mask):
+    def val_step(self, data):
+        source, target, mask, _ = data
         g_fake = self.Generator(source)
         self.val_L1_metric.update_state(target, g_fake, mask)
 
@@ -410,17 +418,19 @@ class CropGAN(BaseGAN):
         return source, target, mask        
     
     @tf.function
-    def train_step(self, source, target, mask, coords):
+    def train_step(self, data):
+        source, target, mask, coords = data
         
         for i in range(coords.shape[1]):
             # Crop ROI
             source, target, mask = self.crop_ROI(source, target, mask, coords[:, i, :])
-            super().train_step(source, target, mask)
+            super().train_step((source, target, mask, None))
 
     @tf.function
-    def val_step(self, source, target, mask, coords):
+    def val_step(self, data):
+        source, target, mask, coords = data
         
         for i in range(coords.shape[1]):
             # Crop ROI
             source, target, mask = self.crop_ROI(source, target, mask, coords[:, i, :])
-            super().val_step(source, target, mask)
+            super().val_step((source, target, mask, None))
