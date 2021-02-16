@@ -257,7 +257,10 @@ class TrainingLoopGAN(BaseTrainingLoop):
                 print(f"Val epoch {epoch + 1}, L1 [global focal]: {self.Model.val_L1_metric.result()}")
 
             if (epoch + 1) % self.SAVE_EVERY == 0:
-                self.save_images_ROI(epoch + 1)
+                if self.config["EXPT"]["CROP"]:
+                    self.save_images_ROI(epoch + 1)
+                else:
+                    self.save_images(epoch + 1)
 
             if self.Model.val_L1_metric.result()[1] < best_L1 and not self.config["EXPT"]["VERBOSE"]:
                 self.Model.save_weights(f"{self.MODEL_SAVE_PATH}{self.config['EXPT']['EXPT_NAME']}")
@@ -273,7 +276,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
         NCE, ACE, _, _ = next(iter(self.ds_val))
         NCE, ACE = NCE.numpy(), ACE.numpy()
         pred = self.Model.Generator(NCE, training=False).numpy()
-        super().save_images(NCE, ACE, pred, epoch)
+        super().save_images(NCE[0:4], ACE[0:4], pred[0:4], epoch)
     
     def save_images_ROI(self, epoch):
         """ Saves sample of cropped images """

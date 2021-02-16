@@ -29,6 +29,7 @@ class ImgConv:
         self.output_dims = output_dims
         self.subjects = [name for name in os.listdir(self.img_path) if "F" not in name]
         self.subjects.sort()
+        self.seg_X, self.seg_Y = np.meshgrid(np.linspace(0, output_dims[0] - 1, output_dims[0]), np.linspace(0, output_dims[1] - 1, output_dims[1]))
         self.abdo_window_min = -350
         self.abdo_window_max = 450
         self.HU_min = -2048
@@ -36,6 +37,9 @@ class ImgConv:
 
     def list_images(self, num_sources: int = 1, num_targets: int = 1):
         assert num_targets == 1, "Only handles one target img currently"
+        assert num_sources == 1, "Only handles one source img currently"
+        self.num_sources = num_sources
+        self.num_targets = num_targets
         self.source_names = {}
         self.target_names = {}
         self.source_seg_names = {}
@@ -53,7 +57,8 @@ class ImgConv:
             if len(self.source_names[name]) < 1 or len(self.target_names[name]) < 1:
                 continue
 
-            self.source_names[name] = self.source_names[name][0:num_sources]
+            """ NB num_source !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"""
+            self.source_names[name] = self.source_names[name]#[0:num_sources]
             self.target_names[name] = self.target_names[name][0:num_targets]
 
             try:
@@ -73,17 +78,18 @@ class ImgConv:
         source_seg_names = self.source_seg_names[subject_name]
         target_seg_names = self.target_seg_names[subject_name]
         assert len(target_names) == len(target_seg_names)
-        assert len(source_seg_names) == 0
+        # assert len(source_seg_names) == 0
         aligned_imgs = {}
 
         for i in range(len(target_names)):
             target = itk.ReadImage(target_names[i], itk.sitkInt32)
             seg = itk.ReadImage(target_seg_names[i])
-            target_stem = f"{subject_name}_{self.target}_{i:03d}"
-            aligned_imgs["target_stem"] = [target, seg]
+            # target_stem = f"{subject_name}_{self.target}_{i:03d}"
+            # aligned_imgs["target_stem"] = [target, seg]
 
-            for j in range(len(source_names)):
-                source = itk.ReadImage(source_names[j], itk.sitkInt32)
+            for j in range(1):
+                """ NB!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! source_names """
+                source = itk.ReadImage(source_names[0], itk.sitkInt32)
                 source_stem = f"{subject_name}_{self.source}_{i:03d}"
 
                 source_spacing = source.GetSpacing()[2]
@@ -111,22 +117,28 @@ class ImgConv:
                 source = np.transpose(itk.GetArrayFromImage(source), [2, 1, 0])
                 target = np.transpose(itk.GetArrayFromImage(target), [2, 1, 0])
                 seg = np.transpose(itk.GetArrayFromImage(seg), [2, 1, 0, 3])
+                """ PROBLEM???????????????????????????? """
 
                 if (bounds_diff > 0).all():
                     source = source[:, :, bounds_diff[0] + 1:] # Add 1 to deal with rounding errors
                     target = target[:, :, bounds_diff[0] + 1:]
                     seg = seg[:, :, bounds_diff[0] + 1:]
+
                 elif (bounds_diff < 0).all():
                     source = source[:, :, :bounds_diff[-1]]
                     target = target[:, :, :bounds_diff[-1]]
                     seg = seg[:, :, :bounds_diff[-1]]
+
                 elif bounds_diff[0] > 0 and bounds_diff[1] < 0:
                     source = source[:, :, bounds_diff[0] + 1:bounds_diff[1]]
                     target = target[:, :, bounds_diff[0] + 1:bounds_diff[1]]
                     seg = seg[:, :, bounds_diff[0] + 1:bounds_diff[1]]
+
                 elif bounds_diff[0] < 0 and bounds_diff[1] > 0:
                     pass
+
                 else:
+                    return None, None, None
                     raise ValueError
 
                 assert np.isclose(source.shape, target.shape).all(), (source.shape, target.shape)
@@ -135,25 +147,12 @@ class ImgConv:
                 source = np.clip(source, self.abdo_window_min, self.abdo_window_max)
                 target = np.clip(target, self.abdo_window_min, self.abdo_window_max)
 
-                # Discard if alignment inadequate
-                NCC = self.calc_NCC(source, target)
-                if NCC < self.NCC_tol:
-                    print(f"{key} number {i + 1} discarded: NCC {NCC}")
-                    count += 1
-                    continue
-
                 # If coords are reversed, flip images
                 if source_dir[0] < 0 and source_dir[4] < 0:
                     source = np.flipud(np.fliplr(source))
                     target = np.flipud(np.fliplr(target))
-                
-                self.sources[key].append(source)
-                self.targets[key].append(target)
-                self.segs[key].append(seg)
 
-                count += 1
-
-        return self
+        return source, target, seg
 
     def calc_NCC(self, a: object, b: object) -> int:
         assert len(a.shape) == 3
@@ -181,25 +180,37 @@ class ImgConv:
         total = len(self.source_names.keys())
         coords = {}
 
-        for key in self.sources.keys():
+        for key in self.source_names.keys():
+            if key not in self.target_seg_names: continue
             print(f"Loading {key}: {count} of {total}")
-            source_list = self.sources[key]
-            target_list = self.targets[key]
-            seg_list = self.segs[key]
-            source_sub_vols = []
-            target_sub_vols = []
-            seg_sub_vols = []
+            source, target, seg = self._load_images(key)
+            if source is None or target is None or seg is None:
+                print("Failed")
+                continue
+            target_stem = self.target_names[key][0][-16:-5]
             source_stem = self.source_names[key][0][-16:-5]
-            seg_stem = f"{source_stem}M"
+            seg_stem = f"{target_stem}M"
+
+            # Discard if alignment inadequate
+            NCC = self.calc_NCC(source, target)
+            if NCC < self.NCC_tol:
+                print(f"{key} number {i + 1} discarded: NCC {NCC}")
+                continue
+
+            # Normalise
+            if normalise:
+                source = (source - self.abdo_window_min) / (self.abdo_window_max - self.abdo_window_min)
+                target = (target - self.abdo_window_min) / (self.abdo_window_max - self.abdo_window_min)
 
             # Partition source into sub-volumes
-            vol_thick = source.shape[2]
-
+            vol_thick = target.shape[2]
+            idx = 0
+            """ NB!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! source_names """
             for i in range(0, vol_thick, self.output_dims[2]):
                 if i + self.output_dims[2] > vol_thick:
                     break
 
-                source_sub_vol = source[:, :, i:i + self.output_dims[2]]
+                target_sub_vol = target[:, :, i:i + self.output_dims[2]]
                 seg_sub_vol = seg[:, :, i:i + self.output_dims[2], :]
 
                 # Calculate centroids of segmentations
@@ -207,76 +218,108 @@ class ImgConv:
                     arteries = self.segmentation_com(seg_sub_vol[:, :, :, 0])
                     r_kidney = self.segmentation_com(seg_sub_vol[:, :, :, 1])
                     l_kidney = self.segmentation_com(seg_sub_vol[:, :, :, 2])
+
                 elif seg_sub_vol.shape[3] == 4:
-                    print(seg_sub_vol.shape)
                     arteries = [seg_sub_vol.shape[1] // 2, seg_sub_vol.shape[2] // 2]
                     r_kidney = self.segmentation_com(seg_sub_vol[:, :, :, 1])
                     l_kidney = self.segmentation_com(seg_sub_vol[:, :, :, 2])
+
                 else:
                     raise ValueError("Incorrect seg dims")
 
-                seg = np.bitwise_or.reduce(seg[:, :, :, :-1], axis=3).squeeze()
-
-                if normalise:
-                    source = (source - self.abdo_window_min) / (self.abdo_window_max - self.abdo_window_min)
-                    target = (target - self.abdo_window_min) / (self.abdo_window_max - self.abdo_window_min)
-
-                np.save(f"{self.save_path}{self.source}/{source_stem}_{i:02d}.npy", source_sub_vol)
-                np.save(f"{self.save_path}/Segs/{seg_stem}_{i:02d}.npy", seg_sub_vol)
-                # np.save(f"{save_path}{self.source}/{source_stem}_{idx:02d}.npy", source)
-                # np.save(f"{save_path}{self.target}/{target_stem}_{idx:02d}.npy", target)
-                # np.save(f"{save_path}/Segs/{seg_stem}_{idx:02d}.npy", seg)
+                seg_sub_vol = np.bitwise_or.reduce(seg[:, :, :, :-1], axis=3).squeeze()
                 coords[f"{seg_stem}_{idx:02d}"] = [arteries, r_kidney, l_kidney]
-                count += 1
+
+                np.save(f"{self.save_path}{self.target}/{target_stem}_{idx:02d}.npy", target_sub_vol)
+                np.save(f"{self.save_path}/Segs/{seg_stem}_{idx:02d}.npy", seg_sub_vol)
+                idx += 1
 
             # Partition targets into sub-volumes
-            for j in range(self.num_targets):
+            idx = 0
+            """ NB!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! source_names """
+            for i in range(0, vol_thick, self.output_dims[2]):
+                if i + self.output_dims[2] > vol_thick:
+                    break
 
-                target_stem = self.target_names[key][j][-16:-5]
+                source_sub_vol = source[:, :, i:i + self.output_dims[2]]
+                np.save(f"{self.save_path}{self.source}/{source_stem}_{idx:02d}.npy", source_sub_vol)
+                idx += 1
 
-                for i in range(0, vol_thick, self.output_dims[2]):
-                    if i + self.output_dims[2] > vol_thick:
-                        break
+            count += 1
 
-                    target_sub_vol = target[:, :, i:i + self.output_dims[2]]
-                    np.save(f"{save_path}{self.target}/{target_stem}_{x:02d}.npy", target_sub_vol)
-            
-            assert len(os.listdir(f"{save_path}{self.source}")) == len(os.listdir(f"{save_path}{self.target}"))
-            json.dump(coords, open(f"{save_path}coords.json", 'w'), indent=4)
-
-        return count
+        assert len(os.listdir(f"{self.save_path}{self.source}")) == len(os.listdir(f"{self.save_path}{self.target}"))
+        assert len(os.listdir(f"{self.save_path}/Segs/")) == len(os.listdir(f"{self.save_path}{self.target}"))
+        json.dump(coords, open(f"{self.save_path}coords.json", 'w'), indent=4)
 
     def view_data(self):
         count = 1
         total = len(self.source_names.keys())
 
-        for key in self.sources.keys():
+        for key in self.source_names.keys():
+            if key not in self.target_seg_names: continue
             print(f"Loading {key}: {count} of {total}")
-            blah = self._load_images(key)
+            source, target, seg = self._load_images(key)
+            if source is None or target is None or seg is None:
+                print("Failed")
+                continue
+            fig, axs = plt.subplots(self.num_targets, 6, figsize=(18, 8))
 
-            fig, axs = plt.subplots(self.num_targets, 5, figsize=(18, 8))
-
-            source = self.sources[key]
-            target = self.targets[key]
-            print([s.shape for s in source])
-            print([t.shape for t in target])
             for i in range(self.num_targets):
                 
-                axs[i, 0].imshow(source[i][:, :, 10].T, cmap="gray")
-                axs[i, 0].axis("off")
-                axs[i, 1].imshow(target[i][:, :, 10].T, cmap="gray")
-                axs[i, 1].axis("off")
-                axs[i, 2].imshow(source[i][:, :, 10].T - target[i][:, :, 10].T, cmap="gray")
-                axs[i, 2].axis("off")
-                axs[i, 2].set_title(f"NCC: {self.calc_NCC(source[i], target[i])}")
-                axs[i, 3].imshow(np.flipud(source[i][:, 256, :].T), cmap="gray")
-                axs[i, 3].axis("off")
-                axs[i, 4].imshow(np.flipud(target[i][:, 256, :].T), cmap="gray")
-                axs[i, 4].axis("off")
+                axs[0].imshow(source[:, :, 10].T, cmap="gray")
+                axs[0].axis("off")
+                axs[1].imshow(target[:, :, 10].T, cmap="gray")
+                axs[1].axis("off")
+                axs[2].imshow(source[:, :, 10].T - target[:, :, 10].T, cmap="gray")
+                axs[2].axis("off")
+                axs[2].set_title(f"NCC: {self.calc_NCC(source, target)}")
+                axs[3].imshow(np.flipud(source[:, 256, :].T), cmap="gray")
+                axs[3].axis("off")
+                axs[4].imshow(np.flipud(target[:, 256, :].T), cmap="gray")
+                axs[4].axis("off")
+                # axs[5].hist(seg.ravel())
+                axs[5].imshow(np.transpose(seg[:, :, 10, 0:3], [1, 0, 2]), cmap="gray")
+                axs[5].axis("off")
 
-            plt.pause(5)
+            # plt.pause(5)
             # plt.close()
-            plt.gcf().clear()
+            # plt.gcf().clear()
+            plt.show()
+    
+    def check_saved(self):
+        subjects = []
+        sources, targets, segs = [], [], []
+
+        for img in os.listdir(f"{self.save_path}{self.source}"):
+            if img[:6] not in subjects: subjects.append(img[:6])
+        
+        for img_name in subjects:
+            imgs = [im for im in os.listdir(f"{self.save_path}{self.source}") if img_name in im]
+            sources.append(np.load(f"{self.save_path}{self.source}/{imgs[-1]}"))
+            imgs = [im for im in os.listdir(f"{self.save_path}{self.target}") if img_name in im]
+            targets.append(np.load(f"{self.save_path}{self.target}/{imgs[-1]}"))
+            imgs = [im for im in os.listdir(f"{self.save_path}Segs/") if img_name in im]
+            segs.append(np.load(f"{self.save_path}Segs/{imgs[-1]}"))
+
+        plt.figure(figsize=(18, 8))
+
+        for source, target, seg in zip(sources, targets, segs):
+
+            plt.subplot(2, 2, 1)
+            plt.imshow(source[:, :, 5].T, cmap="gray")
+            plt.axis("off")
+            plt.subplot(2, 2, 2)
+            plt.imshow(target[:, :, 5].T, cmap="gray")
+            plt.axis("off")
+            plt.subplot(2, 2, 3)
+            plt.imshow(target[:, :, 5].T - source[:, :, 5].T, cmap="gray")
+            plt.axis("off")
+            plt.subplot(2, 2, 4)
+            plt.imshow(seg[:, :, 5].T, cmap="gray")
+            plt.axis("off")
+
+            plt.pause(3)
+            plt.clf()
 
     def _resize(self, a, b):
         a_orig = a.GetOrigin()[2]
@@ -323,10 +366,10 @@ if __name__ == "__main__":
         target="AC"
         )
 
-    Normal.list_images()._load_images("T002R1")
-    Normal.view_data()
-    # num = Normal.save_data(normalise=False)
-    print(num)
+    Normal.list_images()
+    # Normal.view_data()
+    Normal.save_data(normalise=True)
+    # Normal.check_saved()
 
     # plt.figure(figsize=(18, 9))
 

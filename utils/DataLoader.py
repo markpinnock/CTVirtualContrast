@@ -14,7 +14,7 @@ class ImgLoader:
     def __init__(self, config, dataset_type, fold):
         file_path = config["DATA_PATH"]
         self.ACE_path = f"{file_path}AC/"
-        self.NCE_path = f"{file_path}VC/"
+        self.NCE_path = f"{file_path}HQ/"
         self.seg_path = f"{file_path}Segs/"
         self.ACE_list = None
         self.NCE_list = None
@@ -85,7 +85,7 @@ class ImgLoader:
                 NCE_name_start = ACE_name[0:6]
                 NCE_name_end = ACE_name[-6:]
                 ACE_vol = np.load(self.ACE_path + ACE_name).astype(np.float32)
-                NCE_name = glob.glob(f"{self.NCE_path}{NCE_name_start}VC*_{NCE_name_end}")
+                NCE_name = glob.glob(f"{self.NCE_path}{NCE_name_start}HQ*_{NCE_name_end}")
                 assert len(NCE_name) == 1
                 seg_name = f"{ACE_name[:-7]}M{ACE_name[-7:]}"
                 NCE_vol = np.load(NCE_name[0])
@@ -103,7 +103,12 @@ class ImgLoader:
                     ACE_vol = ACE_vol * 2 - 1
                     NCE_vol = NCE_vol * 2 - 1
 
-                yield (NCE_vol, ACE_vol, seg_vol, np.array(self.coords[ACE_name[:-4]]) // self.down_sample)
+                try:
+                    a = self.coords[ACE_name[:-4]]
+                except KeyError:
+                    self.coords[ACE_name[:-4]] = [[256.0, 256.0], [256.0, 256.0], [256.0, 256.0]]
+
+                yield (NCE_vol, ACE_vol, np.zeros((ACE_vol.shape)), np.array(self.coords[ACE_name[:-4]]) // self.down_sample)
 
             finally:
                 i += 1
