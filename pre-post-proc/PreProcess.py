@@ -84,12 +84,10 @@ class ImgConv:
         for i in range(len(target_names)):
             target = itk.ReadImage(target_names[i], itk.sitkInt32)
             seg = itk.ReadImage(target_seg_names[i])
-            # target_stem = f"{subject_name}_{self.target}_{i:03d}"
-            # aligned_imgs["target_stem"] = [target, seg]
 
             for j in range(1):
                 """ NB!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! source_names """
-                source = itk.ReadImage(source_names[0], itk.sitkInt32)
+                source = itk.ReadImage(source_names[-1], itk.sitkInt32)
                 source_stem = f"{subject_name}_{self.source}_{i:03d}"
 
                 source_spacing = source.GetSpacing()[2]
@@ -116,8 +114,7 @@ class ImgConv:
                 # Trim source and target to match in size, and clip intensities
                 source = np.transpose(itk.GetArrayFromImage(source), [2, 1, 0])
                 target = np.transpose(itk.GetArrayFromImage(target), [2, 1, 0])
-                seg = np.transpose(itk.GetArrayFromImage(seg), [2, 1, 0, 3])
-                """ PROBLEM???????????????????????????? """
+                seg = np.transpose(itk.GetArrayFromImage(seg), [2, 1, 0, 3]).astype(np.uint8)
 
                 if (bounds_diff > 0).all():
                     source = source[:, :, bounds_diff[0] + 1:] # Add 1 to deal with rounding errors
@@ -151,6 +148,7 @@ class ImgConv:
                 if source_dir[0] < 0 and source_dir[4] < 0:
                     source = np.flipud(np.fliplr(source))
                     target = np.flipud(np.fliplr(target))
+                    seg = np.flipud(np.fliplr(seg))
 
         return source, target, seg
 
@@ -204,7 +202,7 @@ class ImgConv:
 
             # Partition source into sub-volumes
             vol_thick = target.shape[2]
-            idx = 0
+            idx = 200
             """ NB!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! source_names """
             for i in range(0, vol_thick, self.output_dims[2]):
                 if i + self.output_dims[2] > vol_thick:
@@ -220,22 +218,21 @@ class ImgConv:
                     l_kidney = self.segmentation_com(seg_sub_vol[:, :, :, 2])
 
                 elif seg_sub_vol.shape[3] == 4:
-                    arteries = [seg_sub_vol.shape[1] // 2, seg_sub_vol.shape[2] // 2]
+                    arteries = [seg_sub_vol.shape[0] // 2, seg_sub_vol.shape[1] // 2]
                     r_kidney = self.segmentation_com(seg_sub_vol[:, :, :, 1])
                     l_kidney = self.segmentation_com(seg_sub_vol[:, :, :, 2])
 
                 else:
                     raise ValueError("Incorrect seg dims")
 
-                seg_sub_vol = np.bitwise_or.reduce(seg[:, :, :, :-1], axis=3).squeeze()
+                seg_sub_vol = np.bitwise_or.reduce(seg_sub_vol[:, :, :, :-1], axis=3).squeeze()
                 coords[f"{seg_stem}_{idx:03d}"] = [arteries, r_kidney, l_kidney]
-
                 np.save(f"{self.save_path}{self.target}/{target_stem}_{idx:03d}.npy", target_sub_vol)
                 np.save(f"{self.save_path}/Segs/{seg_stem}_{idx:03d}.npy", seg_sub_vol)
                 idx += 1
 
             # Partition targets into sub-volumes
-            idx = 0
+            idx = 200
             """ NB!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! source_names """
             for i in range(0, vol_thick, self.output_dims[2]):
                 if i + self.output_dims[2] > vol_thick:
@@ -249,7 +246,7 @@ class ImgConv:
 
         assert len(os.listdir(f"{self.save_path}{self.source}")) == len(os.listdir(f"{self.save_path}{self.target}"))
         assert len(os.listdir(f"{self.save_path}/Segs/")) == len(os.listdir(f"{self.save_path}{self.target}"))
-        json.dump(coords, open(f"{self.save_path}coords.json", 'w'), indent=4)
+        # json.dump(coords, open(f"{self.save_path}coords.json", 'w'), indent=4)
 
     def view_data(self):
         count = 1
@@ -277,7 +274,6 @@ class ImgConv:
                 axs[3].axis("off")
                 axs[4].imshow(np.flipud(target[:, 256, :].T), cmap="gray")
                 axs[4].axis("off")
-                # axs[5].hist(seg.ravel())
                 axs[5].imshow(np.transpose(seg[:, :, 10, 0:3], [1, 0, 2]), cmap="gray")
                 axs[5].axis("off")
 
@@ -288,7 +284,8 @@ class ImgConv:
     
     def check_saved(self):
         subjects = []
-        sources, targets, segs = [], [], []
+        sources, targets, segs, coord_list = [], [], [], []
+        coord_json = json.load(open(f"{self.save_path}coords.json", 'r'))
 
         for img in os.listdir(f"{self.save_path}{self.source}"):
             if img[:6] not in subjects: subjects.append(img[:6])
@@ -300,25 +297,30 @@ class ImgConv:
             targets.append(np.load(f"{self.save_path}{self.target}/{imgs[-1]}"))
             imgs = [im for im in os.listdir(f"{self.save_path}Segs/") if img_name in im]
             segs.append(np.load(f"{self.save_path}Segs/{imgs[-1]}"))
+            cx = np.array([int(c[0]) for c in coord_json[imgs[-1][:-4]]])
+            cy = np.array([int(c[1]) for c in coord_json[imgs[-1][:-4]]])
+            coord_list.append((cx, cy))
 
         plt.figure(figsize=(18, 8))
 
-        for source, target, seg in zip(sources, targets, segs):
+        for source, target, seg, coord in zip(sources, targets, segs, coord_list):
+            coord_x, coord_y = coord
 
             plt.subplot(2, 2, 1)
-            plt.imshow(source[:, :, 5].T, cmap="gray")
+            plt.imshow(source[:, :, 11].T, cmap="gray")
+            plt.plot(coord_y, coord_x, 'r+', markersize=15)
             plt.axis("off")
             plt.subplot(2, 2, 2)
-            plt.imshow(target[:, :, 5].T, cmap="gray")
+            plt.imshow(target[:, :, 11].T, cmap="gray")
             plt.axis("off")
             plt.subplot(2, 2, 3)
-            plt.imshow(target[:, :, 5].T - source[:, :, 5].T, cmap="gray")
+            plt.imshow(target[:, :, 11].T - source[:, :, 11].T, cmap="gray")
             plt.axis("off")
             plt.subplot(2, 2, 4)
-            plt.imshow(seg[:, :, 5].T, cmap="gray")
+            plt.imshow(seg[:, :, 11].T)
             plt.axis("off")
 
-            plt.pause(3)
+            plt.pause(5)
             plt.clf()
 
     def _resize(self, a, b):
@@ -368,8 +370,8 @@ if __name__ == "__main__":
 
     Normal.list_images()
     # Normal.view_data()
-    Normal.save_data(normalise=True)
-    # Normal.check_saved()
+    # Normal.save_data(normalise=True)
+    Normal.check_saved()
 
     # plt.figure(figsize=(18, 9))
 

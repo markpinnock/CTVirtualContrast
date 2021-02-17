@@ -6,30 +6,30 @@ import os
 import sys
 import tensorflow as tf
 
+from abc import ABC, abstractmethod
+
 
 #----------------------------------------------------------------------------------------------------------------------------------------------------
 """ ImgLoader class: data_generator method for use with tf.data.Dataset.from_generator """
 
-class ImgLoader:
+class BaseImgLoader(ABC):
     def __init__(self, config, dataset_type, fold):
         file_path = config["DATA_PATH"]
-        self.ACE_path = f"{file_path}AC/"
-        self.NCE_path = f"{file_path}HQ/"
-        self.seg_path = f"{file_path}Segs/"
+        self.target_path = f"{file_path}{config['DATA']['LABELS']}/"
+        self.source_path = f"{file_path}{config['DATA']['INPUTS']}/"
+        self.seg_path = f"{file_path}{config['DATA']['SEGS']}/"
         self.ACE_list = None
         self.NCE_list = None
         self.seg_list = None
         self.dataset_type = dataset_type
         self.down_sample = config["DOWN_SAMP"]
         self.expt_type = config["MODEL"]
+        self.labels = config['DATA']['LABELS']
 
-        # if config["CROP"]:
-        self.coords = json.load(open(f"{file_path}coords.json", 'r'))
-        # else:
-            # self.coords = None
+        self.json = json.load(open(f"{file_path}{config['DATA']['JSON']}", 'r'))
 
-        ACE_list = os.listdir(self.ACE_path)
-        NCE_list = os.listdir(self.NCE_path)
+        ACE_list = os.listdir(self.target_path)
+        NCE_list = os.listdir(self.source_path)
         seg_list = os.listdir(self.seg_path)
 
         unique_ids = []
@@ -68,54 +68,54 @@ class ImgLoader:
         else:
             raise ValueError("Number of folds must be >= 0")
 
-        assert len(self.ACE_list) == len(self.NCE_list) and len(self.ACE_list) == len(self.seg_list), f"{self.ACE_list} {len(self.NCE_list)} {len(self.seg_list)}"
-        
+        assert len(self.ACE_list) == len(self.seg_list), f"{self.ACE_list} {len(self.NCE_list)} {len(self.seg_list)}"
+    
+    @abstractmethod
+    def img_pairer(self):
+        raise NotImplementedError
+
     def data_generator(self):
         if self.dataset_type == "training":
-            temp_list = list(zip(self.ACE_list, self.NCE_list, self.seg_list))
-            np.random.shuffle(temp_list)
-            self.ACE_list, self.NCE_list, self.seg_list = zip(*temp_list)
+            np.random.shuffle(self.NCE_list)
 
-        N = len(self.ACE_list)
+        N = len(self.NCE_list)
         i = 0
 
         while i < N:
-            try:
-                ACE_name = self.ACE_list[i]
-                NCE_name_start = ACE_name[0:6]
-                NCE_name_end = ACE_name[-7:]
-                ACE_vol = np.load(self.ACE_path + ACE_name).astype(np.float32)
-                NCE_name = glob.glob(f"{self.NCE_path}{NCE_name_start}HQ*_{NCE_name_end}")
+            NCE_name = self.NCE_list[i]
+            NCE_name, ACE_name, seg_name = self.img_pairer(NCE_name)
+            ACE = np.load(ACE_name)
+            NCE = np.load(NCE_name)
+            seg = np.load(seg_name)
 
-                assert len(NCE_name) == 1
-                seg_name = f"{ACE_name[:-8]}M{ACE_name[-8:]}"
-                NCE_vol = np.load(NCE_name[0])
-                seg_vol = np.load(f"{self.seg_path}{seg_name}")
-
-            except Exception as e:
-                print(f"IMAGE LOAD FAILURE: {ACE_name} {NCE_name} {seg_name} ({e})")
-            
-            else:
-                ACE_vol = ACE_vol[::self.down_sample, ::self.down_sample, :, np.newaxis]
-                NCE_vol = NCE_vol[::self.down_sample, ::self.down_sample, :, np.newaxis]
-                seg_vol = seg_vol[::self.down_sample, ::self.down_sample, :, np.newaxis]
+            ACE = ACE[::self.down_sample, ::self.down_sample, :, np.newaxis]
+            NCE = NCE[::self.down_sample, ::self.down_sample, :, np.newaxis]
+            seg = seg[::self.down_sample, ::self.down_sample, :, np.newaxis]
                 
-                if self.expt_type == "GAN":
-                    ACE_vol = ACE_vol * 2 - 1
-                    NCE_vol = NCE_vol * 2 - 1
+            if self.expt_type == "GAN":
+                ACE = ACE * 2 - 1
+                NCE = NCE * 2 - 1
 
-                try:
-                    a = self.coords[ACE_name[:-4]]
-                except KeyError:
-                    self.coords[ACE_name[:-4]] = [[256.0, 256.0], [256.0, 256.0], [256.0, 256.0]]
+            yield (NCE, ACE, seg, np.array(self.json[seg_name[-20:-4]]) // self.down_sample)
 
-                yield (NCE_vol, ACE_vol, np.zeros((ACE_vol.shape)), np.array(self.coords[ACE_name[:-4]]) // self.down_sample)
+            i += 1
 
-            finally:
-                i += 1
+#-------------------------------------------------------------------------
 
+class OneToOneLoader(BaseImgLoader):
+    def __init__(self, config, dataset_type, fold):
+        super().__init__(config, dataset_type, fold)
 
-#----------------------------------------------------------------------------------------------------------------------------------------------------
+    def img_pairer(self, NCE):
+        ACE = glob.glob(f"{self.target_path}{NCE[0:6]}{self.labels}*_{NCE[-7:]}")
+        assert len(ACE) == 1, ACE
+        ACE = ACE[0]
+        NCE = f"{self.source_path}{NCE}"
+        seg = f"{self.seg_path}{ACE[-20:-8]}M{ACE[-8:]}"
+
+        return NCE, ACE, seg
+
+#-------------------------------------------------------------------------
 """ DiffAug class for differentiable augmentation
     Paper: https://arxiv.org/abs/2006.10738
     Adapted from: https://github.com/mit-han-lab/data-efficient-gans """
