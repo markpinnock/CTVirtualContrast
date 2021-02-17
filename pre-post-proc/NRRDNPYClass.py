@@ -228,10 +228,10 @@ class ImgConv:
                     raise ValueError("Incorrect seg dims")
 
                 seg_sub_vol = np.bitwise_or.reduce(seg[:, :, :, :-1], axis=3).squeeze()
-                coords[f"{seg_stem}_{idx:02d}"] = [arteries, r_kidney, l_kidney]
+                coords[f"{seg_stem}_{idx:03d}"] = [arteries, r_kidney, l_kidney]
 
-                np.save(f"{self.save_path}{self.target}/{target_stem}_{idx:02d}.npy", target_sub_vol)
-                np.save(f"{self.save_path}/Segs/{seg_stem}_{idx:02d}.npy", seg_sub_vol)
+                np.save(f"{self.save_path}{self.target}/{target_stem}_{idx:03d}.npy", target_sub_vol)
+                np.save(f"{self.save_path}/Segs/{seg_stem}_{idx:03d}.npy", seg_sub_vol)
                 idx += 1
 
             # Partition targets into sub-volumes
@@ -242,7 +242,7 @@ class ImgConv:
                     break
 
                 source_sub_vol = source[:, :, i:i + self.output_dims[2]]
-                np.save(f"{self.save_path}{self.source}/{source_stem}_{idx:02d}.npy", source_sub_vol)
+                np.save(f"{self.save_path}{self.source}/{source_stem}_{idx:03d}.npy", source_sub_vol)
                 idx += 1
 
             count += 1

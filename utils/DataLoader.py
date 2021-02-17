@@ -83,11 +83,12 @@ class ImgLoader:
             try:
                 ACE_name = self.ACE_list[i]
                 NCE_name_start = ACE_name[0:6]
-                NCE_name_end = ACE_name[-6:]
+                NCE_name_end = ACE_name[-7:]
                 ACE_vol = np.load(self.ACE_path + ACE_name).astype(np.float32)
                 NCE_name = glob.glob(f"{self.NCE_path}{NCE_name_start}HQ*_{NCE_name_end}")
+
                 assert len(NCE_name) == 1
-                seg_name = f"{ACE_name[:-7]}M{ACE_name[-7:]}"
+                seg_name = f"{ACE_name[:-8]}M{ACE_name[-8:]}"
                 NCE_vol = np.load(NCE_name[0])
                 seg_vol = np.load(f"{self.seg_path}{seg_name}")
 
