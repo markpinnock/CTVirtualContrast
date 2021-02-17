@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import sys
 import tensorflow as tf
 import tensorflow.keras as keras
@@ -394,8 +395,9 @@ class CropGAN(BaseGAN):
         XY_DIMS = source.shape[1:3]
         IMG_DEPTH = source.shape[3]
 
-        x_coord = tf.reshape(tf.cast(coords[:, 0], tf.int32), [MB_SIZE, 1, 1, 1])
-        y_coord = tf.reshape(tf.cast(coords[:, 1], tf.int32), [MB_SIZE, 1, 1, 1])
+        # NB: note x and y coords are swapped!
+        y_coord = tf.reshape(tf.cast(coords[:, 0], tf.int32), [MB_SIZE, 1, 1, 1])
+        x_coord = tf.reshape(tf.cast(coords[:, 1], tf.int32), [MB_SIZE, 1, 1, 1])
 
         N, X, Y, Z = tf.meshgrid(tf.range(MB_SIZE), tf.range(CROP_WIDTH, dtype=tf.int32), tf.range(CROP_HEIGHT, dtype=tf.int32), tf.range(IMG_DEPTH), indexing='ij')
         X = X + x_coord - CROP_WIDTH // 2
@@ -410,10 +412,6 @@ class CropGAN(BaseGAN):
         target = tf.reshape(target, [MB_SIZE, CROP_HEIGHT, CROP_WIDTH, IMG_DEPTH, 1])
         mask = tf.gather_nd(mask, idx_grid, batch_dims=1)
         mask = tf.reshape(mask, [MB_SIZE, CROP_HEIGHT, CROP_WIDTH, IMG_DEPTH, 1])
-
-        # ROI_shape = tf.reshape(tf.stack([MB_SIZE, XY_DIMS[0], XY_DIMS[1]]), [1, 1, 1, 3])
-        # ROI_grid = tf.maximum(ROI_grid, 0)
-        # ROI_grid = tf.minimum(ROI_grid, ROI_lims)
 
         return source, target, mask        
     

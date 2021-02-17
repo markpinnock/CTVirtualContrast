@@ -11,7 +11,7 @@ from TrainingLoops import TrainingLoopUNet, TrainingLoopGAN, print_model_summary
 from networks.GANWrapper import BaseGAN, CropGAN
 from networks.ResidualNet import ResNet
 from networks.UNet import UNet
-from utils.DataLoader import ImgLoader
+from utils.DataLoader import OneToOneLoader
 
 
 """ Training script """
@@ -58,12 +58,12 @@ if arguments.g_layers is not None:
     CONFIG["HYPERPARAMS"]["G_LAYERS"] = arguments.g_layers
 
 # Initialise datasets
-TrainGenerator = ImgLoader(
+TrainGenerator = OneToOneLoader(
     config=CONFIG["EXPT"],
     dataset_type="training",
     fold=5)
 
-ValGenerator = ImgLoader(
+ValGenerator = OneToOneLoader(
     config=CONFIG["EXPT"],
     dataset_type="validation",
     fold=5)

@@ -281,7 +281,9 @@ class TrainingLoopGAN(BaseTrainingLoop):
     def save_images_ROI(self, epoch):
         """ Saves sample of cropped images """
 
-        NCE, ACE, seg, coords = next(iter(self.ds_val))
+        ds_iter = iter(self.ds_val)
+        _, _, _, _ = next(ds_iter)
+        NCE, ACE, seg, coords = next(ds_iter)
         NCEs, ACEs, pred = [], [], []
 
         for i in range(3):
