@@ -8,9 +8,9 @@ import tensorflow.keras as keras
 import tensorflow as tf
 
 from TrainingLoops import TrainingLoopUNet, TrainingLoopGAN, print_model_summary
-from networks.GANWrapper import BaseGAN, CropGAN
+from networks.GANWrapper import GAN, CropGAN
+from networks.UNet import UNet, CropUNet
 from networks.ResidualNet import ResNet
-from networks.UNet import UNet
 from utils.DataLoader import OneToOneLoader
 
 
@@ -87,12 +87,16 @@ val_ds = tf.data.Dataset.from_generator(
 
 # Compile model
 if CONFIG["EXPT"]["MODEL"] == "UNet":
-    Model = UNet(config=CONFIG)
+    if not CONFIG["EXPT"]["CROP"]:
+        Model = UNet(config=CONFIG)
+    elif CONFIG["EXPT"]["CROP"]:
+        Model = CropUNet(config=CONFIG)
+
     TrainingLoop = TrainingLoopUNet(Model=Model, dataset=(train_ds, val_ds), config=CONFIG)
 
 elif CONFIG["EXPT"]["MODEL"] == "GAN":
     if not CONFIG["EXPT"]["CROP"]:
-        Model = BaseGAN(config=CONFIG)
+        Model = GAN(config=CONFIG)
     elif CONFIG["EXPT"]["CROP"]:
         Model = CropGAN(config=CONFIG)
 

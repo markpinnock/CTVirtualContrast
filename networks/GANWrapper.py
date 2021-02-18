@@ -12,7 +12,7 @@ from utils.Losses import FocalLoss, FocalMetric
 #-------------------------------------------------------------------------
 """ Wrapper for standard Pix2pix GAN """
 
-class BaseGAN(keras.Model):
+class GAN(keras.Model):
 
     """ GAN class
         - config: configuration json
@@ -222,9 +222,9 @@ class BaseGAN(keras.Model):
         self.val_L1_metric.update_state(target, g_fake, mask)
 
 #-------------------------------------------------------------------------
-""" Pix2pix GAN with focal and global discriminator - inherits from BaseGAN """
+""" Pix2pix GAN with focal and global discriminator - inherits from base GAN """
 
-class DoubleGAN(BaseGAN):
+class DoubleGAN(GAN):
 
     def __init__(self, config, GAN_type="original", name="GAN"):
         
@@ -378,9 +378,9 @@ class DoubleGAN(BaseGAN):
             self.generator_metrics[d_name]["g_metric"].update_state(g_loss)
 
 #-------------------------------------------------------------------------
-""" GAN acting on cropped ROIs - inherits from BaseGAN """
+""" GAN acting on cropped ROIs - inherits from base GAN """
 
-class CropGAN(BaseGAN):
+class CropGAN(GAN):
 
     def __init__(self, config, GAN_type="original", name="GAN"):
         super().__init__(config, GAN_type="original", name="GAN")
