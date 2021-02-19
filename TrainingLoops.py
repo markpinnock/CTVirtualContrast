@@ -74,7 +74,7 @@ class BaseTrainingLoop(ABC):
 
         raise NotImplementedError
 
-    def save_images(self, ACE, NCE, pred, epoch):
+    def save_images(self, ACE, NCE, pred, epoch=None, tuning_path=None):
         """ Saves sample of images """
 
         fig, axs = plt.subplots(ACE.shape[0], 4)
@@ -89,7 +89,13 @@ class BaseTrainingLoop(ABC):
             axs[i, 3].imshow(np.abs(pred[i, :, :, 11, 0].T - ACE[i, :, :, 11, 0].T), cmap="hot")
             axs[i, 3].axis("off")
 
-        plt.savefig(f"{self.IMAGE_SAVE_PATH}{epoch}.png", dpi=250)
+        plt.tight_layout()
+
+        if tuning_path:
+            plt.savefig(f"{tuning_path}.png", dpi=250)
+        else:
+            plt.savefig(f"{self.IMAGE_SAVE_PATH}{epoch}.png", dpi=250)
+
         plt.close()
 
     @abstractmethod
@@ -163,15 +169,15 @@ class TrainingLoopUNet(BaseTrainingLoop):
             print(f"Time taken: {(time.time() - start_time) / 3600}")
             self.Model.save_weights(f"{self.MODEL_SAVE_PATH}/{self.config['EXPT']['EXPT_NAME']}")
 
-    def save_images(self, epoch):
+    def save_images(self, epoch=None, tuning_path=None):
         """ Saves sample of images """
 
         NCE, ACE, _, _ = next(iter(self.ds_val))
-        NCE, ACE = NCE.numpy(), ACE.numpy()
+        NCE, ACE = NCE[0:4, ...].numpy(), ACE[0:4, ...].numpy()
         pred = self.Model(NCE, training=False).numpy()
-        super().save_images(NCE, ACE, pred, epoch)
+        super().save_images(NCE, ACE, pred, epoch, tuning_path)
     
-    def save_images_ROI(self, epoch):
+    def save_images_ROI(self, epoch=None, tuning_path=None):
         """ Saves sample of cropped images """
 
         ds_iter = iter(self.ds_val)
@@ -188,17 +194,17 @@ class TrainingLoopUNet(BaseTrainingLoop):
         ACEs = tf.stack(ACEs, axis=0)
 
         pred = self.Model(NCEs, training=False).numpy()
-        super().save_images(NCEs.numpy(), ACEs.numpy(), pred, epoch)
+        super().save_images(NCEs.numpy(), ACEs.numpy(), pred, epoch, tuning_path)
     
     def save_results(self, tuning_path=None):
         """ Saves json of results and saves loss curves """
 
         plt.figure()
-        plt.plot(self.results["epochs"], self.results["train_metric"]["global"], 'k-', label="Train global")
-        plt.plot(self.results["epochs"], self.results["train_metric"]["focal"], 'k--', label="Train focal")
+        plt.plot(self.results["epochs"], self.results["train_metric"]["global"], 'k--', label="Train global")
+        plt.plot(self.results["epochs"], self.results["train_metric"]["focal"], 'r--', label="Train focal")
 
         if self.config["EXPT"]["CV_FOLDS"]:
-            plt.plot(self.results["epochs"], self.results["val_metric"]["global"], 'r-', label="Val global")
+            plt.plot(self.results["epochs"], self.results["val_metric"]["global"], 'k-', label="Val global")
             plt.plot(self.results["epochs"], self.results["val_metric"]["focal"], 'r-', label="Val focal")
 
         plt.xlabel("Epochs")
@@ -293,15 +299,15 @@ class TrainingLoopGAN(BaseTrainingLoop):
         self._results["time"] = (time.time() - start_time) / 3600
         print(f"Time taken: {(time.time() - start_time) / 3600}")
     
-    def save_images(self, epoch):
+    def save_images(self, epoch=None, tuning_path=None):
         """ Saves sample of images """
 
         NCE, ACE, _, _ = next(iter(self.ds_val))
-        NCE, ACE = NCE.numpy(), ACE.numpy()
+        NCE, ACE = NCE[0:4, ...].numpy(), ACE[0:4, ...].numpy()
         pred = self.Model.Generator(NCE, training=False).numpy()
-        super().save_images(NCE[0:4], ACE[0:4], pred[0:4], epoch)
+        super().save_images(NCE[0:4], ACE[0:4], pred[0:4], epoch, tuning_path=None)
     
-    def save_images_ROI(self, epoch):
+    def save_images_ROI(self, epoch=None, tuning_path=None):
         """ Saves sample of cropped images """
 
         ds_iter = iter(self.ds_val)
@@ -318,9 +324,9 @@ class TrainingLoopGAN(BaseTrainingLoop):
         ACEs = tf.stack(ACEs, axis=0)
 
         pred = self.Model.Generator(NCEs, training=False).numpy()
-        super().save_images(NCEs.numpy(), ACEs.numpy(), pred, epoch)
+        super().save_images(NCEs.numpy(), ACEs.numpy(), pred, epoch, tuning_path=None)
 
-    def save_results(self, tuning_path):
+    def save_results(self, tuning_path=None):
         """ Saves json of results and saves loss curves """
 
         plt.figure()
@@ -338,8 +344,8 @@ class TrainingLoopGAN(BaseTrainingLoop):
         plt.plot(self.results["epochs"], self.results["train_L1"]["focal"], 'r--', label="Train focal L1")
 
         if self.config["EXPT"]["CV_FOLDS"]:
-            plt.plot(self.results["epochs"], self.results["val_L1"]["global"], 'k', label="Val global L1")
-            plt.plot(self.results["epochs"], self.results["val_L1"]["focal"], 'r', label="Val focal L1")
+            plt.plot(self.results["epochs"], self.results["val_L1"]["global"], 'k-', label="Val global L1")
+            plt.plot(self.results["epochs"], self.results["val_L1"]["focal"], 'r-', label="Val focal L1")
 
         plt.xlabel("Epochs")
         plt.ylabel("L1")

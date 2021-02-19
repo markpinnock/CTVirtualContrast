@@ -11,17 +11,27 @@ class DownBlock(keras.layers.Layer):
         - nc: number of channels in block
         - pool_strides: number of pooling strides e.g. (2, 2, 1) """
 
-    def __init__(self, nc, pool_strides):
-        super(DownBlock, self).__init__(self)
+    def __init__(self, nc, pool_strides, bn):
+        super().__init__()
+        self.bn = bn
 
-        self.conv1 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
-        self.conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
+        self.conv1 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
+        if bn: self.bn1 = keras.layers.BatchNormalization()
+        self.conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
+        if bn: self.bn2 = keras.layers.BatchNormalization()
         self.pool = keras.layers.MaxPool3D((2, 2, 2), strides=pool_strides, padding='same')
         # TODO: Consider group normalisation
         # TODO: Consider pool -> conv3
-    def call(self, x):
-        x = self.conv1(x)
-        x = self.conv2(x)
+    def call(self, x, training):
+
+        if self.bn:
+            x = tf.nn.relu(self.bn1(self.conv1(x), training))
+            x = tf.nn.relu(self.bn2(self.conv2(x), training))
+
+        else:
+            x = tf.nn.relu(self.conv1(x))
+            x = tf.nn.relu(self.conv2(x))
+
         return self.pool(x), x
 
 #-------------------------------------------------------------------------
@@ -33,18 +43,30 @@ class UpBlock(keras.layers.Layer):
         - nc: number of channels in block
         - tconv_strides: number of transpose conv  strides e.g. (2x2x1) """
     
-    def __init__(self, nc, tconv_strides):
-        super(UpBlock, self).__init__(self)
+    def __init__(self, nc, tconv_strides, bn):
+        super().__init__()
+        self.bn = bn
 
-        self.tconv = keras.layers.Conv3DTranspose(nc, (2, 2, 2), strides=tconv_strides, padding='same', activation='relu')
-        self.conv1 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
-        self.conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
-    
-    def call(self, x, skip):
-        x = self.tconv(x)
-        x = keras.layers.concatenate([x, skip], axis=4)
-        x = self.conv1(x)
-        return self.conv2(x)
+        self.tconv = keras.layers.Conv3DTranspose(nc, (2, 2, 2), strides=tconv_strides, padding='same', activation='linear')
+        if bn: self.bn1 = keras.layers.BatchNormalization()
+        self.conv1 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
+        if bn: self.bn2 = keras.layers.BatchNormalization()
+        # self.conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
+        # if bn: self.bn3 = keras.layers.BatchNormalization()
+
+    def call(self, x, skip, training):
+
+        if self.bn:
+            x = tf.nn.relu(self.bn1(self.tconv(x), training))
+            x = keras.layers.concatenate([x, skip], axis=4)
+            x = tf.nn.relu(self.bn2(self.conv1(x), training))
+        
+        else:
+            x = tf.nn.relu(self.tconv(x))
+            x = keras.layers.concatenate([x, skip], axis=4)
+            x = tf.nn.relu(self.conv1(x))
+
+        return x
 
 #-------------------------------------------------------------------------
 """ Down-sampling convolutional block for Pix2pix discriminator and generator """

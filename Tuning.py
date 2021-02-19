@@ -22,7 +22,7 @@ args = parser.parse_args()
 with open(args.config_path, 'r') as infile:
     CONFIG = json.load(infile)
 
-# Set number of runs and save path
+# Set number of runs and run algorithm
 if args.runs is not None:
     RUNS = args.runs
 else:

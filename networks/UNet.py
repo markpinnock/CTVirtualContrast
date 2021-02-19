@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import sys
 import tensorflow as tf
@@ -7,6 +8,8 @@ sys.path.append("..")
 
 from networks.Layers import DownBlock, UpBlock
 from utils.Losses import FocalLoss, FocalMetric, DiceLoss, DiceMetric
+from utils.UNetAug import affine_transformation, TransMatGen
+from utils.Transformation import affineTransformation
 
 
 class UNet(keras.Model):
@@ -26,25 +29,38 @@ class UNet(keras.Model):
 
         self.metric = FocalMetric(loss_fn=config["HYPERPARAMS"]["LOSS"])
         nc = config["HYPERPARAMS"]["NF"]
+        self.bn = config["HYPERPARAMS"]["BATCHNORM"]
+
+        # Data augmentation class
+        if config["HYPERPARAMS"]["AUGMENT"]:
+            self.DataAug = TransMatGen()
+        else:
+            self.DataAug = None
 
         # TODO: arbitrary img dims and layers
-        self.down1 = DownBlock(nc, (2, 2, 2))
-        self.down2 = DownBlock(nc * 2, (2, 2, 2))
-        self.down3 = DownBlock(nc * 4, (2, 2, 1))
-        self.down4 = keras.layers.Conv3D(nc * 8, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='relu')
-        self.up1 = UpBlock(nc * 4, (2, 2, 1))
-        self.up2 = UpBlock(nc * 2, (2, 2, 2))
-        self.up3 = UpBlock(nc, (2, 2, 2))
+        self.down1 = DownBlock(nc, (2, 2, 2), self.bn)
+        self.down2 = DownBlock(nc * 2, (2, 2, 2), self.bn)
+        self.down3 = DownBlock(nc * 4, (2, 2, 1), self.bn)
+        self.down4 = keras.layers.Conv3D(nc * 8, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
+        if self.bn: self.batchnorm = keras.layers.BatchNormalization()
+        self.up1 = UpBlock(nc * 4, (2, 2, 1), self.bn)
+        self.up2 = UpBlock(nc * 2, (2, 2, 2), self.bn)
+        self.up3 = UpBlock(nc, (2, 2, 2), self.bn)
         self.out = keras.layers.Conv3D(1, (1, 1, 1), strides=(1, 1, 1), padding='same', activation='linear')
 
-    def call(self, x):
-        h, skip1 = self.down1(x)
-        h, skip2 = self.down2(h)
-        h, skip3 = self.down3(h)
-        h = self.down4(h)
-        h = self.up1(h, skip3)
-        h = self.up2(h, skip2)
-        h = self.up3(h, skip1)
+    def call(self, x, training):
+        h, skip1 = self.down1(x, training)
+        h, skip2 = self.down2(h, training)
+        h, skip3 = self.down3(h, training)
+
+        if self.bn:
+            h = tf.nn.relu(self.batchnorm(self.down4(h), training))
+        else:
+            h = tf.nn.relu(self.down4(h))
+
+        h = self.up1(h, skip3, training)
+        h = self.up2(h, skip2, training)
+        h = self.up3(h, skip1, training)
         
         return self.out(h)
     
@@ -52,8 +68,14 @@ class UNet(keras.Model):
         raise NotImplementedError
     
     @tf.function
-    def train_step(self, data):
+    def train_step(self, data, transformed=0):
         NCE, ACE, seg, _ = data
+
+        if self.DataAug and not transformed:
+            trans_mat = self.DataAug.transMatGen(NCE.shape[0])
+            NCE = affine_transformation(NCE, trans_mat)
+            ACE = affine_transformation(ACE, trans_mat)
+            seg = affine_transformation(seg, trans_mat)
 
         with tf.GradientTape() as tape:
             pred = self(NCE, training=True)
@@ -111,11 +133,20 @@ class CropUNet(UNet):
     @tf.function
     def train_step(self, data):
         source, target, mask, coords = data
+        transformed = 0
+    
+        if self.DataAug:
+            # TODO: transform coords as well as image
+            trans_mat = self.DataAug.transMatGen(source.shape[0])
+            source = affine_transformation(source, trans_mat)
+            target = affine_transformation(target, trans_mat)
+            mask = affine_transformation(mask, trans_mat)
+            transformed = 1
         
         for i in range(coords.shape[1]):
             # Crop ROI
             source, target, mask = self.crop_ROI(source, target, mask, coords[:, i, :])
-            super().train_step((source, target, mask, None))
+            super().train_step((source, target, mask, None), transformed)
 
     @tf.function
     def val_step(self, data):

@@ -8,10 +8,11 @@ import time
     https://github.com/daviddao/spatial-transformer-tensorflow/blob/master/spatial_transformer.py """
 
 
-def affineTransformation(input_vol, thetas, mb_size):
+def affineTransformation(input_vol, thetas):
     """ input_vol: 3D img volume (mb, height, width, depth, nc)
         thetas: 12 params for transform (mb, 12) """
 
+    mb_size = input_vol.shape[0] 
     height = input_vol.shape[1]
     width = input_vol.shape[2]
     depth = input_vol.shape[3]
@@ -146,7 +147,7 @@ def interpolate(input_vol, X, Y, Z, mb_size):
 
 if __name__ == "__main__":
     start_t = time.time()
-    img_vol = np.zeros((4, 128, 128, 128, 1))
+    img_vol = np.zeros((4, 128, 128, 64, 1))
     img_vol[:, 54:74, 54:74, :, :] = 1
     # img_vol = np.zeros((4, 8, 8, 8, 1)) # TEST
     # img_vol[:, 2:6, 2:6, :, :] = 1 # TEST
@@ -162,7 +163,7 @@ if __name__ == "__main__":
 
     print(time.time() - start_t)
 
-    for i in range(0, 128, 16):
+    for i in range(0, 12, 2):
         fig, axs = plt.subplots(2, 4)
         axs[0, 0].imshow(img_vol[0, :, :, i, 0])
         axs[0, 1].imshow(img_vol[1, :, :, i, 0])
