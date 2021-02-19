@@ -81,7 +81,7 @@ class GAN(keras.Model):
 
     def generator_init(self, config):
 
-        self.g_optimiser = keras.optimizers.Adam(2e-4, 0.5, 0.999, name="g_opt")
+        self.g_optimiser = keras.optimizers.Adam(config["HYPERPARAMS"]["G_ETA"], 0.5, 0.999, name="g_opt")
 
         # Check generator output dims match input
         G_input_size = [1] + config["EXPT"]["IMG_DIMS"] + [1]
@@ -95,7 +95,7 @@ class GAN(keras.Model):
         
     def discriminator_init(self, config):
 
-        self.d_optimiser = keras.optimizers.Adam(2e-4, 0.5, 0.999, name="d_opt")
+        self.d_optimiser = keras.optimizers.Adam(config["HYPERPARAMS"]["D_ETA"], 0.5, 0.999, name="d_opt")
 
         # Get discriminator patch size
         D_input_size = [1] + config["EXPT"]["IMG_DIMS"] + [self.d_in_ch]

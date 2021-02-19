@@ -64,16 +64,16 @@ class BaseTuner(ABC):
 
 class GridSearch(BaseTuner):
 
-    def __init__(self, CONFIG, TrainingLoop):
+    def __init__(self, EXPT_NAME, CONFIG, TrainingLoop):
         super().__init__(CONFIG, TrainingLoop)
         self.CONFIG["EXPT"]["EXPT_NAME"] = "GridSearch"
-        self.RESULTS_PATH = f"{CONFIG['EXPT']['SAVE_PATH']}tuning/GridSearch/{CONFIG['EXPT']['MODEL']}/"
+        self.RESULTS_PATH = f"{CONFIG['EXPT']['SAVE_PATH']}tuning/GridSearch/{CONFIG['EXPT']['MODEL']}/{EXPT_NAME}/"
         if not os.path.exists(self.RESULTS_PATH): os.makedirs(self.RESULTS_PATH)
     
     def tuning_loop(self):
         """ Runs training process for hyper-parameters """
 
-        etas = [float(np.power(10.0, -i)) for i in range(1, 6)]
+        etas = [float(np.power(10.0, -i)) for i in range(2, 5)]
         ROIs = [int(512 / (np.power(2, x) * self.CONFIG["EXPT"]["DOWN_SAMP"])) for x in range(4)]
         ROI_grid, eta_grid = np.meshgrid(etas, ROIs)
         hyper_params = np.vstack([eta_grid.ravel(), ROI_grid.ravel()])
@@ -123,37 +123,81 @@ class GridSearch(BaseTuner):
 
 class RandomSearch(BaseTuner):
 
-    def __init__(self, CONFIG, TrainingLoop):
+    def __init__(self, EXPT_NAME, CONFIG, TrainingLoop):
         super().__init__(CONFIG, TrainingLoop)
-        self.CONFIG["EXPT"]["EXPT_NAME"] = "Random"
+        self.CONFIG["EXPT"]["EXPT_NAME"] = "RandomSearch"
+        self.RESULTS_PATH = f"{CONFIG['EXPT']['SAVE_PATH']}tuning/RandomSearch/{CONFIG['EXPT']['MODEL']}/{EXPT_NAME}/"
+        if not os.path.exists(self.RESULTS_PATH): os.makedirs(self.RESULTS_PATH)
     
-    def tuning_loop(self):
+    def tuning_loop(self, runs):
         """ Runs training process for hyper-parameters """
 
-        np.random.seed(5)
+        np.random.seed()
 
-        for i in range(RUNS):
+        for i in range(runs):
 
-            self.CONFIG["HYPERPARAMS"]["ETA"] = float(np.power(10.0, np.random.uniform(-1, -6)))
-            num_layers = self.CONFIG["HYPERPARAMS"]["LAYERS"]
-            self.CONFIG["HYPERPARAMS"]["NF"] = [int(np.power(2, np.random.randint(3, 10))) for _ in range(num_layers)]
-
-            run_name = f"ETA_{self.CONFIG['EXPT']['ETA']:.6f}"\
-                    f"_NF_{str(self.CONFIG['MODEL_CONFIG']['UNITS'])}"
+            self.CONFIG["HYPERPARAMS"]["D_ETA"] = float(np.power(10.0, -np.random.uniform(2, 5)))
+            self.CONFIG["HYPERPARAMS"]["G_ETA"] = float(np.power(10.0, -np.random.uniform(2, 5)))
+            self.CONFIG["HYPERPARAMS"]["LAMBDA"] = float(np.power(10.0, np.random.uniform(0, 3)))
             
-            # Initialise model and training loop with current hyper-parameters
-            Model = self.Model(self.CONFIG)
-            self.Train = TrainingLoop(Model=Model, dataset=(self.train_ds, self.val_ds), config=self.CONFIG)
+            if self.CONFIG["HYPERPARAMS"]["LAMBDA"]:
+                self.CONFIG["HYPERPARAMS"]["MU"] = float(np.random.uniform(0, 1))
+            else:
+                self.CONFIG["HYPERPARAMS"]["MU"] = 0.0
+
+            self.CONFIG["HYPERPARAMS"]["NDF_G"] = int(np.random.choice([16, 32, 64]))
+            self.CONFIG["HYPERPARAMS"]["NGF"] = int(np.random.choice([16, 32, 64]))
+            self.CONFIG["HYPERPARAMS"]["D_IN_CH"] = int(np.random.choice([2, 3]))
+            ROI = int(np.random.choice([512, 256, 128, 64]) / self.CONFIG["EXPT"]["DOWN_SAMP"])
+            self.CONFIG["EXPT"]["IMG_DIMS"] = [ROI, ROI, 12]
+            self.CONFIG["HYPERPARAMS"]["D_LAYERS_G"] = int(np.random.randint(1, np.log2(ROI / 4)))
+            self.CONFIG["HYPERPARAMS"]["G_LAYERS"] = int(np.random.randint(2, np.log2(ROI)))
+            
+            # TODO: need a better solution to max_z_downsample == num_layers bug
+            if self.CONFIG["HYPERPARAMS"]["G_LAYERS"] == 3:
+                if np.random.rand() > 0.5:
+                    self.CONFIG["HYPERPARAMS"]["G_LAYERS"] = 4
+                else:
+                    self.CONFIG["HYPERPARAMS"]["G_LAYERS"] = 2
+
+            # Select ROI or base model
+            if ROI == 512 // self.CONFIG["EXPT"]["DOWN_SAMP"]:
+                self.CONFIG["EXPT"]["CROP"] = 0
+                Model = GAN(self.CONFIG)
+            else:
+                self.CONFIG["EXPT"]["CROP"] = 1
+                Model = CropGAN(self.CONFIG)
+
+            run_name = f"DETA_{self.CONFIG['HYPERPARAMS']['D_ETA']:.6f}_"\
+                       f"GETA_{self.CONFIG['HYPERPARAMS']['G_ETA']:.6f}_"\
+                       f"LAMBDA_{self.CONFIG['HYPERPARAMS']['LAMBDA']:.2f}_"\
+                       f"MU_{self.CONFIG['HYPERPARAMS']['MU']:.2f}_"\
+                       f"DNF_{self.CONFIG['HYPERPARAMS']['NDF_G']}_"\
+                       f"GNF_{self.CONFIG['HYPERPARAMS']['NGF']}_"\
+                       f"DLA_{self.CONFIG['HYPERPARAMS']['D_LAYERS_G']}_"\
+                       f"GLA_{self.CONFIG['HYPERPARAMS']['G_LAYERS']}_"\
+                       f"INCH_{self.CONFIG['HYPERPARAMS']['D_IN_CH']}_"\
+                       f"ROI_{ROI}"
+
+            self.Train = self.TrainingLoop(Model=Model, dataset=(self.train_ds, self.val_ds), config=self.CONFIG)
 
             print("=================================================")
             print(f"{run_name} ({i + 1} of {runs})")
 
             self.Train.training_loop(verbose=0)
             self.save_results(run_name)
+
+            # Save sample images
+            if self.Train.config["EXPT"]["CROP"]:
+                self.Train.save_images_ROI(epoch=None, tuning_path=f"{self.RESULTS_PATH}images_{run_name}.png")
+            else:
+                self.Train.save_images(epoch=None, tuning_path=f"{self.RESULTS_PATH}images_{run_name}.png")
     
     def save_results(self, run_name: str):
         """ Save current results
             - run_name: hyper-parameter combination """
 
-        raise NotImplementedError
+        results = self.Train.results
+        self.curr_results["train"] = [results["train_L1"]["global"][-1], results["train_L1"]["focal"][-1]]
+        self.curr_results["validation"] = [results["val_L1"]["global"][-1], results["val_L1"]["focal"][-1]]
         super().save_results(run_name)

@@ -27,7 +27,7 @@ class Discriminator(keras.Model):
         assert len(img_dims) == 3, "3D input only"
         max_num_layers = int(np.log2(np.min([img_dims[0], img_dims[1]]) / 4))
         max_z_downsample = int(np.floor(np.log2(img_dims[2])))
-        
+
         if d_focal:
             ndf = config["HYPERPARAMS"]["NDF_F"]
             num_layers = config["HYPERPARAMS"]["D_LAYERS_F"]
@@ -132,7 +132,7 @@ class Generator(keras.Model):
         max_z_downsample = int(np.floor(np.log2(img_dims[2])))
         ngf = config["HYPERPARAMS"]["NGF"]
         num_layers = config["HYPERPARAMS"]["G_LAYERS"]
-        assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum numnber of discriminator layers: {max_num_layers}"
+        assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum number of discriminator layers: {max_num_layers}"
         self.encoder = []
 
         # Cache channels, strides and weights
@@ -159,7 +159,8 @@ class Generator(keras.Model):
                     strides,
                     initialiser=initialiser,
                     batch_norm=True, name=f"down_{i}"))
-            
+        
+        # TODO: Needs better implementation to avoid concat bug from above loop
         self.bottom_layer = keras.layers.Conv3D(
                 channels, kernel, strides,
                 padding="same", activation="relu",

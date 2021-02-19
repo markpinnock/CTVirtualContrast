@@ -235,7 +235,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
     # else:
     #     results = {"Discriminator": {}}
 
-    def training_loop(self):
+    def training_loop(self, verbose=1):
         """ Main training loop for GAN """
 
         self._results = {}
@@ -272,7 +272,8 @@ class TrainingLoopGAN(BaseTrainingLoop):
             self._results["d_metric"].append(float(self.Model.discriminator_metric.result()))
 
             # for key in model.discriminator_metrics.keys():
-            print(f"Train epoch {epoch + 1}, G: {self.Model.generator_metric.result():.4f} D: {self.Model.discriminator_metric.result():.4f}, L1 [global focal]: {self.Model.train_L1_metric.result()}")
+            if verbose:
+                print(f"Train epoch {epoch + 1}, G: {self.Model.generator_metric.result():.4f} D: {self.Model.discriminator_metric.result():.4f}, L1 [global focal]: {self.Model.train_L1_metric.result()}")
 
             if self.config["EXPT"]["CV_FOLDS"] != 0:
                 self.Model.val_L1_metric.reset_states()
@@ -283,7 +284,8 @@ class TrainingLoopGAN(BaseTrainingLoop):
                 self._results["val_L1"]["global"].append(float(self.Model.val_L1_metric.result()[0]))
                 self._results["val_L1"]["focal"].append(float(self.Model.val_L1_metric.result()[1]))
 
-                print(f"Val epoch {epoch + 1}, L1 [global focal]: {self.Model.val_L1_metric.result()}")
+                if verbose:
+                    print(f"Val epoch {epoch + 1}, L1 [global focal]: {self.Model.val_L1_metric.result()}")
 
             if (epoch + 1) % self.SAVE_EVERY == 0:
                 if self.config["EXPT"]["CROP"]:
@@ -297,7 +299,9 @@ class TrainingLoopGAN(BaseTrainingLoop):
                 super().save_results()
 
         self._results["time"] = (time.time() - start_time) / 3600
-        print(f"Time taken: {(time.time() - start_time) / 3600}")
+        
+        if verbose:
+            print(f"Time taken: {(time.time() - start_time) / 3600}")
     
     def save_images(self, epoch=None, tuning_path=None):
         """ Saves sample of images """
@@ -305,7 +309,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
         NCE, ACE, _, _ = next(iter(self.ds_val))
         NCE, ACE = NCE[0:4, ...].numpy(), ACE[0:4, ...].numpy()
         pred = self.Model.Generator(NCE, training=False).numpy()
-        super().save_images(NCE[0:4], ACE[0:4], pred[0:4], epoch, tuning_path=None)
+        super().save_images(NCE[0:4], ACE[0:4], pred[0:4], epoch, tuning_path)
     
     def save_images_ROI(self, epoch=None, tuning_path=None):
         """ Saves sample of cropped images """
@@ -324,7 +328,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
         ACEs = tf.stack(ACEs, axis=0)
 
         pred = self.Model.Generator(NCEs, training=False).numpy()
-        super().save_images(NCEs.numpy(), ACEs.numpy(), pred, epoch, tuning_path=None)
+        super().save_images(NCEs.numpy(), ACEs.numpy(), pred, epoch, tuning_path)
 
     def save_results(self, tuning_path=None):
         """ Saves json of results and saves loss curves """
