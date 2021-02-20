@@ -117,3 +117,41 @@ class DiceMetric(keras.metrics.Metric):
 
     def reset_states(self):
         self.loss.assign(0.0)
+
+#-------------------------------------------------------------------------
+""" Normalised cross-correlation """
+
+def calc_NCC(a, b):
+    N = tf.cast(tf.reduce_prod(a.shape[1:]), tf.float32)
+    mu_a = tf.reduce_mean(a, axis=[1, 2, 3, 4])
+    mu_b = tf.reduce_mean(b, axis=[1, 2, 3, 4])
+    sig_a = tf.math.reduce_std(a, axis=[1, 2, 3, 4])
+    sig_b = tf.math.reduce_std(b, axis=[1, 2, 3, 4])
+
+    return tf.reduce_mean((a - mu_a) * (b - mu_b), axis=[1, 2, 3, 4]) / (sig_a * sig_b + 1e-12)
+
+#-------------------------------------------------------------------------
+""" Radial basis function """
+
+def calc_RBF(a, b, gamma):
+    return tf.exp(-gamma * tf.reduce_sum(tf.pow(a - b, 2), axis=[1, 2, 3, 4]))
+
+
+if __name__ == "__main__":
+    a = tf.ones((2, 4, 4, 1, 1))
+    b = tf.zeros((2, 4, 4, 1, 1))
+    x = tf.concat([a, b], axis=3)
+    y = tf.concat([b, a], axis=3)
+    print(calc_NCC(x, y).numpy(), calc_RBF(x, y, 1).numpy())
+    print(calc_NCC(x, x).numpy(), calc_RBF(x, x, 1).numpy())
+    print(calc_NCC(y, x).numpy(), calc_RBF(x, y, 1).numpy())
+    print(calc_NCC(y, y).numpy(), calc_RBF(y, y, 1).numpy())
+    print("=======================")
+    import numpy as np
+    img = np.load("C:/ProjectImages/VirtualContrast/AC/T002R1AC007_000.npy")
+    import matplotlib.pyplot as plt
+    i1 = tf.constant(np.fliplr(img), tf.float32)[tf.newaxis, :, :, :, tf.newaxis]
+    i2 = tf.constant(img, tf.float32)[tf.newaxis, :, :, :, tf.newaxis]
+    print(calc_NCC(i1, tf.zeros(i1.shape, tf.float32)).numpy(), calc_RBF(i1, tf.zeros(i1.shape, tf.float32), 1).numpy())
+    print(calc_NCC(i1, i1).numpy(), calc_RBF(i1, i1, 1).numpy())
+    print(calc_NCC(i1, i2).numpy(), calc_RBF(i1, i2, 1).numpy())
