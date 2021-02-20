@@ -151,9 +151,15 @@ class ImgConv:
                     seg = np.flipud(np.fliplr(seg))
 
         return source, target, seg
+    
+    def normalise_image(self, im):
+        return (im - self.abdo_window_min) / (self.abdo_window_max - self.abdo_window_min)
+
 
     def calc_NCC(self, a: object, b: object) -> int:
         assert len(a.shape) == 3
+        a = self.normalise_image(a)
+        b = self.normalise_image(b)
         N = np.prod(a.shape)
 
         mu_a = np.mean(a)
@@ -163,8 +169,11 @@ class ImgConv:
 
         return np.sum((a - mu_a) * (b - mu_b) / (N * sig_a * sig_b))
     
-    def calc_RBF(a: object, b: object, gamma: int) -> int:
-        return np.exp(-gamma * np.sum(np.power(a - b, 2), axis=[1, 2, 3, 4]))
+    def calc_RBF(self, a: object, b: object, gamma: int) -> int:
+        a = self.normalise_image(a)
+        b = self.normalise_image(b)
+
+        return np.exp(-gamma * np.sum(np.power(a - b, 2)))
    
     def segmentation_com(self, seg):
 
@@ -200,8 +209,8 @@ class ImgConv:
 
             # Normalise
             if normalise:
-                source = (source - self.abdo_window_min) / (self.abdo_window_max - self.abdo_window_min)
-                target = (target - self.abdo_window_min) / (self.abdo_window_max - self.abdo_window_min)
+                source = self.normalise_image(source)
+                target = self.normalise_image(target)
 
             # Partition source into sub-volumes
             vol_thick = target.shape[2]
@@ -254,6 +263,8 @@ class ImgConv:
     def view_data(self):
         count = 1
         total = len(self.source_names.keys())
+        nccs, rbfs = [], []
+        fig, axs = plt.subplots(self.num_targets, 6, figsize=(18, 8))
 
         for key in self.source_names.keys():
             if key not in self.target_seg_names: continue
@@ -262,7 +273,6 @@ class ImgConv:
             if source is None or target is None or seg is None:
                 print("Failed")
                 continue
-            fig, axs = plt.subplots(self.num_targets, 6, figsize=(18, 8))
 
             for i in range(self.num_targets):
                 
@@ -277,14 +287,16 @@ class ImgConv:
                 axs[3].axis("off")
                 axs[4].imshow(np.flipud(target[:, 256, :].T), cmap="gray")
                 axs[4].axis("off")
-                axs[5].imshow(np.transpose(seg[:, :, 10, 0:3], [1, 0, 2]), cmap="gray")
+                axs[5].imshow(seg[:, :, 10, 0].T, cmap="gray")
                 axs[5].axis("off")
-
-            # plt.pause(5)
-            # plt.close()
-            # plt.gcf().clear()
-            plt.show()
-    
+                axs[5].set_title(f"RBF: {self.calc_RBF(source, target, 1e-8)}")
+            nccs.append(self.calc_NCC(source, target))
+            rbfs.append(self.calc_RBF(source, target, 3e-7))
+            plt.pause(1)
+            plt.cla()
+        plt.figure()
+        plt.scatter(nccs, rbfs)
+        plt.show()
     def check_saved(self):
         subjects = []
         sources, targets, segs, coord_list = [], [], [], []
@@ -326,37 +338,6 @@ class ImgConv:
             plt.pause(5)
             plt.clf()
 
-    def _resize(self, a, b):
-        a_orig = a.GetOrigin()[2]
-        b_orig = b.GetOrigin()[2]
-        a_thick = a.GetSize()[2]
-        b_thick = b.GetSize()[2]
-        orig_diff = int(b_orig - a_orig)
-        thick_diff = b_thick - a_thick
-
-        # Bottom of b >= bottom of a and top of b < top of a
-        if orig_diff >= 0 and orig_diff + b_thick < a_thick:
-            a = a[:, :, orig_diff:orig_diff + b_thick]
-
-        # Bottom of b >= bottom of a and b top of b >= top of a
-        elif orig_diff >= 0 and orig_diff + b_thick >= a_thick:
-            a = a[:, :, orig_diff:]
-            b = b[:, :, 0:a_thick - orig_diff]
-
-        # Bottom of b < bottom of a and top of a >= top of b
-        elif orig_diff < 0 and abs(orig_diff) + a_thick >= b_thick:
-            a = a[: ,:, 0:b_thick - abs(orig_diff)]
-            b = b[:, :, abs(orig_diff):]
-
-        # Bottom of b < bottom of a and top of a < top of b
-        elif orig_diff < 0 and abs(orig_diff) + a_thick < b_thick:
-            b = b[:, :, abs(orig_diff):abs(orig_diff) + a_thick]
-
-        else:
-            raise ValueError
-
-        return a, b
-
 
 if __name__ == "__main__":
 
@@ -372,9 +353,9 @@ if __name__ == "__main__":
         )
 
     Normal.list_images()
-    # Normal.view_data()
+    Normal.view_data()
     # Normal.save_data(normalise=True)
-    Normal.check_saved()
+    # Normal.check_saved()
 
     # plt.figure(figsize=(18, 9))
 

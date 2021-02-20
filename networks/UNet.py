@@ -7,7 +7,7 @@ import tensorflow.keras as keras
 sys.path.append("..")
 
 from networks.Layers import DownBlock, UpBlock
-from utils.Losses import FocalLoss, FocalMetric, DiceLoss, DiceMetric
+from utils.Losses import Loss, FocalMetric, calc_RBF
 from utils.UNetAug import affine_transformation, TransMatGen
 from utils.Transformation import affineTransformation
 
@@ -17,16 +17,7 @@ class UNet(keras.Model):
     def __init__(self, config):
         super().__init__(name="UNet")
         self.optimiser = keras.optimizers.Adam(config["HYPERPARAMS"]["ETA"], 0.5, 0.999, name="opt")
-
-        if config["HYPERPARAMS"]["MU"] > 0.0:
-            self.loss = FocalLoss(config["HYPERPARAMS"]["MU"], loss_fn=config["HYPERPARAMS"]["LOSS"])
-        elif config["HYPERPARAMS"]["MU"] == 0.0 and config["HYPERPARAMS"]["LOSS"] == "mae":
-            self.loss = keras.losses.MeanAbsoluteError()
-        elif config["HYPERPARAMS"]["MU"] == 0.0 and config["HYPERPARAMS"]["LOSS"] == "mse":
-            self.loss = keras.losses.MeanSquaredError()
-        else:
-            raise ValueError
-
+        self.loss = Loss(config["HYPERPARAMS"], loss_fn=config["HYPERPARAMS"]["LOSS"], name="loss")
         self.metric = FocalMetric(loss_fn=config["HYPERPARAMS"]["LOSS"])
         nc = config["HYPERPARAMS"]["NF"]
         self.bn = config["HYPERPARAMS"]["BATCHNORM"]
@@ -79,7 +70,7 @@ class UNet(keras.Model):
 
         with tf.GradientTape() as tape:
             pred = self(NCE, training=True)
-            loss = self.loss(ACE, pred)
+            loss = self.loss(ACE, pred, seg)
 
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimiser.apply_gradients(zip(gradients, self.trainable_variables))

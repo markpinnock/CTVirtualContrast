@@ -128,8 +128,8 @@ class TrainingLoopUNet(BaseTrainingLoop):
         """ Main training loop for UNet """
 
         self._results = {}
-        self._results["train_metric"] = {"global": [], "focal": []}
-        self._results["val_metric"] = {"global": [], "focal": []}
+        self._results["train_metric"] = {"global": [], "focal": [], "weights": []}
+        self._results["val_metric"] = {"global": [], "focal": [], "weights": []}
         self._results["config"] = self._config
         self._results["epochs"] = []
         self._results["time"] = 0
@@ -145,9 +145,10 @@ class TrainingLoopUNet(BaseTrainingLoop):
 
             self._results["train_metric"]["global"].append(float(self.Model.metric.result()[0]))
             self._results["train_metric"]["focal"].append(float(self.Model.metric.result()[1]))
+            self._results["train_metric"]["weights"].append(float(self.Model.metric.result()[2]))
             
             if verbose:
-                print(f"Train epoch {epoch + 1}, loss [global, focal]: {self.Model.metric.result()}")
+                print(f"Train epoch {epoch + 1}, loss [global, focal, weights]: {self.Model.metric.result()}")
 
             if self.config["EXPT"]["CV_FOLDS"]:
                 self.Model.metric.reset_states()
@@ -157,9 +158,10 @@ class TrainingLoopUNet(BaseTrainingLoop):
 
                 self._results["val_metric"]["global"].append(float(self.Model.metric.result()[0]))
                 self._results["val_metric"]["focal"].append(float(self.Model.metric.result()[1]))
+                self._results["val_metric"]["weights"].append(float(self.Model.metric.result()[2]))
 
                 if verbose:
-                    print(f"Val epoch {epoch + 1}, loss [global, focal]: {self.Model.metric.result()}")
+                    print(f"Val epoch {epoch + 1}, loss [global, focal, weights]: {self.Model.metric.result()}")
 
             if (epoch + 1) % self.SAVE_EVERY == 0 and verbose:
                 if self.config["EXPT"]["CROP"]:
@@ -245,8 +247,8 @@ class TrainingLoopGAN(BaseTrainingLoop):
         self._results = {}
         self._results["g_metric"] = []
         self._results["d_metric"] = []
-        self._results["train_L1"] = {"global": [], "focal": []}
-        self._results["val_L1"] = {"global": [], "focal": []}
+        self._results["train_L1"] = {"global": [], "focal": [], "weights": []}
+        self._results["val_L1"] = {"global": [], "focal": [], "weights": []}
         self._results["config"] = self._config
         self._results["epochs"] = []
         self._results["time"] = 0
@@ -271,6 +273,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
             self._results["g_metric"].append(float(self.Model.generator_metric.result()))
             self._results["train_L1"]["global"].append(float(self.Model.train_L1_metric.result()[0]))
             self._results["train_L1"]["focal"].append(float(self.Model.train_L1_metric.result()[1]))
+            self._results["train_L1"]["weights"].append(float(self.Model.train_L1_metric.result()[2]))
             
             # for key, value in model.discriminator_metrics.items():
             self._results["d_metric"].append(float(self.Model.discriminator_metric.result()))
@@ -287,6 +290,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
                 
                 self._results["val_L1"]["global"].append(float(self.Model.val_L1_metric.result()[0]))
                 self._results["val_L1"]["focal"].append(float(self.Model.val_L1_metric.result()[1]))
+                self._results["val_L1"]["weights"].append(float(self.Model.val_L1_metric.result()[2]))
 
                 if verbose:
                     print(f"Val epoch {epoch + 1}, L1 [global focal]: {self.Model.val_L1_metric.result()}")

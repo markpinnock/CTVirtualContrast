@@ -14,7 +14,7 @@ from utils.DataLoader import OneToOneLoader
 
 class BaseTuner(ABC):
     
-    def __init__(self, CONFIG, TrainingLoop):
+    def __init__(self, CONFIG, tuning_config, TrainingLoop):
         self.all_run_results = {}
         self.current_run_results = {}
         self.CONFIG = CONFIG
@@ -71,11 +71,12 @@ class BaseTuner(ABC):
 
 class GridSearch(BaseTuner):
 
-    def __init__(self, EXPT_NAME, CONFIG, TrainingLoop):
-        super().__init__(CONFIG, TrainingLoop)
+    def __init__(self, EXPT_NAME, CONFIG, tuning_config, TrainingLoop):
+        super().__init__(CONFIG, tuning_config, TrainingLoop)
         self.CONFIG["EXPT"]["EXPT_NAME"] = "GridSearch"
         self.RESULTS_PATH = f"{CONFIG['EXPT']['SAVE_PATH']}tuning/GridSearch/{CONFIG['EXPT']['MODEL']}/{EXPT_NAME}/"
         if not os.path.exists(self.RESULTS_PATH): os.makedirs(self.RESULTS_PATH)
+        self.tuning_config = tuning_config["GRID"]
     
     def tuning_loop(self):
         """ Runs training process for hyper-parameters """
@@ -127,8 +128,8 @@ class GridSearch(BaseTuner):
         self.current_run_results = {}
         results = self.Train.results
         config = self.Train.config
-        self.current_run_results["train"] = [results["train_metric"]["global"][-1], results["train_metric"]["focal"][-1]]
-        self.current_run_results["validation"] = [results["val_metric"]["global"][-1], results["val_metric"]["focal"][-1]]
+        self.current_run_results["train"] = [results["train_metric"]["global"][-1], results["train_metric"]["focal"][-1], results["train_metric"]["weights"][-1]]
+        self.current_run_results["validation"] = [results["val_metric"]["global"][-1], results["val_metric"]["focal"][-1], results["train_metric"]["weights"][-1]]
         self.current_run_results["config"] = config
         super().save_results(run_name)
 
@@ -137,11 +138,12 @@ class GridSearch(BaseTuner):
 
 class RandomSearch(BaseTuner):
 
-    def __init__(self, EXPT_NAME, CONFIG, TrainingLoop):
-        super().__init__(CONFIG, TrainingLoop)
+    def __init__(self, EXPT_NAME, CONFIG, tuning_config, TrainingLoop):
+        super().__init__(CONFIG, tuning_config, TrainingLoop)
         self.CONFIG["EXPT"]["EXPT_NAME"] = "RandomSearch"
         self.RESULTS_PATH = f"{CONFIG['EXPT']['SAVE_PATH']}tuning/RandomSearch/{CONFIG['EXPT']['MODEL']}/{EXPT_NAME}/"
         if not os.path.exists(self.RESULTS_PATH): os.makedirs(self.RESULTS_PATH)
+        self.tuning_config = tuning_config["RANDOM"]
     
     def tuning_loop(self, runs):
         """ Runs training process for hyper-parameters """
@@ -149,57 +151,84 @@ class RandomSearch(BaseTuner):
         np.random.seed()
 
         for i in range(runs):
+            run_name = ""
             new_config = {key: val for key, val in self.CONFIG.items()}
+            ROI = None
 
-            new_config["HYPERPARAMS"]["D_ETA"] = float(np.power(10.0, -np.random.uniform(2, 5)))
-            new_config["HYPERPARAMS"]["G_ETA"] = float(np.power(10.0, -np.random.uniform(2, 5)))
-            new_config["HYPERPARAMS"]["LAMBDA"] = float(np.power(10.0, np.random.uniform(0, 3)))
+            for key, val in self.tuning_config.items():
+                if key in ["ETA", "D_ETA", "G_ETA", "LAMBDA"]:
+                    new_val = float(np.power(10.0, np.random.uniform(val[0], val[1])))
+                    run_name += f"{key}_{new_val:.6f}_"
             
-            if new_config["HYPERPARAMS"]["LAMBDA"]:
-                new_config["HYPERPARAMS"]["MU"] = float(np.random.uniform(0, 1))
-            else:
-                new_config["HYPERPARAMS"]["MU"] = 0.0
+                elif key in ["MU"]:
+                    new_val = float(np.random.uniform(val[0], val[1]))
+                    run_name += f"{key}_{new_val:.2f}_"
 
-            new_config["HYPERPARAMS"]["NDF_G"] = int(np.random.choice([16, 32, 64]))
-            new_config["HYPERPARAMS"]["NGF"] = int(np.random.choice([16, 32, 64]))
-            new_config["HYPERPARAMS"]["D_IN_CH"] = int(np.random.choice([2, 3]))
-            ROI = int(np.random.choice([512, 256, 128, 64]) / new_config["EXPT"]["DOWN_SAMP"])
-            new_config["EXPT"]["IMG_DIMS"] = [ROI, ROI, 12]
-            new_config["HYPERPARAMS"]["D_LAYERS_G"] = int(np.random.randint(1, np.log2(ROI / 4)))
-            new_config["HYPERPARAMS"]["G_LAYERS"] = int(np.random.randint(2, np.log2(ROI)))
-            
-            # TODO: need a better solution to max_z_downsample == num_layers bug
-            if new_config["HYPERPARAMS"]["G_LAYERS"] == 3:
-                if np.random.rand() > 0.5:
-                    new_config["HYPERPARAMS"]["G_LAYERS"] = 4
+                elif key in ["NF", "NDF_G", "NGF", "D_IN_CH"]:
+                    new_val = int(np.random.choice(val))
+                    run_name += f"{key}_{new_val}_"
+                
+                elif key in ["ROI"]:
+                    ROI = int(np.random.choice(val))
+                    new_config["EXPT"]["IMG_DIMS"] = [ROI, ROI, 12]
+                    run_name += f"{key}_{ROI}_"
+                    continue
+
+                elif key in ["D_LAYERS_G"]:
+                    assert ROI, "ROI needs to come before D_LAYERS_G"
+                    new_val = int(np.random.randint(1, np.log2(ROI / 4)))
+                    run_name += f"{key}_{new_val}_"
+
+                elif key in ["G_LAYERS"]:
+                    assert ROI, "ROI needs to come before G_LAYERS"
+                    new_val = int(np.random.randint(2, np.log2(ROI)))
+
+                    # TODO: need a better solution to max_z_downsample == num_layers bug
+                    if new_val == 3:
+                        if np.random.rand() > 0.5:
+                            new_val = 4
+                        else:
+                            new_val = 2
+                    
+                    run_name += f"{key}_{new_val}_"
+
+                elif key in ["GAMMA"]:
+                    continue
+
                 else:
-                    new_config["HYPERPARAMS"]["G_LAYERS"] = 2
+                    raise ValueError("Key not recognised")
 
+                new_config["HYPERPARAMS"][key] = new_val
+            
+            run_name = run_name.strip('_')
+            
             # Select ROI or base model
             if ROI == 512 // new_config["EXPT"]["DOWN_SAMP"]:
                 new_config["EXPT"]["CROP"] = 0
-                Model = GAN(new_config)
+
+                if self.CONFIG["EXPT"]["MODEL"] == "GAN":
+                    Model = GAN(new_config)
+                elif self.CONFIG["EXPT"]["MODEL"] == "UNet":
+                    Model = UNet(new_config)
+                else:
+                    raise ValueError("Model not recognised")
+
             else:
                 new_config["EXPT"]["CROP"] = 1
-                Model = CropGAN(new_config)
 
-            run_name = f"DETA_{new_config['HYPERPARAMS']['D_ETA']:.6f}_"\
-                       f"GETA_{new_config['HYPERPARAMS']['G_ETA']:.6f}_"\
-                       f"LAMBDA_{new_config['HYPERPARAMS']['LAMBDA']:.2f}_"\
-                       f"MU_{new_config['HYPERPARAMS']['MU']:.2f}_"\
-                       f"DNF_{new_config['HYPERPARAMS']['NDF_G']}_"\
-                       f"GNF_{new_config['HYPERPARAMS']['NGF']}_"\
-                       f"DLA_{new_config['HYPERPARAMS']['D_LAYERS_G']}_"\
-                       f"GLA_{new_config['HYPERPARAMS']['G_LAYERS']}_"\
-                       f"INCH_{new_config['HYPERPARAMS']['D_IN_CH']}_"\
-                       f"ROI_{ROI}"
+                if self.CONFIG["EXPT"]["MODEL"] == "GAN":
+                    Model = CropGAN(new_config)
+                elif self.CONFIG["EXPT"]["MODEL"] == "UNet":
+                    Model = CropUNet(new_config)
+                else:
+                    raise ValueError("Model not recognised")
 
             self.Train = self.TrainingLoop(Model=Model, dataset=(self.train_ds, self.val_ds), config=new_config)
 
             print("=================================================")
             print(f"{run_name} ({i + 1} of {runs})")
 
-            self.Train.training_loop(verbose=0)
+            self.Train.training_loop(verbose=1)
             self.save_results(run_name)
 
             # Save sample images
@@ -219,7 +248,16 @@ class RandomSearch(BaseTuner):
         self.current_run_results = {}
         results = self.Train.results
         config = self.Train.config
-        self.current_run_results["train"] = [results["train_L1"]["global"][-1], results["train_L1"]["focal"][-1]]
-        self.current_run_results["validation"] = [results["val_L1"]["global"][-1], results["val_L1"]["focal"][-1]]
+
+        # TODO: standardise metric terminology across models
+        if self.CONFIG["EXPT"]["MODEL"] == "GAN":
+            self.current_run_results["train"] = [results["train_L1"]["global"][-1], results["train_L1"]["focal"][-1], results["train_L1"]["weights"][-1]]
+            self.current_run_results["validation"] = [results["val_L1"]["global"][-1], results["val_L1"]["focal"][-1], results["val_L1"]["weights"][-1]]
+        elif self.CONFIG["EXPT"]["MODEL"] == "UNet":
+            self.current_run_results["train"] = [results["train_metric"]["global"][-1], results["train_metric"]["focal"][-1], results["train_metric"]["weights"][-1]]
+            self.current_run_results["validation"] = [results["val_metric"]["global"][-1], results["val_metric"]["focal"][-1], results["val_metric"]["weights"][-1]]
+        else:
+            raise ValueError("Model not recognised")
+        
         self.current_run_results["config"] = config
         super().save_results(run_name)

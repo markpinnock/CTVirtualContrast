@@ -3,17 +3,53 @@ import tensorflow.keras as keras
 
 
 #-------------------------------------------------------------------------
+""" Standard L2 loss, allows label weighting based on RBF etc. """
+
+@tf.function
+def mse(x, y, w=None):
+    squared_err = tf.square(x - y)
+    mse = tf.reduce_mean(squared_err, axis=[1, 2, 3, 4])
+
+    if w:
+        mb_mse = tf.reduce_sum(mse * w)
+    else:
+        mb_mse = tf.reduce_sum(mse)
+    
+    return mb_mse
+
+#-------------------------------------------------------------------------
+""" Standard L1 loss, allows label weighting based on RBF etc. """
+
+@tf.function
+def mae(x, y, w=None):
+    absolute_err = tf.abs(x - y)
+    mae = tf.reduce_sum(absolute_err, axis=[1, 2, 3, 4])
+    
+    if w:
+        mb_mae = tf.reduce_sum(mae * w)
+    else:
+        mb_mae = tf.reduce_sum(mae)
+
+    return mb_mae
+
+#-------------------------------------------------------------------------
 """ Focused L2 loss, calculates L2 inside and outside masked area """
 
 @tf.function
-def focused_mse(x, y, m):
+def focused_mse(x, y, m, w=None):
     global_squared_err = tf.reshape(tf.square(x - y) * (1 - m), (x.shape[0], -1))
     focal_squared_err = tf.reshape(tf.square(x - y) * m, (x.shape[0], -1))
     flat_m = tf.reshape(m, (x.shape[0], -1))
     global_mse = tf.reduce_sum(global_squared_err, -1) / (tf.reduce_sum(1 - flat_m, -1) + 1e-12)
     focal_mse = tf.reduce_sum(focal_squared_err, -1) / (tf.reduce_sum(flat_m, -1) + 1e-12)
-    mb_global_mse = tf.reduce_sum(global_mse)
-    mb_focal_mse = tf.reduce_sum(focal_mse)
+    
+    if w:
+        mb_global_mse = tf.reduce_sum(global_mse * w)
+        mb_focal_mse = tf.reduce_sum(focal_mse * w)
+    
+    else:
+        mb_global_mse = tf.reduce_sum(global_mse)
+        mb_focal_mse = tf.reduce_sum(focal_mse)
     
     return mb_global_mse, mb_focal_mse
 
@@ -21,45 +57,76 @@ def focused_mse(x, y, m):
 """ Focused L1 loss, calculates L1 inside and outside masked area """
 
 @tf.function
-def focused_mae(x, y, m):
+def focused_mae(x, y, m, w=None):
     global_absolute_err = tf.reshape(tf.abs(x - y) * (1 - m), (x.shape[0], -1))
     focal_absolute_err = tf.reshape(tf.abs(x - y) * m, (x.shape[0], -1))
     flat_m = tf.reshape(m, (x.shape[0], -1))
     global_mae = tf.reduce_sum(global_absolute_err, -1) / (tf.reduce_sum(1 - flat_m, -1) + 1e-12)
     focal_mae = tf.reduce_sum(focal_absolute_err, -1) / (tf.reduce_sum(flat_m, -1) + 1e-12)
-    mb_global_mae = tf.reduce_sum(global_mae)
-    mb_focal_mae = tf.reduce_sum(focal_mae)
+
+    if w:
+        mb_global_mae = tf.reduce_sum(global_mse * w)
+        mb_focal_mse = tf.reduce_sum(focal_mse * w)
+    
+    else:
+        mb_global_mae = tf.reduce_sum(global_mae)
+        mb_focal_mae = tf.reduce_sum(focal_mae)
 
     return mb_global_mae, mb_focal_mae
 
 #-------------------------------------------------------------------------
 """ Focal loss, weights loss according to masked area """
 
-class FocalLoss(keras.layers.Layer):
-    def __init__(self, mu, loss_fn, name=None):
-        super(FocalLoss, self).__init__(name=name)
-        assert not mu > 1.0, "Lambda must be in range [0, 1]"
-        self.mu = mu
+class Loss(keras.layers.Layer):
+    def __init__(self, config, loss_fn, name=None):
+        super().__init__(name=name)
+        assert not config["MU"] > 1.0, "Mu must be in range [0, 1]"
+        self.mu = config["MU"]
+        self.loss_fn = loss_fn
 
         if loss_fn == "mse":
-            self.focal = focused_mse
+            if config["MU"]:
+                self.loss = focused_mse
+            else:
+                self.loss = mse
+
         elif loss_fn == "mae":
-            self.focal = focused_mae
+            if config["MU"]:
+                self.loss = focused_mae
+            else:
+                self.loss = mae
+
         else:
             raise ValueError("'mse' or 'mae'")
 
+        if config["GAMMA"]:
+            self.label_weighting = calc_RBF
+        else:
+            self.label_weighting = None
+
     def call(self, y, x, mask):
-        global_loss, focal_loss = self.focal(x, y, mask)
-        return (1 - self.mu) * global_loss + self.mu * focal_loss
+        if self.label_weighting:
+            label_weights = calc_RBF(x, y)
+        else:
+            label_weights = None
+
+        if self.mu:
+            global_loss, focal_loss = self.loss(x, y, mask, label_weights)
+            return (1 - self.mu) * global_loss + self.mu * focal_loss
+
+        else:
+            return self.loss(x, y, label_weights)
+        
 
 #-------------------------------------------------------------------------
 """ Focal metric, weights loss according to masked area """
 
 class FocalMetric(keras.metrics.Metric):
     def __init__(self, loss_fn, name=None):
-        super(FocalMetric, self).__init__(name=name)
+        super().__init__(name=name)
         self.global_loss = self.add_weight(name="global", initializer="zeros")
         self.focal_loss = self.add_weight(name="focal", initializer="zeros")
+        self.label_weights = self.add_weight(name="weights", initializer="zeros")
         self.N = self.add_weight(name="N", initializer="zeros")
         
         if loss_fn == "mse":
@@ -67,20 +134,25 @@ class FocalMetric(keras.metrics.Metric):
         elif loss_fn == "mae":
             self.focal = focused_mae
         else:
-            raise ValueError("'mse' or 'mae'") 
+            raise ValueError("'mse' or 'mae'")
+        
+        self.label_weighting = calc_RBF
 
     def update_state(self, y, x, mask):
         global_loss, focal_loss = self.focal(x, y, mask)
+        weights = calc_RBF(x, y)
         self.global_loss.assign_add(global_loss)
         self.focal_loss.assign_add(focal_loss)
+        self.label_weights.assign_add(tf.reduce_mean(weights))
         self.N.assign_add(x.shape[0])
     
     def result(self):
-        return [self.global_loss / self.N, self.focal_loss / self.N]
+        return [self.global_loss / self.N, self.focal_loss / self.N, self.label_weights / self.N]
 
     def reset_states(self):
         self.global_loss.assign(0.0)
         self.focal_loss.assign(0.0)
+        self.label_weights.assign(0.0)
         self.N.assign(1e-12) # So no nans if result called after reset_states
 
 #-------------------------------------------------------------------------
@@ -133,7 +205,7 @@ def calc_NCC(a, b):
 #-------------------------------------------------------------------------
 """ Radial basis function """
 
-def calc_RBF(a, b, gamma):
+def calc_RBF(a, b, gamma=3e-7):
     return tf.exp(-gamma * tf.reduce_sum(tf.pow(a - b, 2), axis=[1, 2, 3, 4]))
 
 

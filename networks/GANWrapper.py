@@ -6,7 +6,7 @@ import tensorflow.keras as keras
 from networks.Pix2Pix import Discriminator, Generator
 # from utils.TrainFuncs import least_square_loss, wasserstein_loss, gradient_penalty
 from utils.DataLoader import DiffAug
-from utils.Losses import FocalLoss, FocalMetric
+from utils.Losses import Loss, FocalMetric
 
 
 #-------------------------------------------------------------------------
@@ -58,13 +58,7 @@ class GAN(keras.Model):
         self.loss = self.loss_dict[GAN_type]
         self.GAN_type = GAN_type
 
-        if config["HYPERPARAMS"]["MU"] > 0.0:
-            self.L1 = FocalLoss(mu=config["HYPERPARAMS"]["MU"], loss_fn="mae", name="focal_loss")
-        elif config["HYPERPARAMS"]["MU"] == 0.0:
-            self.L1 = keras.losses.MeanAbsoluteError()
-        else:
-            raise ValueError
-
+        self.L1 = Loss(config=config["HYPERPARAMS"], loss_fn="mae", name="loss")
         self.lambda_ = config["HYPERPARAMS"]["LAMBDA"]
         self.d_in_ch = config["HYPERPARAMS"]["D_IN_CH"]
         self.img_dims = config["EXPT"]["IMG_DIMS"]
@@ -80,7 +74,6 @@ class GAN(keras.Model):
         self.discriminator_init(config)
 
     def generator_init(self, config):
-
         self.g_optimiser = keras.optimizers.Adam(config["HYPERPARAMS"]["G_ETA"], 0.5, 0.999, name="g_opt")
 
         # Check generator output dims match input
@@ -94,7 +87,6 @@ class GAN(keras.Model):
         self.val_L1_metric = FocalMetric(loss_fn="mae", name="val_L1")
         
     def discriminator_init(self, config):
-
         self.d_optimiser = keras.optimizers.Adam(config["HYPERPARAMS"]["D_ETA"], 0.5, 0.999, name="d_opt")
 
         # Get discriminator patch size
@@ -423,7 +415,7 @@ class CropGAN(GAN):
         for i in range(coords.shape[1]):
             # Crop ROI
             source, target, mask = self.crop_ROI(source, target, mask, coords[:, i, :])
-            super().train_step((source, target, mask, None))
+            super().train_step((source, target, mask, coords))
 
     @tf.function
     def val_step(self, data):
@@ -432,4 +424,4 @@ class CropGAN(GAN):
         for i in range(coords.shape[1]):
             # Crop ROI
             source, target, mask = self.crop_ROI(source, target, mask, coords[:, i, :])
-            super().val_step((source, target, mask, None))
+            super().val_step((source, target, mask, coords))
