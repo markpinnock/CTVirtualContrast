@@ -15,8 +15,8 @@ from utils.DataLoader import OneToOneLoader
 class BaseTuner(ABC):
     
     def __init__(self, CONFIG, TrainingLoop):
-        self.tuning_results = {}
-        self.curr_results = {}
+        self.all_run_results = {}
+        self.current_run_results = {}
         self.CONFIG = CONFIG
         self.CONFIG["EXPT"]["SAVE_EVERY"] = 100
         self.TrainingLoop = TrainingLoop
@@ -52,9 +52,16 @@ class BaseTuner(ABC):
         """ Save current results and configuration
             - run_name: hyper-parameter combination """
         
-        self.tuning_results[run_name] = {"results": self.curr_results, "config": self.Train.config}
-        print(f"Final train loss {self.curr_results}")
-        json.dump(self.tuning_results, open(f"{self.RESULTS_PATH}tuning_results.json", 'w'), indent=4)
+        """ ========================================================================== """
+        """ WARNING: pass ONLY dict initialised as empty to avoid shallow copy problem """
+        """ ========================================================================== """
+        
+        results = {key: self.current_run_results[key] for key in ["train", "validation"]}
+        config = self.current_run_results["config"]
+        self.all_run_results[run_name] = {"results": results, "config": config}
+
+        print(f"Final train loss {results}")
+        json.dump(self.all_run_results, open(f"{self.RESULTS_PATH}tuning_results.json", 'w'), indent=4)
         
         # Saves loss curves from training loop
         self.Train.save_results(f"{self.RESULTS_PATH}losses_{run_name}.png")
@@ -105,17 +112,24 @@ class GridSearch(BaseTuner):
 
             # Save sample images
             if self.Train.config["EXPT"]["CROP"]:
-                self.Train.save_images_ROI(epoch=None, tuning_path=f"{self.RESULTS_PATH}images_{run_name}.png")
+                self.Train.save_images_ROI(epoch=None, tuning_path=f"{self.RESULTS_PATH}images_{run_name}")
             else:
-                self.Train.save_images(epoch=None, tuning_path=f"{self.RESULTS_PATH}images_{run_name}.png")
+                self.Train.save_images(epoch=None, tuning_path=f"{self.RESULTS_PATH}images_{run_name}")
     
     def save_results(self, run_name: str):
         """ Save current results
             - run_name: hyper-parameter combination """
 
+        """ ============================================================================== """
+        """ WARNING: save results and config ONLY empty dict to avoid shallow copy problem """
+        """ ============================================================================== """
+
+        self.current_run_results = {}
         results = self.Train.results
-        self.curr_results["train"] = [results["train_metric"]["global"][-1], results["train_metric"]["focal"][-1]]
-        self.curr_results["validation"] = [results["val_metric"]["global"][-1], results["val_metric"]["focal"][-1]]
+        config = self.Train.config
+        self.current_run_results["train"] = [results["train_metric"]["global"][-1], results["train_metric"]["focal"][-1]]
+        self.current_run_results["validation"] = [results["val_metric"]["global"][-1], results["val_metric"]["focal"][-1]]
+        self.current_run_results["config"] = config
         super().save_results(run_name)
 
 #-------------------------------------------------------------------------
@@ -135,51 +149,52 @@ class RandomSearch(BaseTuner):
         np.random.seed()
 
         for i in range(runs):
+            new_config = {key: val for key, val in self.CONFIG.items()}
 
-            self.CONFIG["HYPERPARAMS"]["D_ETA"] = float(np.power(10.0, -np.random.uniform(2, 5)))
-            self.CONFIG["HYPERPARAMS"]["G_ETA"] = float(np.power(10.0, -np.random.uniform(2, 5)))
-            self.CONFIG["HYPERPARAMS"]["LAMBDA"] = float(np.power(10.0, np.random.uniform(0, 3)))
+            new_config["HYPERPARAMS"]["D_ETA"] = float(np.power(10.0, -np.random.uniform(2, 5)))
+            new_config["HYPERPARAMS"]["G_ETA"] = float(np.power(10.0, -np.random.uniform(2, 5)))
+            new_config["HYPERPARAMS"]["LAMBDA"] = float(np.power(10.0, np.random.uniform(0, 3)))
             
-            if self.CONFIG["HYPERPARAMS"]["LAMBDA"]:
-                self.CONFIG["HYPERPARAMS"]["MU"] = float(np.random.uniform(0, 1))
+            if new_config["HYPERPARAMS"]["LAMBDA"]:
+                new_config["HYPERPARAMS"]["MU"] = float(np.random.uniform(0, 1))
             else:
-                self.CONFIG["HYPERPARAMS"]["MU"] = 0.0
+                new_config["HYPERPARAMS"]["MU"] = 0.0
 
-            self.CONFIG["HYPERPARAMS"]["NDF_G"] = int(np.random.choice([16, 32, 64]))
-            self.CONFIG["HYPERPARAMS"]["NGF"] = int(np.random.choice([16, 32, 64]))
-            self.CONFIG["HYPERPARAMS"]["D_IN_CH"] = int(np.random.choice([2, 3]))
-            ROI = int(np.random.choice([512, 256, 128, 64]) / self.CONFIG["EXPT"]["DOWN_SAMP"])
-            self.CONFIG["EXPT"]["IMG_DIMS"] = [ROI, ROI, 12]
-            self.CONFIG["HYPERPARAMS"]["D_LAYERS_G"] = int(np.random.randint(1, np.log2(ROI / 4)))
-            self.CONFIG["HYPERPARAMS"]["G_LAYERS"] = int(np.random.randint(2, np.log2(ROI)))
+            new_config["HYPERPARAMS"]["NDF_G"] = int(np.random.choice([16, 32, 64]))
+            new_config["HYPERPARAMS"]["NGF"] = int(np.random.choice([16, 32, 64]))
+            new_config["HYPERPARAMS"]["D_IN_CH"] = int(np.random.choice([2, 3]))
+            ROI = int(np.random.choice([512, 256, 128, 64]) / new_config["EXPT"]["DOWN_SAMP"])
+            new_config["EXPT"]["IMG_DIMS"] = [ROI, ROI, 12]
+            new_config["HYPERPARAMS"]["D_LAYERS_G"] = int(np.random.randint(1, np.log2(ROI / 4)))
+            new_config["HYPERPARAMS"]["G_LAYERS"] = int(np.random.randint(2, np.log2(ROI)))
             
             # TODO: need a better solution to max_z_downsample == num_layers bug
-            if self.CONFIG["HYPERPARAMS"]["G_LAYERS"] == 3:
+            if new_config["HYPERPARAMS"]["G_LAYERS"] == 3:
                 if np.random.rand() > 0.5:
-                    self.CONFIG["HYPERPARAMS"]["G_LAYERS"] = 4
+                    new_config["HYPERPARAMS"]["G_LAYERS"] = 4
                 else:
-                    self.CONFIG["HYPERPARAMS"]["G_LAYERS"] = 2
+                    new_config["HYPERPARAMS"]["G_LAYERS"] = 2
 
             # Select ROI or base model
-            if ROI == 512 // self.CONFIG["EXPT"]["DOWN_SAMP"]:
-                self.CONFIG["EXPT"]["CROP"] = 0
-                Model = GAN(self.CONFIG)
+            if ROI == 512 // new_config["EXPT"]["DOWN_SAMP"]:
+                new_config["EXPT"]["CROP"] = 0
+                Model = GAN(new_config)
             else:
-                self.CONFIG["EXPT"]["CROP"] = 1
-                Model = CropGAN(self.CONFIG)
+                new_config["EXPT"]["CROP"] = 1
+                Model = CropGAN(new_config)
 
-            run_name = f"DETA_{self.CONFIG['HYPERPARAMS']['D_ETA']:.6f}_"\
-                       f"GETA_{self.CONFIG['HYPERPARAMS']['G_ETA']:.6f}_"\
-                       f"LAMBDA_{self.CONFIG['HYPERPARAMS']['LAMBDA']:.2f}_"\
-                       f"MU_{self.CONFIG['HYPERPARAMS']['MU']:.2f}_"\
-                       f"DNF_{self.CONFIG['HYPERPARAMS']['NDF_G']}_"\
-                       f"GNF_{self.CONFIG['HYPERPARAMS']['NGF']}_"\
-                       f"DLA_{self.CONFIG['HYPERPARAMS']['D_LAYERS_G']}_"\
-                       f"GLA_{self.CONFIG['HYPERPARAMS']['G_LAYERS']}_"\
-                       f"INCH_{self.CONFIG['HYPERPARAMS']['D_IN_CH']}_"\
+            run_name = f"DETA_{new_config['HYPERPARAMS']['D_ETA']:.6f}_"\
+                       f"GETA_{new_config['HYPERPARAMS']['G_ETA']:.6f}_"\
+                       f"LAMBDA_{new_config['HYPERPARAMS']['LAMBDA']:.2f}_"\
+                       f"MU_{new_config['HYPERPARAMS']['MU']:.2f}_"\
+                       f"DNF_{new_config['HYPERPARAMS']['NDF_G']}_"\
+                       f"GNF_{new_config['HYPERPARAMS']['NGF']}_"\
+                       f"DLA_{new_config['HYPERPARAMS']['D_LAYERS_G']}_"\
+                       f"GLA_{new_config['HYPERPARAMS']['G_LAYERS']}_"\
+                       f"INCH_{new_config['HYPERPARAMS']['D_IN_CH']}_"\
                        f"ROI_{ROI}"
 
-            self.Train = self.TrainingLoop(Model=Model, dataset=(self.train_ds, self.val_ds), config=self.CONFIG)
+            self.Train = self.TrainingLoop(Model=Model, dataset=(self.train_ds, self.val_ds), config=new_config)
 
             print("=================================================")
             print(f"{run_name} ({i + 1} of {runs})")
@@ -189,15 +204,22 @@ class RandomSearch(BaseTuner):
 
             # Save sample images
             if self.Train.config["EXPT"]["CROP"]:
-                self.Train.save_images_ROI(epoch=None, tuning_path=f"{self.RESULTS_PATH}images_{run_name}.png")
+                self.Train.save_images_ROI(epoch=None, tuning_path=f"{self.RESULTS_PATH}images_{run_name}")
             else:
-                self.Train.save_images(epoch=None, tuning_path=f"{self.RESULTS_PATH}images_{run_name}.png")
+                self.Train.save_images(epoch=None, tuning_path=f"{self.RESULTS_PATH}images_{run_name}")
     
     def save_results(self, run_name: str):
         """ Save current results
             - run_name: hyper-parameter combination """
 
+        """ ============================================================================== """
+        """ WARNING: save results and config ONLY empty dict to avoid shallow copy problem """
+        """ ============================================================================== """
+
+        self.current_run_results = {}
         results = self.Train.results
-        self.curr_results["train"] = [results["train_L1"]["global"][-1], results["train_L1"]["focal"][-1]]
-        self.curr_results["validation"] = [results["val_L1"]["global"][-1], results["val_L1"]["focal"][-1]]
+        config = self.Train.config
+        self.current_run_results["train"] = [results["train_L1"]["global"][-1], results["train_L1"]["focal"][-1]]
+        self.current_run_results["validation"] = [results["val_L1"]["global"][-1], results["val_L1"]["focal"][-1]]
+        self.current_run_results["config"] = config
         super().save_results(run_name)

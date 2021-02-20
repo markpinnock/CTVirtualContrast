@@ -106,11 +106,15 @@ class BaseTrainingLoop(ABC):
     
     @property
     def results(self):
+        """ Potentially avoids shallow copy problem """
         return self._results
+        # return {key: val for key, val in self._results.items()}
     
     @property
     def config(self):
+        """ Potentially avoids shallow copy problem """
         return self._config
+        # return {key: val for key, val in self._config.items()}
 
 #-------------------------------------------------------------------------
 """ UNet training loop - inherits from BaseTrainingLoop """

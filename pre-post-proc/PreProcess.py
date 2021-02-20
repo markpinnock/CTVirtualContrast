@@ -162,6 +162,9 @@ class ImgConv:
         sig_b = np.std(b)
 
         return np.sum((a - mu_a) * (b - mu_b) / (N * sig_a * sig_b))
+    
+    def calc_RBF(a: object, b: object, gamma: int) -> int:
+        return np.exp(-gamma * np.sum(np.power(a - b, 2), axis=[1, 2, 3, 4]))
    
     def segmentation_com(self, seg):
 

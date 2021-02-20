@@ -389,6 +389,7 @@ class CropGAN(GAN):
 
         """ Crops images to ROI centred around coords """
 
+        # TODO: why is retracing occuring?
         CROP_HEIGHT = self.img_dims[1]
         CROP_WIDTH = self.img_dims[0]
         MB_SIZE = source.shape[0]
