@@ -24,13 +24,16 @@ class BaseImgLoader(ABC):
         self.dataset_type = dataset_type
         self.down_sample = config["DOWN_SAMP"]
         self.expt_type = config["MODEL"]
-        self.labels = config['DATA']['LABELS']
-
+        self.norm_type = config["NORM_TYPE"]
+        self.labels = config['DATA']['LABELS'].strip('r')
         self.json = json.load(open(f"{file_path}{config['DATA']['JSON']}", 'r'))
 
         ACE_list = os.listdir(self.target_path)
         NCE_list = os.listdir(self.source_path)
         seg_list = os.listdir(self.seg_path)
+
+        print("==================================================")
+        print(f"Targets: {len(ACE_list)}, sources: {len(NCE_list)}, segmentations: {len(seg_list)}")
 
         unique_ids = []
 
@@ -57,7 +60,7 @@ class BaseImgLoader(ABC):
             self.ACE_list = [img_id for img_id in ACE_list if img_id[0:4] in fold_ids]
             self.NCE_list = [img_id for img_id in NCE_list if img_id[0:4] in fold_ids]
             self.seg_list = [img_id for img_id in seg_list if img_id[0:4] in fold_ids]
-            
+
             np.random.seed()
         
         elif config["CV_FOLDS"] == 0:
@@ -92,7 +95,7 @@ class BaseImgLoader(ABC):
             NCE = NCE[::self.down_sample, ::self.down_sample, :, np.newaxis]
             seg = seg[::self.down_sample, ::self.down_sample, :, np.newaxis]
                 
-            if self.expt_type == "GAN":
+            if self.norm_type == "-11":
                 ACE = ACE * 2 - 1
                 NCE = NCE * 2 - 1
 
@@ -101,10 +104,31 @@ class BaseImgLoader(ABC):
             i += 1
 
 #-------------------------------------------------------------------------
+""" Data loader for one to one source-target pairings """
 
 class OneToOneLoader(BaseImgLoader):
     def __init__(self, config, dataset_type, fold):
         super().__init__(config, dataset_type, fold)
+        print("==================================================")
+        print(f"Using one-to-one loader for {self.dataset_type}")
+
+    def img_pairer(self, NCE):
+        ACE = glob.glob(f"{self.target_path}{NCE[0:6]}{self.labels}*_{NCE[-7:]}")
+        assert len(ACE) == 1, ACE
+        ACE = ACE[0]
+        NCE = f"{self.source_path}{NCE}"
+        seg = f"{self.seg_path}{ACE[-20:-8]}M{ACE[-8:]}"
+
+        return NCE, ACE, seg
+
+#-------------------------------------------------------------------------
+""" Data loader for many to one source-target pairings """
+
+class ManyToOneLoader(BaseImgLoader):
+    def __init__(self, config, dataset_type, fold):
+        super().__init__(config, dataset_type, fold)
+        print("==================================================")
+        print(f"Using many-to-one loader for {self.dataset_type}")
 
     def img_pairer(self, NCE):
         ACE = glob.glob(f"{self.target_path}{NCE[0:6]}{self.labels}*_{NCE[-7:]}")

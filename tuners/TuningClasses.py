@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 
 from networks.GANWrapper import GAN, CropGAN
 from networks.UNet import UNet, CropUNet
-from utils.DataLoader import OneToOneLoader
+from utils.DataLoader import OneToOneLoader, ManyToOneLoader
 
 
 #-------------------------------------------------------------------------
@@ -23,8 +23,17 @@ class BaseTuner(ABC):
         self.Train = None
 
         # Initialise datasets
-        TrainGenerator = OneToOneLoader(config=CONFIG["EXPT"], dataset_type="training", fold=5)
-        ValGenerator = OneToOneLoader(config=CONFIG["EXPT"], dataset_type="validation", fold=5)
+        if 'r' in CONFIG["EXPT"]["DATA"]["INPUTS"]:
+            assert 'r' in CONFIG["EXPT"]["DATA"]["LABELS"]
+            assert 'r' in CONFIG["EXPT"]["DATA"]["SEGS"]
+            assert 'r' in CONFIG["EXPT"]["DATA"]["JSON"]
+            Loader = ManyToOneLoader
+
+        else:
+            Loader = OneToOneLoader
+
+        TrainGenerator = Loader(config=CONFIG["EXPT"], dataset_type="training", fold=5)
+        ValGenerator = Loader(config=CONFIG["EXPT"], dataset_type="validation", fold=5)
 
         # Batch size (separate batches for generator and critic runs)
         if CONFIG["EXPT"]["MODEL"] == "GAN":
@@ -156,7 +165,7 @@ class RandomSearch(BaseTuner):
             ROI = None
 
             for key, val in self.tuning_config.items():
-                if key in ["ETA", "D_ETA", "G_ETA", "LAMBDA"]:
+                if key in ["ETA", "D_ETA", "G_ETA", "LAMBDA", "GAMMA"]:
                     new_val = float(np.power(10.0, np.random.uniform(val[0], val[1])))
                     run_name += f"{key}_{new_val:.6f}_"
             
@@ -192,9 +201,6 @@ class RandomSearch(BaseTuner):
                     
                     run_name += f"{key}_{new_val}_"
 
-                elif key in ["GAMMA"]:
-                    continue
-
                 else:
                     raise ValueError("Key not recognised")
 
@@ -228,7 +234,7 @@ class RandomSearch(BaseTuner):
             print("=================================================")
             print(f"{run_name} ({i + 1} of {runs})")
 
-            self.Train.training_loop(verbose=1)
+            self.Train.training_loop(verbose=0)
             self.save_results(run_name)
 
             # Save sample images

@@ -83,8 +83,8 @@ class GAN(keras.Model):
 
         # Set up metrics
         self.generator_metric = keras.metrics.Mean(name="g_metric")
-        self.train_L1_metric = FocalMetric(loss_fn="mae", name="train_L1")
-        self.val_L1_metric = FocalMetric(loss_fn="mae", name="val_L1")
+        self.train_L1_metric = FocalMetric(config=config["HYPERPARAMS"], loss_fn="mae", name="train_L1")
+        self.val_L1_metric = FocalMetric(config=config["HYPERPARAMS"], loss_fn="mae", name="val_L1")
         
     def discriminator_init(self, config):
         self.d_optimiser = keras.optimizers.Adam(config["HYPERPARAMS"]["D_ETA"], 0.5, 0.999, name="d_opt")

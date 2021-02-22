@@ -18,7 +18,7 @@ class UNet(keras.Model):
         super().__init__(name="UNet")
         self.optimiser = keras.optimizers.Adam(config["HYPERPARAMS"]["ETA"], 0.5, 0.999, name="opt")
         self.loss = Loss(config["HYPERPARAMS"], loss_fn=config["HYPERPARAMS"]["LOSS"], name="loss")
-        self.metric = FocalMetric(loss_fn=config["HYPERPARAMS"]["LOSS"])
+        self.metric = FocalMetric(config=config["HYPERPARAMS"], loss_fn=config["HYPERPARAMS"]["LOSS"])
         nc = config["HYPERPARAMS"]["NF"]
         self.bn = config["HYPERPARAMS"]["BATCHNORM"]
 

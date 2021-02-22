@@ -3,6 +3,7 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import tensorflow as tf
 
 from TrainingLoops import TrainingLoopUNet, TrainingLoopGAN
 from tuners.TuningClasses import GridSearch, RandomSearch
@@ -19,6 +20,7 @@ parser.add_argument("--tuning_path", '-tp', help="Path to tuning config json", t
 parser.add_argument("--algo", '-a', help="Tuning algorithm", type=str)
 parser.add_argument("--expt_name", '-e', help="Experiment name", type=str)
 parser.add_argument("--runs", '-r', help="Number of validation runs", type=int)
+parser.add_argument("--gpu", "-g", help="GPU number", type=int)
 args = parser.parse_args()
 
 CONFIG = json.load(open(args.config_path, 'r'))
@@ -34,6 +36,15 @@ if args.expt_name is not None:
     EXPT_NAME = args.expt_name
 else:
     EXPT_NAME = "test"
+
+# Set GPU
+if args.gpu is not None:
+    gpu_number = args.gpu
+else:
+    gpu_number = 0
+
+gpus = tf.config.experimental.list_physical_devices("GPU")
+tf.config.experimental.set_visible_devices(gpus[gpu_number], "GPU")
 
 if CONFIG["EXPT"]["MODEL"] == "UNet":
     TrainingLoop = TrainingLoopUNet

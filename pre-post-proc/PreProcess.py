@@ -7,7 +7,7 @@ import SimpleITK as itk
 
 class ImgConv:
 
-    def __init__(self, file_path: str, save_path: str, output_dims: tuple, source: str, target: str):
+    def __init__(self, file_path: str, save_path: str, output_dims: tuple, NCC_tol: float, source: str, target: str):
 
         """ file_path: location of image data
                 (expects sub-folders of AC, VC and HQ)
@@ -23,9 +23,9 @@ class ImgConv:
         self.target = target
         assert target in ["AC", "VC", "HQ"]
         assert source in ["AC", "VC", "HQ"]
-        if not os.path.exists(f"{save_path}{source}/"): os.makedirs(f"{save_path}{source}/")
-        if not os.path.exists(f"{save_path}{target}/"): os.makedirs(f"{save_path}{target}/")
-        if not os.path.exists(f"{save_path}Segs/"): os.makedirs(f"{save_path}/Segs/")
+        if not os.path.exists(f"{save_path}r{source}/"): os.makedirs(f"{save_path}r{source}/")
+        if not os.path.exists(f"{save_path}r{target}/"): os.makedirs(f"{save_path}r{target}/")
+        if not os.path.exists(f"{save_path}rSegs/"): os.makedirs(f"{save_path}rSegs/")
         self.output_dims = output_dims
         self.subjects = [name for name in os.listdir(self.img_path) if "F" not in name]
         self.subjects.sort()
@@ -33,7 +33,7 @@ class ImgConv:
         self.abdo_window_min = -350
         self.abdo_window_max = 450
         self.HU_min = -2048
-        self.NCC_tol = 0.85
+        self.NCC_tol = NCC_tol
 
     def list_images(self, num_sources: int = 1, num_targets: int = 1):
         assert num_targets == 1, "Only handles one target img currently"
@@ -77,80 +77,117 @@ class ImgConv:
         target_names = self.target_names[subject_name]
         source_seg_names = self.source_seg_names[subject_name]
         target_seg_names = self.target_seg_names[subject_name]
+        assert len(target_names) == 1
         assert len(target_names) == len(target_seg_names)
-        # assert len(source_seg_names) == 0
-        aligned_imgs = {}
+        sources = []
 
         for i in range(len(target_names)):
             target = itk.ReadImage(target_names[i], itk.sitkInt32)
             seg = itk.ReadImage(target_seg_names[i])
+            target_spacing = target.GetSpacing()[2]
+            target_dir = target.GetDirection()
+            seg_spacing = seg.GetSpacing()[2]
+            assert target_spacing == 1.0
+            assert seg_spacing == 1.0
+            target_dim_z = target.GetSize()[2]
+            target_origin_z = target.GetOrigin()[2]
+            tightest_bounds_diff = [-1000, 1000]
 
-            for j in range(1):
-                """ NB!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! source_names """
-                source = itk.ReadImage(source_names[-1], itk.sitkInt32)
+            # Get start/end coords data for sources
+            for j in range(len(source_names)):
+                source = itk.ReadImage(source_names[j], itk.sitkInt32)
                 source_stem = f"{subject_name}_{self.source}_{i:03d}"
-
                 source_spacing = source.GetSpacing()[2]
-                target_spacing = target.GetSpacing()[2]
-                seg_spacing = seg.GetSpacing()[2]
                 assert source_spacing == 1.0
-                assert target_spacing == 1.0
-                assert seg_spacing == 1.0
-                source_dim = source.GetSize()[2]
-                target_dim = target.GetSize()[2]
-                source_bounds = np.around([source.GetOrigin()[2], source.GetOrigin()[2] + source_dim - 1]).astype(np.int32)
-                target_bounds = np.around([target.GetOrigin()[2], target.GetOrigin()[2] + target_dim - 1]).astype(np.int32)
+                source_dim_z = source.GetSize()[2]
+                source_origin_z = source.GetOrigin()[2]
+                source_bounds = np.around([source_origin_z, source_origin_z + source_dim_z - 1]).astype(np.int32)
+                target_bounds = np.around([target_origin_z, target_origin_z + target_dim_z - 1]).astype(np.int32)
                 bounds_diff = source_bounds - target_bounds
 
+                if source_bounds[0] - target_bounds[1] + source_bounds[1] - target_bounds[0] > 200:
+                    print("skipped", i)
+                    continue
+
+                # Save tightest start/end coords, add/subtract 1 for rounding errors
+                if bounds_diff[0] > tightest_bounds_diff[0]:
+                    tightest_bounds_diff[0] = bounds_diff[0] + 1
+                if bounds_diff[1] < tightest_bounds_diff[1]:
+                    tightest_bounds_diff[1] = bounds_diff[1] - 1
+
+                # Resample source to target coords
                 source = itk.Resample(source, target, defaultPixelValue=self.HU_min)
+                sources.append(source)
+
+            # Crop target and seg to tightest start/end coords
+            target = np.transpose(itk.GetArrayFromImage(target), [2, 1, 0])
+            seg = np.transpose(itk.GetArrayFromImage(seg), [2, 1, 0, 3]).astype(np.uint8)
+
+            if (np.array(tightest_bounds_diff) > 0).all():
+                target = target[:, :, tightest_bounds_diff[0]:]
+                seg = seg[:, :, tightest_bounds_diff[0]:]
+
+            elif (np.array(tightest_bounds_diff) < 0).all():
+                target = target[:, :, :tightest_bounds_diff[1]]
+                seg = seg[:, :, :tightest_bounds_diff[1]]
+
+            elif tightest_bounds_diff[0] > 0 and tightest_bounds_diff[1] < 0:
+                target = target[:, :, tightest_bounds_diff[0]:tightest_bounds_diff[1]]
+                seg = seg[:, :, tightest_bounds_diff[0]:tightest_bounds_diff[1]]
+
+            elif tightest_bounds_diff[0] < 0 and tightest_bounds_diff[1] > 0:
+                print("!!!!!!!!!!!!!!!!!!!!!!!!")
+                pass
+            
+            else:
+                return None, None, None
+
+            # Repeat for all source images
+            for j in range(len(sources)):
+                source = sources[j]
 
                 # Ensure both source and target are same way up
                 source_dir = source.GetDirection()
-                target_dir = target.GetDirection()
                 assert np.isclose(np.array(source_dir), np.array(target_dir)).all()
-                source_dim = source.GetSize()[2]
-                source_bounds = np.around([source.GetOrigin()[2], source.GetOrigin()[2] + source_dim - 1]).astype(np.int32)
 
-                # Trim source and target to match in size, and clip intensities
                 source = np.transpose(itk.GetArrayFromImage(source), [2, 1, 0])
-                target = np.transpose(itk.GetArrayFromImage(target), [2, 1, 0])
-                seg = np.transpose(itk.GetArrayFromImage(seg), [2, 1, 0, 3]).astype(np.uint8)
 
-                if (bounds_diff > 0).all():
-                    source = source[:, :, bounds_diff[0] + 1:] # Add 1 to deal with rounding errors
-                    target = target[:, :, bounds_diff[0] + 1:]
-                    seg = seg[:, :, bounds_diff[0] + 1:]
+                if (np.array(tightest_bounds_diff) > 0).all():
+                    source = source[:, :, tightest_bounds_diff[0]:]
 
-                elif (bounds_diff < 0).all():
-                    source = source[:, :, :bounds_diff[-1]]
-                    target = target[:, :, :bounds_diff[-1]]
-                    seg = seg[:, :, :bounds_diff[-1]]
+                elif (np.array(tightest_bounds_diff) < 0).all():
+                    source = source[:, :, :tightest_bounds_diff[1]]
 
-                elif bounds_diff[0] > 0 and bounds_diff[1] < 0:
-                    source = source[:, :, bounds_diff[0] + 1:bounds_diff[1]]
-                    target = target[:, :, bounds_diff[0] + 1:bounds_diff[1]]
-                    seg = seg[:, :, bounds_diff[0] + 1:bounds_diff[1]]
+                elif tightest_bounds_diff[0] > 0 and tightest_bounds_diff[1] < 0:
+                    source = source[:, :, tightest_bounds_diff[0]:tightest_bounds_diff[1]]
 
-                elif bounds_diff[0] < 0 and bounds_diff[1] > 0:
+                elif tightest_bounds_diff[0] < 0 and tightest_bounds_diff[1] > 0:
+                    print("!!!!!!!!!!!!!!!!!!!!!!!!")
                     pass
 
                 else:
                     return None, None, None
-                    raise ValueError
 
                 assert np.isclose(source.shape, target.shape).all(), (source.shape, target.shape)
 
-                # Clip to abdo window
+                # Clip source to window
                 source = np.clip(source, self.abdo_window_min, self.abdo_window_max)
-                target = np.clip(target, self.abdo_window_min, self.abdo_window_max)
 
                 # If coords are reversed, flip images
-                if source_dir[0] < 0 and source_dir[4] < 0:
+                if target_dir[0] < 0 and target_dir[4] < 0:
                     source = np.flipud(np.fliplr(source))
-                    target = np.flipud(np.fliplr(target))
-                    seg = np.flipud(np.fliplr(seg))
+                
+                sources[j] = source
 
-        return source, target, seg
+            # Clip target to window
+            target = np.clip(target, self.abdo_window_min, self.abdo_window_max)
+
+            # If coords are reversed, flip images
+            if target_dir[0] < 0 and target_dir[4] < 0:
+                target = np.flipud(np.fliplr(target))
+                seg = np.flipud(np.fliplr(seg))
+
+        return sources, target, seg
     
     def normalise_image(self, im):
         return (im - self.abdo_window_min) / (self.abdo_window_max - self.abdo_window_min)
@@ -191,31 +228,29 @@ class ImgConv:
         coords = {}
 
         for key in self.source_names.keys():
-            if key not in self.target_seg_names: continue
+            if key not in self.target_seg_names:
+                print(f"{key} failed, no seg mask")
+                continue
+
             print(f"Loading {key}: {count} of {total}")
-            source, target, seg = self._load_images(key)
-            if source is None or target is None or seg is None:
-                print("Failed")
+            sources, target, seg = self._load_images(key)
+
+            if sources is None or target is None or seg is None:
+                print(f"{key} failed, no source/target/seg")
                 continue
+
             target_stem = self.target_names[key][0][-16:-5]
-            source_stem = self.source_names[key][0][-16:-5]
             seg_stem = f"{target_stem}M"
-
-            # Discard if alignment inadequate
-            NCC = self.calc_NCC(source, target)
-            if NCC < self.NCC_tol:
-                print(f"{key} number {i + 1} discarded: NCC {NCC}")
-                continue
-
-            # Normalise
-            if normalise:
-                source = self.normalise_image(source)
-                target = self.normalise_image(target)
 
             # Partition source into sub-volumes
             vol_thick = target.shape[2]
-            idx = 200
-            """ NB!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! source_names """
+            idx = 0
+
+            # Normalise
+            if normalise:
+                target = self.normalise_image(target)           
+
+            # Partition into sub-volumes
             for i in range(0, vol_thick, self.output_dims[2]):
                 if i + self.output_dims[2] > vol_thick:
                     break
@@ -224,41 +259,47 @@ class ImgConv:
                 seg_sub_vol = seg[:, :, i:i + self.output_dims[2], :]
 
                 # Calculate centroids of segmentations
-                if seg_sub_vol.shape[3] == 5:
-                    arteries = self.segmentation_com(seg_sub_vol[:, :, :, 0])
-                    r_kidney = self.segmentation_com(seg_sub_vol[:, :, :, 1])
-                    l_kidney = self.segmentation_com(seg_sub_vol[:, :, :, 2])
-
-                elif seg_sub_vol.shape[3] == 4:
-                    arteries = [seg_sub_vol.shape[0] // 2, seg_sub_vol.shape[1] // 2]
-                    r_kidney = self.segmentation_com(seg_sub_vol[:, :, :, 1])
-                    l_kidney = self.segmentation_com(seg_sub_vol[:, :, :, 2])
-
-                else:
-                    raise ValueError("Incorrect seg dims")
+                assert seg_sub_vol.shape[3] == 5, f"Incorrect seg dims {seg_sub_vol}"
+                arteries = self.segmentation_com(seg_sub_vol[:, :, :, 0])
+                r_kidney = self.segmentation_com(seg_sub_vol[:, :, :, 1])
+                l_kidney = self.segmentation_com(seg_sub_vol[:, :, :, 2])
 
                 seg_sub_vol = np.bitwise_or.reduce(seg_sub_vol[:, :, :, :-1], axis=3).squeeze()
                 coords[f"{seg_stem}_{idx:03d}"] = [arteries, r_kidney, l_kidney]
-                np.save(f"{self.save_path}{self.target}/{target_stem}_{idx:03d}.npy", target_sub_vol)
-                np.save(f"{self.save_path}/Segs/{seg_stem}_{idx:03d}.npy", seg_sub_vol)
+                np.save(f"{self.save_path}r{self.target}/{target_stem}_{idx:03d}.npy", target_sub_vol)
+                np.save(f"{self.save_path}/rSegs/{seg_stem}_{idx:03d}.npy", seg_sub_vol)
                 idx += 1
 
-            # Partition targets into sub-volumes
-            idx = 200
-            """ NB!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! source_names """
-            for i in range(0, vol_thick, self.output_dims[2]):
-                if i + self.output_dims[2] > vol_thick:
-                    break
+            for j in range(len(sources)):
+                source = sources[j]
+                source_stem = self.source_names[key][j][-16:-5]
+                
+                # Discard if alignment inadequate
+                NCC = self.calc_NCC(source, target)
+                if NCC < self.NCC_tol:
+                    print(f"{key} number {i + 1} discarded: NCC {NCC}")
+                    continue
 
-                source_sub_vol = source[:, :, i:i + self.output_dims[2]]
-                np.save(f"{self.save_path}{self.source}/{source_stem}_{idx:03d}.npy", source_sub_vol)
-                idx += 1
+                # Normalise
+                if normalise:
+                    source = self.normalise_image(source)
+
+                # Partition into sub-volumes
+                idx = 0
+
+                for i in range(0, vol_thick, self.output_dims[2]):
+                    if i + self.output_dims[2] > vol_thick:
+                        break
+
+                    source_sub_vol = source[:, :, i:i + self.output_dims[2]]
+                    np.save(f"{self.save_path}r{self.source}/{source_stem}_{idx:03d}.npy", source_sub_vol)
+                    idx += 1
 
             count += 1
 
-        assert len(os.listdir(f"{self.save_path}{self.source}")) == len(os.listdir(f"{self.save_path}{self.target}"))
-        assert len(os.listdir(f"{self.save_path}/Segs/")) == len(os.listdir(f"{self.save_path}{self.target}"))
-        # json.dump(coords, open(f"{self.save_path}coords.json", 'w'), indent=4)
+        # assert len(os.listdir(f"{self.save_path}{self.source}")) == len(os.listdir(f"{self.save_path}{self.target}"))
+        assert len(os.listdir(f"{self.save_path}/rSegs/")) == len(os.listdir(f"{self.save_path}r{self.target}"))
+        json.dump(coords, open(f"{self.save_path}rcoords.json", 'w'), indent=4)
 
     def view_data(self):
         count = 1
@@ -267,51 +308,55 @@ class ImgConv:
         fig, axs = plt.subplots(self.num_targets, 6, figsize=(18, 8))
 
         for key in self.source_names.keys():
-            if key not in self.target_seg_names: continue
+            if key not in self.target_seg_names:
+                print(f"{key} failed, no seg mask")
+                continue
+
             print(f"Loading {key}: {count} of {total}")
-            source, target, seg = self._load_images(key)
-            if source is None or target is None or seg is None:
-                print("Failed")
+            sources, target, seg = self._load_images(key)
+
+            if sources is None or target is None or seg is None:
+                print(f"{key} failed, no source/target/seg")
                 continue
 
             for i in range(self.num_targets):
+                for j in range(len(sources)):
+                    source = sources[j]
                 
-                axs[0].imshow(source[:, :, 10].T, cmap="gray")
-                axs[0].axis("off")
-                axs[1].imshow(target[:, :, 10].T, cmap="gray")
-                axs[1].axis("off")
-                axs[2].imshow(source[:, :, 10].T - target[:, :, 10].T, cmap="gray")
-                axs[2].axis("off")
-                axs[2].set_title(f"NCC: {self.calc_NCC(source, target)}")
-                axs[3].imshow(np.flipud(source[:, 256, :].T), cmap="gray")
-                axs[3].axis("off")
-                axs[4].imshow(np.flipud(target[:, 256, :].T), cmap="gray")
-                axs[4].axis("off")
-                axs[5].imshow(seg[:, :, 10, 0].T, cmap="gray")
-                axs[5].axis("off")
-                axs[5].set_title(f"RBF: {self.calc_RBF(source, target, 1e-8)}")
-            nccs.append(self.calc_NCC(source, target))
-            rbfs.append(self.calc_RBF(source, target, 3e-7))
-            plt.pause(1)
-            plt.cla()
-        plt.figure()
-        plt.scatter(nccs, rbfs)
-        plt.show()
+                    axs[0].imshow(source[:, :, 10].T, cmap="gray")
+                    axs[0].axis("off")
+                    axs[0].set_title(f"{key} {j}")
+                    axs[1].imshow(target[:, :, 10].T, cmap="gray")
+                    axs[1].axis("off")
+                    axs[2].imshow(source[:, :, 10].T - target[:, :, 10].T, cmap="gray")
+                    axs[2].axis("off")
+                    axs[2].set_title(f"NCC: {self.calc_NCC(source, target)}")
+                    axs[3].imshow(np.flipud(source[:, 256, :].T), cmap="gray")
+                    axs[3].axis("off")
+                    axs[4].imshow(np.flipud(target[:, 256, :].T), cmap="gray")
+                    axs[4].axis("off")
+                    axs[5].imshow(seg[:, :, 10, 0].T, cmap="gray")
+                    axs[5].axis("off")
+                    axs[5].set_title(f"RBF: {self.calc_RBF(source, target, 1e-8)}")
+
+                    plt.pause(0.5)
+                    plt.cla()
+
     def check_saved(self):
         subjects = []
         sources, targets, segs, coord_list = [], [], [], []
-        coord_json = json.load(open(f"{self.save_path}coords.json", 'r'))
+        coord_json = json.load(open(f"{self.save_path}rcoords.json", 'r'))
 
-        for img in os.listdir(f"{self.save_path}{self.source}"):
+        for img in os.listdir(f"{self.save_path}r{self.source}"):
             if img[:6] not in subjects: subjects.append(img[:6])
         
         for img_name in subjects:
-            imgs = [im for im in os.listdir(f"{self.save_path}{self.source}") if img_name in im]
-            sources.append(np.load(f"{self.save_path}{self.source}/{imgs[-1]}"))
-            imgs = [im for im in os.listdir(f"{self.save_path}{self.target}") if img_name in im]
-            targets.append(np.load(f"{self.save_path}{self.target}/{imgs[-1]}"))
-            imgs = [im for im in os.listdir(f"{self.save_path}Segs/") if img_name in im]
-            segs.append(np.load(f"{self.save_path}Segs/{imgs[-1]}"))
+            imgs = [im for im in os.listdir(f"{self.save_path}r{self.source}") if img_name in im]
+            sources.append(np.load(f"{self.save_path}r{self.source}/{imgs[-1]}"))
+            imgs = [im for im in os.listdir(f"{self.save_path}r{self.target}") if img_name in im]
+            targets.append(np.load(f"{self.save_path}r{self.target}/{imgs[-1]}"))
+            imgs = [im for im in os.listdir(f"{self.save_path}rSegs/") if img_name in im]
+            segs.append(np.load(f"{self.save_path}rSegs/{imgs[-1]}"))
             cx = np.array([int(c[0]) for c in coord_json[imgs[-1][:-4]]])
             cy = np.array([int(c[1]) for c in coord_json[imgs[-1][:-4]]])
             coord_list.append((cx, cy))
@@ -331,6 +376,7 @@ class ImgConv:
             plt.subplot(2, 2, 3)
             plt.imshow(target[:, :, 11].T - source[:, :, 11].T, cmap="gray")
             plt.axis("off")
+            plt.title(f"{self.calc_NCC(target, source):.3f} {self.calc_RBF(target, source, 1):.3f}")
             plt.subplot(2, 2, 4)
             plt.imshow(seg[:, :, 11].T)
             plt.axis("off")
@@ -348,24 +394,12 @@ if __name__ == "__main__":
         file_path=FILE_PATH,
         save_path=SAVE_PATH,
         output_dims=(512, 512, 12),
+        NCC_tol=0.0,
         source="HQ",
         target="AC"
         )
 
     Normal.list_images()
-    Normal.view_data()
+    # Normal.view_data()
     # Normal.save_data(normalise=True)
-    # Normal.check_saved()
-
-    # plt.figure(figsize=(18, 9))
-
-    # for ACs, VCs, segs in zip(list(AC_dict.values()), list(VC_dict.values()), list(seg_dict.values())):
-    #     for AC, VC, seg in zip(ACs, VCs, segs):
-    #         plt.subplot(1, 3, 1)
-    #         plt.imshow(np.flipud(AC[:, :, 6].T), cmap="gray", origin="lower")
-    #         plt.subplot(1, 3, 2)
-    #         plt.imshow(np.flipud(VC[:, :, 6].T), cmap="gray", origin="lower")
-    #         plt.subplot(1, 3, 3)
-    #         plt.imshow(np.flipud(seg[:, :, 6, 0].T), cmap="gray", origin="lower")
-    #         plt.pause(3)
-    #         plt.gca().clear()
+    Normal.check_saved()

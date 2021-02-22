@@ -11,7 +11,7 @@ from TrainingLoops import TrainingLoopUNet, TrainingLoopGAN, print_model_summary
 from networks.GANWrapper import GAN, CropGAN
 from networks.UNet import UNet, CropUNet
 from networks.ResidualNet import ResNet
-from utils.DataLoader import OneToOneLoader
+from utils.DataLoader import OneToOneLoader, ManyToOneLoader
 
 
 """ Training script """
@@ -26,6 +26,7 @@ parser.add_argument("--mu", "-m", help="Mu", type=float)
 parser.add_argument("--d_layers_g", "-dgl", help="Global discriminator layers", type=int)
 parser.add_argument("--d_layers_f", "-dfl", help="Focal discriminator layers", type=int)
 parser.add_argument("--g_layers", "-gl", help="Generator layers", type=int)
+parser.add_argument("--gpu", "-g", help="GPU number", type=int)
 arguments = parser.parse_args()
 
 # Parse config json
@@ -57,13 +58,31 @@ if arguments.d_layers_f is not None:
 if arguments.g_layers is not None:
     CONFIG["HYPERPARAMS"]["G_LAYERS"] = arguments.g_layers
 
+# Set GPU
+if arguments.gpu is not None:
+    gpu_number = arguments.gpu
+else:
+    gpu_number = 0
+
+gpus = tf.config.experimental.list_physical_devices("GPU")
+tf.config.experimental.set_visible_devices(gpus[gpu_number], "GPU")
+
+if 'r' in CONFIG["EXPT"]["DATA"]["INPUTS"]:
+    assert 'r' in CONFIG["EXPT"]["DATA"]["LABELS"]
+    assert 'r' in CONFIG["EXPT"]["DATA"]["SEGS"]
+    assert 'r' in CONFIG["EXPT"]["DATA"]["JSON"]
+    Loader = ManyToOneLoader
+
+else:
+    Loader = OneToOneLoader
+
 # Initialise datasets
-TrainGenerator = OneToOneLoader(
+TrainGenerator = Loader(
     config=CONFIG["EXPT"],
     dataset_type="training",
     fold=5)
 
-ValGenerator = OneToOneLoader(
+ValGenerator = Loader(
     config=CONFIG["EXPT"],
     dataset_type="validation",
     fold=5)
