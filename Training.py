@@ -61,6 +61,7 @@ if arguments.g_layers is not None:
 # Set GPU
 if arguments.gpu is not None:
     gpu_number = arguments.gpu
+    os.environ["LD_LIBRARY_PATH"] = CONFIG["CUDA_PATH"]
 else:
     gpu_number = 0
 

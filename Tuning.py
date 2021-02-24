@@ -40,8 +40,13 @@ else:
 # Set GPU
 if args.gpu is not None:
     gpu_number = args.gpu
+    print("==================================================")
+    print(f"Using GPU {gpu_number}")
+    os.environ["LD_LIBRARY_PATH"] = CONFIG["CUDA_PATH"]
 else:
     gpu_number = 0
+    print("==================================================")
+    print(f"Using default GPU")
 
 gpus = tf.config.experimental.list_physical_devices("GPU")
 tf.config.experimental.set_visible_devices(gpus[gpu_number], "GPU")

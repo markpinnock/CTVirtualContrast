@@ -20,7 +20,7 @@ def mse(x, y, w):
 @tf.function
 def mae(x, y, w):
     absolute_err = tf.abs(x - y)
-    mae = tf.reduce_sum(absolute_err, axis=[1, 2, 3, 4])
+    mae = tf.reduce_mean(absolute_err, axis=[1, 2, 3, 4])
     mb_mae = tf.reduce_sum(mae * w)
 
     return mb_mae
@@ -49,8 +49,8 @@ def focused_mae(x, y, m, w):
     global_absolute_err = tf.reshape(tf.abs(x - y) * (1 - m), (x.shape[0], -1))
     focal_absolute_err = tf.reshape(tf.abs(x - y) * m, (x.shape[0], -1))
     flat_m = tf.reshape(m, (x.shape[0], -1))
-    global_mae = tf.reduce_sum(global_absolute_err, -1) / (tf.reduce_sum(1 - flat_m, -1) + 1e-12)
-    focal_mae = tf.reduce_sum(focal_absolute_err, -1) / (tf.reduce_sum(flat_m, -1) + 1e-12)
+    global_mae = tf.reduce_mean(global_absolute_err, -1) / (tf.reduce_sum(1 - flat_m, -1) + 1e-12)
+    focal_mae = tf.reduce_mean(focal_absolute_err, -1) / (tf.reduce_sum(flat_m, -1) + 1e-12)
 
     mb_global_mae = tf.reduce_sum(global_mae * w)
     mb_focal_mae = tf.reduce_sum(focal_mae * w)
@@ -194,7 +194,7 @@ def calc_NCC(a, b):
 """ Radial basis function """
 
 def calc_RBF(a, b, gamma=1e-3):
-    K =  tf.exp(-gamma * tf.reduce_sum(tf.pow(a - b, 2), axis=[1, 2, 3, 4]))
+    K =  tf.exp(-tf.reduce_sum(tf.pow(a - b, 2), axis=[1, 2, 3, 4]) / gamma)
     return K / (tf.reduce_sum(K) + 1e-8)
 
 #-------------------------------------------------------------------------
