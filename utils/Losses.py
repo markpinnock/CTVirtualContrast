@@ -9,7 +9,6 @@ import tensorflow.keras as keras
 def mse(x, y, w):
     squared_err = tf.square(x - y)
     mse = tf.reduce_mean(squared_err, axis=[1, 2, 3, 4])
-
     mb_mse = tf.reduce_sum(mse * w)
     
     return mb_mse
@@ -22,7 +21,7 @@ def mae(x, y, w):
     absolute_err = tf.abs(x - y)
     mae = tf.reduce_mean(absolute_err, axis=[1, 2, 3, 4])
     mb_mae = tf.reduce_sum(mae * w)
-    print(w)
+
     return mb_mae
 
 #-------------------------------------------------------------------------
