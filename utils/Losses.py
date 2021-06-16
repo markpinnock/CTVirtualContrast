@@ -34,7 +34,7 @@ def focused_mse(x, y, m, w):
     flat_m = tf.reshape(m, (x.shape[0], -1))
     global_mse = tf.reduce_sum(global_squared_err, -1) / (tf.reduce_sum(1 - flat_m, -1) + 1e-12)
     focal_mse = tf.reduce_sum(focal_squared_err, -1) / (tf.reduce_sum(flat_m, -1) + 1e-12)
-    
+
     mb_global_mse = tf.reduce_sum(global_mse * w)
     mb_focal_mse = tf.reduce_sum(focal_mse * w)
     

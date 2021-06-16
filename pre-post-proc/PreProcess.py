@@ -27,11 +27,11 @@ class ImgConv:
         if not os.path.exists(f"{save_path}r{target}/"): os.makedirs(f"{save_path}r{target}/")
         if not os.path.exists(f"{save_path}rSegs/"): os.makedirs(f"{save_path}rSegs/")
         self.output_dims = output_dims
-        self.subjects = [name for name in os.listdir(self.img_path) if "F" not in name]
+        self.subjects = [name for name in os.listdir(self.img_path) if "F" not in name]#[-3:]
         self.subjects.sort()
         self.seg_X, self.seg_Y = np.meshgrid(np.linspace(0, output_dims[0] - 1, output_dims[0]), np.linspace(0, output_dims[1] - 1, output_dims[1]))
-        self.abdo_window_min = -350
-        self.abdo_window_max = 450
+        self.abdo_window_min = -150
+        self.abdo_window_max = 250
         self.HU_min = -2048
         self.NCC_tol = NCC_tol
 
@@ -105,7 +105,7 @@ class ImgConv:
                 target_bounds = np.around([target_origin_z, target_origin_z + target_dim_z - 1]).astype(np.int32)
                 bounds_diff = source_bounds - target_bounds
 
-                if source_bounds[0] - target_bounds[1] + source_bounds[1] - target_bounds[0] > 200:
+                if source_bounds[0] - target_bounds[1] + source_bounds[1] - target_bounds[0] > 140:
                     print("skipped", i)
                     continue
 
@@ -388,7 +388,7 @@ class ImgConv:
 if __name__ == "__main__":
 
     FILE_PATH = "C:/ProjectImages/"
-    SAVE_PATH = "C:/ProjectImages/VirtualContrast/"
+    SAVE_PATH = "C:/ProjectImages/VirtualContrastTest/"
 
     Normal = ImgConv(
         file_path=FILE_PATH,
@@ -400,6 +400,6 @@ if __name__ == "__main__":
         )
 
     Normal.list_images()
-    # Normal.view_data()
+    Normal.view_data()
     # Normal.save_data(normalise=True)
-    Normal.check_saved()
+    # Normal.check_saved()

@@ -168,6 +168,9 @@ class TrainingLoopUNet(BaseTrainingLoop):
                     self.save_images_ROI(epoch + 1)
                 else:
                     self.save_images(epoch + 1)
+            
+            self.Model.save_weights(f"{self.MODEL_SAVE_PATH}/{self.config['EXPT']['EXPT_NAME']}")
+            self.save_results()
 
         self._results["time"] = (time.time() - start_time) / 3600
 
