@@ -78,7 +78,7 @@ class BaseImgLoader(ABC):
             self._subject_imgs[key] = sorted(self._subject_imgs[key], key=lambda x: int(x[-3:]))
 
     def example_images(self):
-        raise NotImplementedError
+        return self._ex_sources, self._ex_targets
     
     def train_val_split(self, seed: int = 5) -> None:
         if self.config["EXPT"]["FOLD"] > self.config["EXPT"]["CV_FOLDS"] - 1:
@@ -106,8 +106,6 @@ class BaseImgLoader(ABC):
             self._fold_sources = []
             self._fold_targets = [img for img in self._targets if img[0:4] in fold_ids]
             self._fold_sources = [img for img in self._sources if img[0:4] in fold_ids]
-
-            np.random.seed()
         
         elif self.config["EXPT"]["CV_FOLDS"] == 1:
             self._fold_targets = self._targets
@@ -115,8 +113,17 @@ class BaseImgLoader(ABC):
         
         else:
             raise ValueError("Number of folds must be > 0")
-
+        
         assert len(self._fold_targets) == len(self._fold_sources)
+
+        example_idx = np.random.randint(0, len(self._fold_sources), self.config["DATA"]["NUM_EXAMPLES"])
+        ex_sources_list = list(np.array([self._fold_sources]).squeeze()[example_idx])
+        ex_targets_list = list(np.array([self._fold_targets]).squeeze()[example_idx])
+        self._ex_sources = np.stack([np.load(f"{self._data_paths[img[6:8]]}/{img}") for img in ex_sources_list], axis=0)
+        self._ex_targets = np.stack([np.load(f"{self._data_paths[img[6:8]]}/{img}") for img in ex_targets_list], axis=0)
+        self._ex_sources = self._ex_sources[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
+        self._ex_targets = self._ex_targets[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
+        np.random.seed()
         
         print(f"{len(self._fold_targets)} of {len(self._targets)} examples in {self._dataset_type} folds")
 

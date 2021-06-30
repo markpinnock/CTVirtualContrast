@@ -16,10 +16,11 @@ np.set_printoptions(suppress=True)
 
 class BaseTrainingLoop(ABC):
 
-    def __init__(self, Model: object, dataset: object, config: dict):
+    def __init__(self, Model: object, dataset: object, val_generator: object, config: dict):
 
         self.Model = Model
         self.train_ds, self.val_ds = dataset
+        self.val_generator = val_generator
         self._config = config
         self.EPOCHS = config["EXPT"]["EPOCHS"]
         self.IMAGE_SAVE_PATH = f"{config['EXPT']['SAVE_PATH']}images/{config['EXPT']['MODEL']}/{config['EXPT']['EXPT_NAME']}/"
@@ -42,17 +43,19 @@ class BaseTrainingLoop(ABC):
     def save_images(self, target, source, pred, epoch=None, tuning_path=None):
         """ Saves sample of images """
 
-        fig, axs = plt.subplots(target.shape[0], 4)
+        fig, axs = plt.subplots(target.shape[0], 5)
 
         for i in range(target.shape[0]):
             axs[i, 0].imshow(source[i, :, :, 11, 0], cmap="gray")
             axs[i, 0].axis("off")
             axs[i, 1].imshow(target[i, :, :, 11, 0], cmap="gray")
             axs[i, 1].axis("off")
+            axs[i, 3].imshow(np.abs(target[i, :, :, 11, 0] - source[i, :, :, 11, 0]), cmap="hot")
+            axs[i, 3].axis("off")
             axs[i, 2].imshow(pred[i, :, :, 11, 0], cmap="gray")
             axs[i, 2].axis("off")
-            axs[i, 3].imshow(np.abs(pred[i, :, :, 11, 0] - target[i, :, :, 11, 0]), cmap="hot")
-            axs[i, 3].axis("off")
+            axs[i, 4].imshow(np.abs(target[i, :, :, 11, 0] - pred[i, :, :, 11, 0]), cmap="hot")
+            axs[i, 4].axis("off")
 
         plt.tight_layout()
 
@@ -201,8 +204,8 @@ class TrainingLoopUNet(BaseTrainingLoop):
 
 class TrainingLoopGAN(BaseTrainingLoop):
 
-    def __init__(self, Model, dataset, config):
-        super().__init__(Model, dataset, config)
+    def __init__(self, Model, dataset, val_generator, config):
+        super().__init__(Model, dataset, val_generator, config)
 
     def training_loop(self, verbose=1):
         """ Main training loop for GAN """
@@ -270,10 +273,9 @@ class TrainingLoopGAN(BaseTrainingLoop):
     def save_images(self, epoch=None, tuning_path=None):
         """ Saves sample of images """
 
-        source, target = next(iter(self.ds_val))
-        source, target = source[0:4, ...].numpy(), target[0:4, ...].numpy()
+        source, target = self.val_generator.example_images()
         pred = self.Model.Generator(source, training=False).numpy()
-        super().save_images(source[0:4], target[0:4], pred[0:4], epoch, tuning_path)
+        super().save_images(source, target, pred, epoch, tuning_path)
 
     def save_results(self, tuning_path=None):
         """ Saves json of results and saves loss curves """

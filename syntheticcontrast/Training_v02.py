@@ -122,7 +122,7 @@ if CONFIG["EXPT"]["GRAPH"]:
         tf.summary.trace_export('graph', step=0)
     exit()
 
-TrainingLoop = TrainingLoopGAN(Model=Model, dataset=(train_ds, val_ds), config=CONFIG)
+TrainingLoop = TrainingLoopGAN(Model=Model, dataset=(train_ds, val_ds), val_generator=ValGenerator, config=CONFIG)
 
 # Run training loop
 TrainingLoop.training_loop()
