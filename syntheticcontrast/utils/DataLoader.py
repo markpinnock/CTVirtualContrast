@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 class BaseImgLoader(ABC):
     def __init__(self, config: dict, dataset_type: str):
         # Expects at least two sub-folders within data folder e.g. "AC", "VC, "HQ"
-        file_path = config["DATA_PATH"]
+        file_path = config["DATA"]["DATA_PATH"]
         sub_folders = [f for f in os.listdir(file_path) if os.path.isdir(f"{file_path}/{f}")]
 
         if len(sub_folders) == 0:
@@ -24,7 +24,7 @@ class BaseImgLoader(ABC):
         self._data_paths = {key: f"{file_path}/{key}" for key in sub_folders}
         self._dataset_type = dataset_type
         self.config = config
-        self.down_sample = config["DOWN_SAMP"]
+        self.down_sample = config["DATA"]["DOWN_SAMP"]
 
         if config["DATA"]["JSON"] != "":
             self._json = json.load(open(f"{file_path}/{config['DATA']['JSON']}", 'r'))
@@ -81,24 +81,24 @@ class BaseImgLoader(ABC):
         raise NotImplementedError
     
     def train_val_split(self, seed: int = 5) -> None:
-        if self.config["FOLD"] > self.config["CV_FOLDS"] - 1:
-            raise ValueError(f"Fold number {self.config['FOLD']} of {self.config['CV_FOLDS']} folds")
+        if self.config["EXPT"]["FOLD"] > self.config["EXPT"]["CV_FOLDS"] - 1:
+            raise ValueError(f"Fold number {self.config['EXPT']['FOLD']} of {self.config['EXPT']['CV_FOLDS']} folds")
 
         np.random.seed(seed)
         N = len(self._unique_ids)
         np.random.shuffle(self._unique_ids)
 
         # Split into folds by subject
-        if self.config["CV_FOLDS"] > 1:
+        if self.config["EXPT"]["CV_FOLDS"] > 1:
             if seed == None:
                 self._unique_ids.sort()
 
-            num_in_fold = N // self.config["CV_FOLDS"]
+            num_in_fold = N // self.config["EXPT"]["CV_FOLDS"]
 
             if self._dataset_type == "training":
-                fold_ids = self._unique_ids[0:self.config["FOLD"] * num_in_fold] + self._unique_ids[(self.config["FOLD"] + 1) * num_in_fold:]
+                fold_ids = self._unique_ids[0:self.config["EXPT"]["FOLD"] * num_in_fold] + self._unique_ids[(self.config["EXPT"]["FOLD"] + 1) * num_in_fold:]
             elif self._dataset_type == "validation":
-                fold_ids = self._unique_ids[self.config["FOLD"] * num_in_fold:(self.config["FOLD"] + 1) * num_in_fold]
+                fold_ids = self._unique_ids[self.config["EXPT"]["FOLD"] * num_in_fold:(self.config["EXPT"]["FOLD"] + 1) * num_in_fold]
             else:
                 raise ValueError("Select 'training' or 'validation'")
 
@@ -109,7 +109,7 @@ class BaseImgLoader(ABC):
 
             np.random.seed()
         
-        elif self.config["CV_FOLDS"] == 1:
+        elif self.config["EXPT"]["CV_FOLDS"] == 1:
             self._fold_targets = self._targets
             self._fold_sources = self._sources
         
@@ -140,13 +140,14 @@ class BaseImgLoader(ABC):
     
     def set_normalisation(self, norm_type, param_1=None, param_2=None):
         # Mean -281.528, std = 261.552
+        # Min -500, max = 22451
+        self.norm_type = norm_type
+
         if param_1 != None and param_2 != None:
             self.param_1 = param_1
             self.param_2 = param_2
 
         else:
-            self.norm_type = norm_type
-
             # If mean and std of data not available, we get rolling averages
             if norm_type == "meanstd" or norm_type == "std":
                 mean = 0
@@ -220,7 +221,7 @@ class BaseImgLoader(ABC):
             source = self._normalise(source)
 
             # TODO: return index
-            yield (target, source)
+            yield (source, target)
 
             i += 1
 
@@ -303,12 +304,17 @@ class DiffAug:
     
     """ Random translation by ratio 0.125 """
     # NB: This assumes NHWDC format and does not (yet) act in z direction
-    def translation(self, imgs, seg, ratio=0.125):
+    def translation(self, imgs, seg=None, ratio=0.125):
         num_imgs = len(imgs)
-        batch_size = tf.shape(seg)[0]
-        image_size = tf.shape(seg)[1:3]
-        image_depth = tf.shape(seg)[3]
-        x = tf.concat(imgs + [seg], axis=3)
+        batch_size = tf.shape(imgs[0])[0]
+        image_size = tf.shape(imgs[0])[1:3]
+        image_depth = tf.shape(imgs[0])[3]
+
+        if seg:
+            x = tf.concat(imgs + [seg], axis=3)
+        
+        else:
+            x = tf.concat(imgs, axis=3)
 
         shift = tf.cast(tf.cast(image_size, tf.float32) * ratio + 0.5, tf.int32)
         translation_x = tf.random.uniform([batch_size, 1], -shift[0], shift[0] + 1, dtype=tf.int32)
@@ -319,18 +325,25 @@ class DiffAug:
         x = tf.transpose(tf.gather_nd(tf.pad(tf.transpose(x, [0, 2, 1, 3, 4]), [[0, 0], [1, 1], [0, 0], [0, 0], [0, 0]]), tf.expand_dims(grid_y, -1), batch_dims=1), [0, 2, 1, 3, 4])
         
         imgs = [x[:, :, :, i * 12:(i + 1) * 12, :] for i in range(num_imgs)]
-        seg = x[:, :, :, -12:, :]
+
+        if seg:
+            seg = x[:, :, :, -12:, :]
 
         return imgs, seg
 
     """ Random cutout by ratio 0.5 """
     # NB: This assumes NHWDC format and does not (yet) act in z direction
-    def cutout(self, imgs, seg, ratio=0.5):
+    def cutout(self, imgs, seg=None, ratio=0.5):
         num_imgs = len(imgs)
-        batch_size = tf.shape(seg)[0]
-        image_size = tf.shape(seg)[1:3]
-        image_depth = tf.shape(seg)[3]
-        x = tf.concat(imgs + [seg], axis=3)
+        batch_size = tf.shape(imgs[0])[0]
+        image_size = tf.shape(imgs[0])[1:3]
+        image_depth = tf.shape(imgs[0])[3]
+
+        if seg:
+            x = tf.concat(imgs + [seg], axis=3)
+        
+        else:
+            x = tf.concat(imgs, axis=3)
 
         cutout_size = tf.cast(tf.cast(image_size, tf.float32) * ratio + 0.5, tf.int32)
         offset_x = tf.random.uniform([tf.shape(x)[0], 1, 1], maxval=image_size[0] + (1 - cutout_size[0] % 2), dtype=tf.int32)
@@ -348,11 +361,13 @@ class DiffAug:
         x = x * tf.expand_dims(tf.expand_dims(mask, axis=3), axis=4)
        
         imgs = [x[:, :, :, i * 12:(i + 1) * 12, :] for i in range(num_imgs)]
-        seg = x[:, :, :, -12:, :]
+
+        if seg:
+            seg = x[:, :, :, -12:, :]
 
         return imgs, seg
     
-    def augment(self, imgs, seg):
+    def augment(self, imgs, seg=None):
         if self.aug_config["colour"]: imgs = [self.contrast(self.saturation(self.brightness(img))) for img in imgs]
         if self.aug_config["translation"]: imgs, seg = self.translation(imgs, seg)
         if self.aug_config["cutout"]: imgs, seg = self.cutout(imgs, seg)
@@ -363,45 +378,26 @@ class DiffAug:
  
 if __name__ == "__main__":
 
-    FILE_PATH = "C:/ProjectImages/VirtualContrast/"
-    TestLoader = ImgLoader({"DATA_PATH": FILE_PATH, "DOWN_SAMP": 4, "CV_FOLDS": 6, "MODEL": "GAN", "CROP": 1}, dataset_type="training", fold=0)
+    FILE_PATH = "D:/ProjectImages/SyntheticContrast/"
+    TestLoader = PairedLoader({"DATA_PATH": FILE_PATH, "DATA": {"TARGET": ["AC"], "SOURCE": ["HQ"], "JSON": ""}, "DOWN_SAMP": 4, "CV_FOLDS": 3, "FOLD": 2}, dataset_type="training")
+    TestLoader.set_normalisation(norm_type="std", param_1=-288, param_2=254)
     TestAug = DiffAug({"colour": True, "translation": True, "cutout": True})
 
     train_ds = tf.data.Dataset.from_generator(
-        TestLoader.data_generator, output_types=(tf.float32, tf.float32, tf.float32, tf.float32))
+        TestLoader.data_generator, output_types=(tf.float32, tf.float32))
 
     for data in train_ds.batch(4):
+        imgs, _ = TestAug.augment(imgs=[data[0], data[1]], seg=None)
+        source, target = imgs
 
-        NCE, ACE, seg, coords = data
-        print(coords[:, 0, :], coords[:, 0, 0])
-        imgs, seg = TestAug.augment(imgs=[NCE, ACE], seg=seg)
-        NCE, ACE = imgs
-        coords = tf.cast(coords, tf.int32)
-        c1 = coords[0][1]
-        c2 = coords[1][1]
-        NCE1, NCE2 = NCE[0, ...], NCE[1, ...]
-        ACE1, ACE2 = ACE[0, ...], ACE[1, ...]
-        seg1, seg2 = seg[0, ...], seg[1, ...]
-        # NCE1 = NCE[0, int(c1[0]) - 100:int(c1[0]) + 100, int(c1[1]) - 100:int(c1[1]) + 100, :, :]
-        # NCE2 = NCE[1, int(c2[0]) - 100:int(c2[0]) + 100, int(c2[1]) - 100:int(c2[1]) + 100, :, :]
-        # ACE1 = ACE[0, int(c1[0]) - 100:int(c1[0]) + 100, int(c1[1]) - 100:int(c1[1]) + 100, :, :]
-        # ACE2 = ACE[1, int(c2[0]) - 100:int(c2[0]) + 100, int(c2[1]) - 100:int(c2[1]) + 100, :, :]
-        # seg1 = seg[0, int(c1[0]) - 100:int(c1[0]) + 100, int(c1[1]) - 100:int(c1[1]) + 100, :, :]
-        # seg2 = seg[1, int(c2[0]) - 100:int(c2[0]) + 100, int(c2[1]) - 100:int(c2[1]) + 100, :, :]
-
-        plt.subplot(2, 3, 1)
-        plt.imshow(NCE1[:, :, 0, 0])
-        plt.subplot(2, 3, 4)
-        plt.imshow(NCE2[:, :, 0, 0])
+        plt.subplot(2, 2, 1)
+        plt.imshow(source[0, :, :, 0, 0])
+        plt.subplot(2, 2, 2)
+        plt.imshow(source[1, :, :, 0, 0])
         
-        plt.subplot(2, 3, 2)
-        plt.imshow(ACE1[:, :, 0, 0])
-        plt.subplot(2, 3, 5)
-        plt.imshow(ACE2[:, :, 0, 0])
-
-        plt.subplot(2, 3, 3)
-        plt.imshow(seg1[:, :, 0, 0])
-        plt.subplot(2, 3, 6)
-        plt.imshow(seg2[:, :, 0, 0])
+        plt.subplot(2, 2, 3)
+        plt.imshow(target[0, :, :, 0, 0])
+        plt.subplot(2, 2, 4)
+        plt.imshow(target[1, :, :, 0, 0])
 
         plt.show()

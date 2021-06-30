@@ -3,9 +3,7 @@ import pytest
 import sys
 import tensorflow as tf
 
-sys.path.append("..")
-
-from utils.Losses import FocalMetric
+from syntheticcontrast.utils.Losses_v01 import FocalMetric
 
 
 def test_metric():

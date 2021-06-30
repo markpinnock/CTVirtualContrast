@@ -1,0 +1,40 @@
+{
+    "EXPT":
+    {
+        "SAVE_PATH": "<path/to/save/folder>",
+        "DATA_PATH": "<path/to/data/folder>",
+        "MODEL": "GAN",
+        "DATA":
+        {
+            "INPUTS": "HQ",
+            "LABELS": "AC",
+            "SEGS": "Segs",
+            "JSON": "coords.json"
+        },
+        "IMG_DIMS": [128, 128, 12],
+        "DOWN_SAMP": 4,
+        "NORM_TYPE": "-11",
+        "EPOCHS": 2,
+        "CV_FOLDS": 6,
+        "CROP": 1,
+        "NUM_EXAMPLES": 4,
+        "VERBOSE": 1
+    },
+    "HYPERPARAMS":
+    {
+        "MB_SIZE": 1,
+        "N_CRITIC": 1,
+        "D_ETA": 2e-4,
+        "G_ETA": 2e-4,
+        "LAMBDA": 100,
+        "MU": 0.0,
+        "NDF_G": 64,
+        "NDF_F": 0,
+        "NGF": 64,
+        "D_LAYERS_G": 2,
+        "D_LAYERS_F": 0,
+        "D_IN_CH": 2,
+        "G_LAYERS": 4,
+        "AUGMENT": 1
+    }
+}

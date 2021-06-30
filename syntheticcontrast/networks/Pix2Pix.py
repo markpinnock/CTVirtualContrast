@@ -5,7 +5,7 @@ import tensorflow.keras as keras
 
 sys.path.append("..")
 
-from networks.Layers import GANDownBlock, GANUpBlock
+from .Layers import GANDownBlock, GANUpBlock
 
 
 #-------------------------------------------------------------------------
@@ -23,17 +23,17 @@ class Discriminator(keras.Model):
         super(Discriminator, self).__init__(name=name)
     
         # Check network and image dimensions
-        img_dims = config["EXPT"]["IMG_DIMS"]
+        img_dims = config["DATA"]["IMG_DIMS"]
         assert len(img_dims) == 3, "3D input only"
         max_num_layers = int(np.log2(np.min([img_dims[0], img_dims[1]]) / 4))
         max_z_downsample = int(np.floor(np.log2(img_dims[2])))
 
-        if d_focal:
-            ndf = config["HYPERPARAMS"]["NDF_F"]
-            num_layers = config["HYPERPARAMS"]["D_LAYERS_F"]
-        else:
-            ndf = config["HYPERPARAMS"]["NDF_G"]
-            num_layers = config["HYPERPARAMS"]["D_LAYERS_G"]
+        # if d_focal:
+        #     ndf = config["HYPERPARAMS"]["NDF_F"]
+        #     num_layers = config["HYPERPARAMS"]["D_LAYERS_F"]
+        # else:
+        ndf = config["HYPERPARAMS"]["NDF"]
+        num_layers = config["HYPERPARAMS"]["D_LAYERS"]
        
         assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum numnber of discriminator layers: {max_num_layers}"
         self.conv_list = []
@@ -126,7 +126,7 @@ class Generator(keras.Model):
         super(Generator, self).__init__(name=name)
 
         # Check network and image dimensions
-        img_dims = config["EXPT"]["IMG_DIMS"]
+        img_dims = config["DATA"]["IMG_DIMS"]
         assert len(img_dims) == 3, "3D input only"
         max_num_layers = int(np.log2(np.min([img_dims[0], img_dims[1]])))
         max_z_downsample = int(np.floor(np.log2(img_dims[2])))

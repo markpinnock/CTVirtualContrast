@@ -6,10 +6,10 @@ import tensorflow.keras as keras
 
 sys.path.append("..")
 
-from networks.Layers import DownBlock, UpBlock
-from utils.Losses import Loss, FocalMetric, calc_RBF
-from utils.UNetAug import affine_transformation, TransMatGen
-from utils.Transformation import affineTransformation
+from .Layers import DownBlock, UpBlock
+from syntheticcontrast.utils.Losses_v01 import Loss, FocalMetric, calc_RBF
+from syntheticcontrast.utils.UNetAug import affine_transformation, TransMatGen
+from syntheticcontrast.utils.Transformation import affineTransformation
 
 
 class UNet(keras.Model):

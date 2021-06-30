@@ -2,6 +2,9 @@ import tensorflow as tf
 import tensorflow.keras as keras
 
 
+""" Loss functions used in Version 01 - loss weighted by foreground/background,
+    and by distance between data and label """
+
 #-------------------------------------------------------------------------
 """ Standard L2 loss, allows label weighting based on RBF etc. """
 

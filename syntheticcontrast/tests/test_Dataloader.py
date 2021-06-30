@@ -2,9 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import unittest
-import sys; sys.path.append('..')
 
-from utils.DataLoader import PairedLoader, UnpairedLoader
+from syntheticcontrast.utils.DataLoader import PairedLoader, UnpairedLoader
 
 
 class TestUnpaired(unittest.TestCase):
@@ -15,8 +14,8 @@ class TestUnpaired(unittest.TestCase):
         self.fold = 2
         self.target = 'AC'
         self.source = 'HQ'
-        self.EMPTY_FOLDER = "./FixturesUnpairedEmpty/"
-        self.TEST_FOLDER = "./FixturesUnpaired/"
+        self.EMPTY_FOLDER = "./unittests/FixturesUnpairedEmpty/"
+        self.TEST_FOLDER = "./unittests/FixturesUnpaired/"
         self.num_subjects = 15
         self.num_subject_imgs = 4
 
@@ -135,7 +134,7 @@ class TestUnpaired(unittest.TestCase):
 
 #-------------------------------------------------------------------------
 
-class Testpaired(unittest.TestCase):
+class TestPaired(unittest.TestCase):
 
     def setUp(self) -> None:
         super().setUp()

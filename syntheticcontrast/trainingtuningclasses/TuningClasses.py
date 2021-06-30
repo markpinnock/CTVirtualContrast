@@ -4,9 +4,9 @@ import os
 import tensorflow as tf
 from abc import ABC, abstractmethod
 
-from networks.GANWrapper import GAN, CropGAN
-from networks.UNet import UNet, CropUNet
-from utils.DataLoader import OneToOneLoader, ManyToOneLoader
+from syntheticcontrast.networks.GANWrapper import GAN, CropGAN
+from syntheticcontrast.networks.UNet import UNet, CropUNet
+from syntheticcontrast.utils.DataLoader import OneToOneLoader, ManyToOneLoader
 
 
 #-------------------------------------------------------------------------

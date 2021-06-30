@@ -7,10 +7,9 @@ import os
 import tensorflow.keras as keras
 import tensorflow as tf
 
-from TrainingLoops import TrainingLoopUNet, TrainingLoopGAN, print_model_summary
-from networks.GANWrapper import GAN, CropGAN
+from trainingtuningclasses.TrainingClasses import TrainingLoopUNet, TrainingLoopGAN, print_model_summary
+from networks.GANWrapper import GAN, CropGAN_v01
 from networks.UNet import UNet, CropUNet
-from networks.ResidualNet import ResNet
 from utils.DataLoader import OneToOneLoader, ManyToOneLoader
 
 
@@ -118,8 +117,12 @@ elif CONFIG["EXPT"]["MODEL"] == "GAN":
     if not CONFIG["EXPT"]["CROP"]:
         Model = GAN(config=CONFIG)
     elif CONFIG["EXPT"]["CROP"]:
-        Model = CropGAN(config=CONFIG)
+        Model = CropGAN_v01(config=CONFIG)
 
+    d_opt = keras.optimizers.Adam(CONFIG["HYPERPARAMS"]["D_ETA"], 0.5, 0.999, name="d_opt")
+    g_opt = keras.optimizers.Adam(CONFIG["HYPERPARAMS"]["G_ETA"], 0.5, 0.999, name="g_opt")
+
+    Model.compile(g_optimiser=g_opt, d_optimiser=d_opt, loss="minmax")
     TrainingLoop = TrainingLoopGAN(Model=Model, dataset=(train_ds, val_ds), config=CONFIG)
 
 else:
