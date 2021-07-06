@@ -23,7 +23,12 @@ class GAN(keras.Model):
         super().__init__(name=name)
         self.initialiser = keras.initializers.RandomNormal(0, 0.02)
         self.lambda_ = config["HYPERPARAMS"]["LAMBDA"]
-        self.d_in_ch = config["HYPERPARAMS"]["D_IN_CH"]
+
+        if len(config["DATA"]["SEGS"]) > 0:
+            self.d_in_ch = 3
+        else:
+            self.d_in_ch = 2
+
         self.img_dims = config["DATA"]["IMG_DIMS"]
         self.n_critic = config["HYPERPARAMS"]["N_CRITIC"]
         self.mb_size = config["HYPERPARAMS"]["MB_SIZE"]
@@ -84,11 +89,11 @@ class GAN(keras.Model):
         keras.Model(inputs=inputs, outputs=outputs).summary()
     
     @tf.function
-    def train_step(self, data):
-        source, target = data
+    def train_step(self, source, target, seg=None):
+        """ Expects data in order 'source, target' or 'source, target, segmentations'"""
+
         # Determine size of mb for each critic training run
         # (size of real_images = minibatch size * number of critic runs)
-
         g_mb = source.shape[0] // (1 + self.n_critic)
         if g_mb < 1: g_mb = source.shape[0]
         d_mb = g_mb * self.n_critic # TODO: TEST WITH N_CRITIC > 1
@@ -96,6 +101,7 @@ class GAN(keras.Model):
         # Select minibatch of images and masks for generator training
         g_source = source[0:g_mb, :, :, :, :]
         g_real_target = target[0:g_mb, :, :, :, :]
+        if seg: g_seg = seg[0:g_mb, :, :, :, :]
 
         # Critic training loop
         for idx in range(self.n_critic):
@@ -105,11 +111,13 @@ class GAN(keras.Model):
                 d_source = source[0:d_mb, :, :, :, :]
                 d_fake_target = self.Generator(d_source)
                 d_real_target = target[0:d_mb, :, :, :, :]
+                if seg: d_seg = seg[0:d_mb, :, :, :, :]
 
             else:
                 d_source = source[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
                 d_real_target = target[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
                 d_fake_target = self.Generator(d_source)
+                if seg: d_seg = seg[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
 
             # DiffAug if required
             if self.Aug:

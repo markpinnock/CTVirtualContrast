@@ -19,7 +19,6 @@ from utils.DataLoader import PairedLoader, UnpairedLoader
 parser = argparse.ArgumentParser()
 parser.add_argument("--config_path", "-cp", help="Config json path", type=str)
 parser.add_argument("--expt_name", "-en", help="Expt name", type=str)
-parser.add_argument("--save_every", "-s", help="Save every _ epochs", type=int)
 parser.add_argument("--lambda_", "-l", help="Lambda", type=float)
 parser.add_argument("--gpu", "-g", help="GPU number", type=int)
 arguments = parser.parse_args()
@@ -33,11 +32,6 @@ if arguments.expt_name is not None:
 else:
     CONFIG["EXPT"]["EXPT_NAME"] = "test"
 
-if arguments.save_every is not None:
-    CONFIG["EXPT"]["SAVE_EVERY"] = arguments.save_every
-else:
-    CONFIG["EXPT"]["SAVE_EVERY"] = 1
-
 if arguments.lambda_ is not None:
     CONFIG["HYPERPARAMS"]["LAMBDA"] = arguments.lambda_
 
@@ -45,11 +39,8 @@ if arguments.lambda_ is not None:
 if arguments.gpu is not None:
     gpu_number = arguments.gpu
     os.environ["LD_LIBRARY_PATH"] = CONFIG["CUDA_PATH"]
-else:
-    gpu_number = 0
-
-gpus = tf.config.experimental.list_physical_devices("GPU")
-tf.config.experimental.set_visible_devices(gpus[gpu_number], "GPU")
+    gpus = tf.config.experimental.list_physical_devices("GPU")
+    tf.config.experimental.set_visible_devices(gpus[gpu_number], "GPU")
 
 if CONFIG["DATA"]["DATA_TYPE"] == "paired":
     Loader = PairedLoader
@@ -60,7 +51,7 @@ elif CONFIG["DATA"]["DATA_TYPE"] == "unpaired":
 else:
     raise ValueError("Select paired or unpaired dataloader")
 
-# Initialise datasets
+# Initialise datasets and set normalisation parameters
 if CONFIG["DATA"]["NORM_PARAM_1"] == "" or CONFIG["DATA"]["NORM_PARAM_2"] == "":
     param_1 = None
     param_2 = None
@@ -77,13 +68,17 @@ _, _ = ValGenerator.set_normalisation(CONFIG["DATA"]["NORM_TYPE"], param_1, para
 CONFIG["DATA"]["NORM_PARAM_1"] = int(param_1)
 CONFIG["DATA"]["NORM_PARAM_2"] = int(param_2)
 
-# Batch size (separate batches for generator and critic runs)
+# Batch size (separate batches for generator and critic runs if Wasserstein GAN)
 if CONFIG["EXPT"]["MODEL"] == "GAN":
     MB_SIZE = CONFIG["HYPERPARAMS"]["MB_SIZE"] + CONFIG["HYPERPARAMS"]["MB_SIZE"] * CONFIG["HYPERPARAMS"]["N_CRITIC"]
 else:
     MB_SIZE = CONFIG["HYPERPARAMS"]["MB_SIZE"]
 
-output_tensors = (tf.float32, tf.float32)
+# Allow use of segmentations if necessary
+if len(CONFIG["DATA"]["SEGS"]) > 0:
+    output_tensors = (tf.float32, tf.float32, tf.float32)
+else:
+    output_tensors = (tf.float32, tf.float32)
 
 # Create dataloader
 train_ds = tf.data.Dataset.from_generator(
@@ -106,6 +101,7 @@ Model.compile(g_optimiser=g_opt, d_optimiser=d_opt, loss="minmax")
 if CONFIG["EXPT"]["VERBOSE"]:
     Model.summary()
 
+# Write graph for visualising in Tensorboard
 if CONFIG["EXPT"]["GRAPH"]:
     curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     log_dir = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/logs/" + CONFIG["EXPT"]["MODEL"] + "/" + curr_time

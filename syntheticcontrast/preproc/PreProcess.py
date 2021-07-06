@@ -57,8 +57,7 @@ class ImgConvBase(ABC):
         self.seg_names = {}
 
         for name in self.subjects:
-            img_path = f"{self.img_path}{name}/"
-            # seg_path = f"{self.seg_path}{name}S/"
+            img_path = f"{self.img_path}/{name}/"
             imgs = os.listdir(img_path)
             imgs.sort()
 
@@ -88,15 +87,16 @@ class ImgConvBase(ABC):
                 print(f"{name} has only {len(self.HQ_names[name])} HQs: {self.HQ_names[name]}")
                 continue
 
-            try:
-                # segs = os.listdir(self.seg_names)
-                raise FileNotFoundError
-            except FileNotFoundError:
-                segs = []
-            else:
-                segs.sort()
-                self.source_seg_names[name] = [f"{self.seg_names}{img[-16:-5]}M.seg.nrrd" for img in self.source_names[name] if f"{img[-16:-5]}M.seg.nrrd" in segs]
-                self.target_seg_names[name] = [f"{self.seg_names}{img[-16:-5]}M.seg.nrrd" for img in self.target_names[name] if f"{img[-16:-5]}M.seg.nrrd" in segs]
+            # try:
+            #     segs = os.listdir(self.seg_names)
+
+            # except FileNotFoundError:
+            #     segs = []
+
+            # else:
+            #     segs.sort()
+            #     self.source_seg_names[name] = [f"{self.seg_names}{img[-16:-5]}M.seg.nrrd" for img in self.source_names[name] if f"{img[-16:-5]}M.seg.nrrd" in segs]
+            #     self.target_seg_names[name] = [f"{self.seg_names}{img[-16:-5]}M.seg.nrrd" for img in self.target_names[name] if f"{img[-16:-5]}M.seg.nrrd" in segs]
 
         return self
     
@@ -128,20 +128,41 @@ class ImgConvBase(ABC):
             subjects = self.subjects
         
         for subject in subjects:
-            imgs = self.load_subject(subject, HU_min=HU_min, HU_max=HU_max)
+            proc = self.load_subject(subject, HU_min=HU_min, HU_max=HU_max)
 
-            if imgs == None:
+            if isinstance(proc, tuple):
+                imgs = proc[0]
+                segs = proc[1]
+
+            elif proc == None:
                 print(f"{subject} skipped")
                 continue
+            
+            elif isinstance(proc, dict):
+                imgs = proc
+                segs = None
+            
+            else:
+                raise ValueError(type(proc))
 
             img_arrays = [itk.GetArrayFromImage(s).transpose([1, 2, 0]) for s in imgs.values()]
             img_names = list(imgs.keys())
             NCCs = [self.calc_NCC(img_arrays[i], img_arrays[0]) for i in range(len(img_arrays))]
             print(subject, img_arrays[0].shape)
 
+            if segs != None:
+                seg_arrays = [itk.GetArrayFromImage(s).transpose([1, 2, 0, 3]) for s in segs.values()]
+                seg_names = list(segs.keys())
+            else:
+                seg_arrays = []
+
             if display:
                 mid_image = img_arrays[0].shape[2] // 2
-                fig, axs = plt.subplots(3, len(img_arrays))
+
+                if segs != None:
+                    fig, axs = plt.subplots(4, len(img_arrays))
+                else:
+                    fig, axs = plt.subplots(3, len(img_arrays))
 
                 for i in range(len(img_arrays)):
                     axs[0, i].imshow(img_arrays[i][:, :, mid_image], cmap="gray")
@@ -151,9 +172,13 @@ class ImgConvBase(ABC):
                     axs[2, i].imshow(img_arrays[0][:, :, mid_image] - img_arrays[i][:, :, mid_image], cmap="gray")
                     axs[2, i].axis("off")
                     axs[2, i].set_title(f"{NCCs[i]:.4f}")
+                
+                    if segs != None and len(seg_arrays) > i:
+                        axs[3, i].imshow(seg_arrays[i][:, :, mid_image, 0:3] * 255, cmap="gray")
+                        axs[3, i].axis("off")
 
                 plt.show()
-    
+
     @abstractmethod
     def save_data(self, subject_ID: list = None, HU_min=None, HU_max=None) -> int:
         raise NotImplementedError
@@ -168,20 +193,44 @@ class ImgConv02(ImgConvBase):
         image_names = self.AC_names[subject_ID] + self.VC_names[subject_ID] + self.HQ_names[subject_ID]
         assert len(image_names) > 1
         images = []
+        seg_names = []
+        segs = []
 
         for i in range(len(image_names)):
             img = itk.ReadImage(image_names[i], itk.sitkInt32)
             image_dir = np.around(img.GetDirection())
             assert img.GetSpacing()[2] == 1.0, f"{image_names[i]}: {img.GetSpacing()}"
 
+            if self.seg_path != None:
+                seg_name = f"{self.seg_path}/{subject_ID}S/{image_names[i][-16:-5]}M.seg.nrrd"
+
+                try:
+                    seg = itk.ReadImage(seg_name)
+
+                except RuntimeError:
+                    print(f"Segmentation not found for {image_names[i][-16:-5]}")
+                    seg = None
+                
+                else:
+                    seg_names.append(seg_name)
+                    assert np.isclose(img.GetSpacing(), seg.GetSpacing()).all() and np.isclose(img.GetDirection(), seg.GetDirection()).all(), f"{image_names[i]}: {img.GetSpacing()}, {seg.GetSpacing()}, {img.GetDirection()}, {seg.GetDirection()}"
+
             # Check image is orientated correctly and flip/rotate if necessary
             if image_dir[0] == 0.0 or image_dir[4] == 0.0:
                 img = itk.PermuteAxes(img, [1, 0, 2])
                 image_dir = np.around(img.GetDirection())
                 img = img[::int(image_dir[0]), ::int(image_dir[4]), :]
-            
+
+                if seg != None:
+                    seg = itk.PermuteAxes(seg, [1, 0, 2])
+                    seg = seg[::int(image_dir[0]), ::int(image_dir[4]), :]
+
             else:
                 img = img[::int(image_dir[0]), ::int(image_dir[4]), :]
+
+                if seg != None:
+                    seg = seg[::int(image_dir[0]), ::int(image_dir[4]), :]
+                    segs.append(seg)
 
             images.append(img)
 
@@ -208,8 +257,23 @@ class ImgConv02(ImgConvBase):
                 images[i] = images[i][:, :, start:end]
 
             if images[i].GetSize()[2] == 0:
-                print(f"{subject_ID}: size {images[i].GetSize()}")
+                print(f"{subject_ID} img: size {images[i].GetSize()}")
                 return None
+
+        for i in range(len(segs)):
+            # TODO: Will this work without rounding?
+            seg_bounds = np.around([segs[i].GetOrigin()[2], segs[i].GetOrigin()[2] + segs[i].GetSize()[2] - 1]).astype(np.int32)
+            start = tightest_bounds[0] - seg_bounds[0]
+            end = tightest_bounds[1] - seg_bounds[1]
+
+            if end == 0:
+                segs[i] = segs[i][:, :, start:]
+            else:
+                segs[i] = segs[i][:, :, start:end]
+
+            if segs[i].GetSize()[2] == 0:
+                print(f"{subject_ID} seg: size {segs[i].GetSize()}")
+                return None    
 
         if HU_min != None and HU_max != None:
             self.HU_min_all = HU_min
@@ -234,8 +298,17 @@ class ImgConv02(ImgConvBase):
         if HU_min != None and HU_max != None:
             images[0] = filter.Execute(images[0])
 
+        # TODO: allow choosing which image to resample to
+        for i in range(len(segs)):
+            segs[i] = itk.Resample(segs[i], images[0], defaultPixelValue=self.HU_min)
+            assert segs[i].GetSize() == images[0].GetSize()
+
         assert len(image_names) == len(images)
-        return {name: img for name, img in zip(image_names, images)}
+
+        if len(segs) > 0:
+            return {name: img for name, img in zip(image_names, images)}, {name: seg for name, seg in zip(seg_names, segs)}
+        else:
+            return {name: img for name, img in zip(image_names, images)}
     
     def save_data(self, subject_ID: list = None, HU_min=None, HU_max=None) -> int:
         if subject_ID:
@@ -247,14 +320,29 @@ class ImgConv02(ImgConvBase):
         total = len(subjects)
         
         for subject in subjects:
-            imgs = self.load_subject(subject, HU_min=HU_min, HU_max=HU_max)
+            proc = self.load_subject(subject, HU_min=HU_min, HU_max=HU_max)
 
-            if imgs == None:
+            if isinstance(proc, tuple):
+                imgs = proc[0]
+                segs = proc[1]
+
+            elif proc == None:
                 print(f"{subject} skipped")
                 continue
+            
+            elif isinstance(proc, dict):
+                imgs = proc
+                segs = None
+            
+            else:
+                raise ValueError(type(proc))
 
             img_arrays = [itk.GetArrayFromImage(s).transpose([1, 2, 0]) for s in imgs.values()]
             img_names = list(imgs.keys())
+
+            if segs != None:
+                seg_arrays = [itk.GetArrayFromImage(s).transpose([1, 2, 0, 3]) for s in segs.values()]
+                seg_names = list(segs.keys())
 
             vol_thick = img_arrays[0].shape[2]      
 
@@ -263,12 +351,31 @@ class ImgConv02(ImgConvBase):
                 idx = 0  
                 stem = name[-16:-5]
 
+                if not os.path.exists(f"{self.save_path}/Images/{stem[6:8]}"):
+                    os.makedirs(f"{self.save_path}/Images/{stem[6:8]}")
+
                 for i in range(0, vol_thick, self.output_dims[2]):
                     if i + self.output_dims[2] > vol_thick:
                         break
 
                     sub_vol = img[:, :, i:i + self.output_dims[2]]
-                    np.save(f"{self.save_path}/{stem}_{idx:03d}.npy", sub_vol)
+                    np.save(f"{self.save_path}/Images/{stem[6:8]}/{stem}_{idx:03d}.npy", sub_vol)
+                    idx += 1
+                    count += 1
+
+            for name, seg in zip(seg_names, seg_arrays):
+                idx = 0  
+                stem = name[-21:-10]
+
+                if not os.path.exists(f"{self.save_path}/Segmentations/{stem[6:8]}"):
+                    os.makedirs(f"{self.save_path}/Segmentations/{stem[6:8]}")
+
+                for i in range(0, vol_thick, self.output_dims[2]):
+                    if i + self.output_dims[2] > vol_thick:
+                        break
+
+                    sub_vol = seg[:, :, i:i + self.output_dims[2]]
+                    np.save(f"{self.save_path}/Segmentations/{stem[6:8]}/{stem}_{idx:03d}.npy", sub_vol)
                     idx += 1
                     count += 1
 
@@ -590,14 +697,14 @@ class ImgConv01(ImgConvBase):
 
 if __name__ == "__main__":
 
-    FILE_PATH = "D:/ProjectImages/Imgs/"
-    SAVE_PATH = "D:/ProjectImages/SyntheticContrast/"
+    FILE_PATH = "D:/ProjectImages"
+    SAVE_PATH = "D:/ProjectImages/SyntheticContrast"
     l = ["T028A0", "T029A0", "T030A0", "T031A0"]
     ignore = [
         "T005A0HQ002.nrrd",
         "T006A1HQ002.nrrd", "T009A0HQ002.nrrd", "T009A0HQ003.nrrd", "T024A0HQ002.nrrd",
         "T026A0HQ002.nrrd", "T026A0HQ003.nrrd", "T027A0HQ002.nrrd", "T029A0HQ002.nrrd", "T029A0HQ004.nrrd",
         "T031A0HQ002.nrrd", "T031A0HQ003.nrrd", "T031A0HQ005.nrrd", "T031A0HQ006.nrrd"]
-    Test = ImgConv02(image_path=FILE_PATH, save_path=SAVE_PATH, output_dims=(512, 512, 12), ignore=["T025A1", "T037A0"], NCC_tol=0.0)
-    # Test.list_images(ignore=ignore, num_AC=1, num_VC=1, num_HQ=2).display(display=True, HU_min=-500, HU_max=50000)
-    print(Test.list_images(ignore=ignore, num_AC=1, num_VC=0, num_HQ=1).save_data(HU_min=-500, HU_max=50000))
+    Test = ImgConv02(image_path=FILE_PATH + "/Imgs", segmentation_path=FILE_PATH + "/Segs", save_path=SAVE_PATH, output_dims=(512, 512, 12), ignore=["T025A1", "T037A0"], NCC_tol=0.0)
+    Test.list_images(ignore=ignore, num_AC=1, num_VC=1, num_HQ=2).display(display=True, HU_min=-500, HU_max=50000)
+    # print(Test.list_images(ignore=ignore, num_AC=1, num_VC=0, num_HQ=1).save_data(HU_min=-500, HU_max=50000))
