@@ -7,10 +7,10 @@ import os
 import tensorflow.keras as keras
 import tensorflow as tf
 
-from trainingtuningclasses.TrainingClasses_v02 import TrainingLoopUNet, TrainingLoopGAN
+from trainingtuningclasses.trainingclasses_v02 import TrainingLoopUNet, TrainingLoopGAN
 from networks.GANWrapper import GAN, CropGAN_v01
 from networks.UNet import UNet, CropUNet
-from utils.DataLoader import PairedLoader, UnpairedLoader
+from utils.dataloader import PairedLoader, UnpairedLoader
 
 
 """ Training entry point """

@@ -3,7 +3,7 @@ import numpy as np
 import os
 import unittest
 
-from syntheticcontrast.utils.DataLoader import PairedLoader, UnpairedLoader
+from syntheticcontrast.utils.dataloader import PairedLoader, UnpairedLoader
 
 
 class TestUnpaired(unittest.TestCase):
@@ -20,8 +20,7 @@ class TestUnpaired(unittest.TestCase):
         self.num_subject_imgs = 4
 
         self.test_config = {
-            "DATA_PATH": self.TEST_FOLDER,
-            "DATA": {"TARGET": ["AC"], "SOURCE": ["HQ"], "JSON": ""},
+            "DATA": {"DATA_PATH": self.TEST_FOLDER, "TARGET": ["AC"], "SOURCE": ["HQ"], "SEGS": [], "JSON": ""},
             "CV_FOLDS": self.cv_folds,
             "FOLD": self.fold,
             "DOWN_SAMP": 2
@@ -53,8 +52,8 @@ class TestUnpaired(unittest.TestCase):
     def test_init_neg(self):
         with self.assertRaises(FileNotFoundError):
             dataloader = UnpairedLoader(
-                {"DATA_PATH": self.EMPTY_FOLDER,
-                "DATA": {"TARGET": ["AC"], "SOURCE": ["HQ"], "JSON": ""},
+            {
+                "DATA": {"DATA_PATH": self.EMPTY_FOLDER, "TARGET": ["AC"], "SOURCE": ["HQ"], "SEGS": [], "JSON": ""},
                 "CV_FOLDS": 3,
                 "FOLD": 2,
                 "DOWN_SAMP": 2
@@ -79,8 +78,8 @@ class TestUnpaired(unittest.TestCase):
         self.assertEqual(val_dataloader.fold_data["targets"], val_data)
 
         single_fold_dataloader = UnpairedLoader(
-            {"DATA_PATH": self.TEST_FOLDER,
-            "DATA": {"TARGET": ["AC"], "SOURCE": ["HQ"], "JSON": ""},
+        {
+            "DATA": {"DATA_PATH": self.TEST_FOLDER, "TARGET": ["AC"], "SOURCE": ["HQ"], "SEGS": [], "JSON": ""},
             "CV_FOLDS": 1,
             "FOLD": 0,
             "DOWN_SAMP": 2
@@ -93,8 +92,8 @@ class TestUnpaired(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             dataloader = UnpairedLoader(
-                {"DATA_PATH": self.TEST_FOLDER,
-                "DATA": {"TARGET": ["AC"], "SOURCE": ["HQ"], "JSON": ""},
+            {
+                "DATA": {"DATA_PATH": self.TEST_FOLDER, "TARGET": ["AC"], "SOURCE": ["HQ"], "SEGS": [], "JSON": ""},
                 "CV_FOLDS": 1,
                 "FOLD": 1,
                 "DOWN_SAMP": 2
@@ -104,8 +103,8 @@ class TestUnpaired(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             dataloader = UnpairedLoader(
-                {"DATA_PATH": self.TEST_FOLDER,
-                "DATA": {"TARGET": ["AC"], "SOURCE": ["HQ"], "JSON": ""},
+            {
+                "DATA": {"DATA_PATH": self.TEST_FOLDER, "TARGET": ["AC"], "SOURCE": ["HQ"], "SEGS": [], "JSON": ""},
                 "CV_FOLDS": 0,
                 "FOLD": -1,
                 "DOWN_SAMP": 2
@@ -115,8 +114,8 @@ class TestUnpaired(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             dataloader = UnpairedLoader(
-                {"DATA_PATH": self.TEST_FOLDER,
-                "DATA": {"TARGET": ["AC"], "SOURCE": ["HQ"], "JSON": ""},
+            {
+                "DATA": {"DATA_PATH": self.TEST_FOLDER, "TARGET": ["AC"], "SOURCE": ["HQ"], "SEGS": [], "JSON": ""},
                 "CV_FOLDS": 3,
                 "FOLD": 2,
                 "DOWN_SAMP": 2
@@ -147,8 +146,7 @@ class TestPaired(unittest.TestCase):
         self.num_subject_imgs = 4
 
         self.test_config = {
-            "DATA_PATH": self.TEST_FOLDER,
-            "DATA": {"TARGET": ["AC"], "SOURCE": ["HQ"], "JSON": ""},
+            "DATA": {"DATA_PATH": self.TEST_FOLDER, "TARGET": ["AC"], "SOURCE": ["HQ"], "SEGS": [], "JSON": ""},
             "CV_FOLDS": self.cv_folds,
             "FOLD": self.fold,
             "DOWN_SAMP": 2
@@ -185,8 +183,7 @@ if __name__ == "__main__":
     """ Quick routine to visually check output of generator """
 
     test_config = {
-        "DATA_PATH": "D:/ProjectImages/SyntheticContrast",
-        "DATA": {"TARGET": ["AC"], "SOURCE": ["HQ"], "JSON": ""},
+        "DATA": {"DATA_PATH": "D:/ProjectImages/SyntheticContrast", "TARGET": ["AC"], "SOURCE": ["HQ"], "SEGS": [], "JSON": ""},
         "CV_FOLDS": 3,
         "FOLD": 2,
         "DOWN_SAMP": 2

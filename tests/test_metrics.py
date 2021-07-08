@@ -3,7 +3,7 @@ import pytest
 import sys
 import tensorflow as tf
 
-from syntheticcontrast.utils.Losses_v01 import FocalMetric
+from syntheticcontrast.utils.losses_v01 import FocalMetric
 
 
 def test_metric():

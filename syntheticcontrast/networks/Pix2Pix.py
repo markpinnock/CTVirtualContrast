@@ -1,17 +1,14 @@
 import numpy as np
 import sys
 import tensorflow as tf
-import tensorflow.keras as keras
 
-sys.path.append("..")
-
-from .Layers import GANDownBlock, GANUpBlock
+from .layers import GANDownBlock, GANUpBlock
 
 
 #-------------------------------------------------------------------------
 """ PatchGAN discriminator for Pix2pix """
 
-class Discriminator(keras.Model):
+class Discriminator(tf.keras.Model):
 
     """ Input:
         - initialiser: e.g. keras.initializers.RandomNormal
@@ -56,7 +53,7 @@ class Discriminator(keras.Model):
                     initialiser=initialiser,
                     batch_norm=True))
 
-            self.conv_list.append(keras.layers.Conv3D(
+            self.conv_list.append(tf.keras.layers.Conv3D(
                 1, (1, 1, 1), (1, 1, 1),
                 padding='same',
                 kernel_initializer=initialiser))       
@@ -84,7 +81,7 @@ class Discriminator(keras.Model):
                         initialiser=initialiser,
                         batch_norm=batch_norm, name=f"downblock_{i}"))
             
-            self.conv_list.append(keras.layers.Conv3D(
+            self.conv_list.append(tf.keras.layers.Conv3D(
                 1, (4, 4, 1), (1, 1, 1),
                 padding='valid',
                 kernel_initializer=initialiser, name="output"))
@@ -112,7 +109,7 @@ class Discriminator(keras.Model):
 #-------------------------------------------------------------------------
 """ Generator for Pix2pix """
 
-class Generator(keras.Model):
+class Generator(tf.keras.Model):
 
     """ Input:
         - initialiser e.g. keras.initializers.RandomNormal
@@ -161,7 +158,7 @@ class Generator(keras.Model):
                     batch_norm=True, name=f"down_{i}"))
         
         # TODO: Needs better implementation to avoid concat bug from above loop
-        self.bottom_layer = keras.layers.Conv3D(
+        self.bottom_layer = tf.keras.layers.Conv3D(
                 channels, kernel, strides,
                 padding="same", activation="relu",
                 kernel_initializer=initialiser, name="bottom")
@@ -191,7 +188,7 @@ class Generator(keras.Model):
                     batch_norm=True,
                     dropout=dropout, name=f"up_block{i}"))
 
-        self.final_layer = keras.layers.Conv3DTranspose(
+        self.final_layer = tf.keras.layers.Conv3DTranspose(
             1, (4, 4, 4), (2, 2, 2),
             padding='same', activation='tanh',
             kernel_initializer=initialiser, name="output")

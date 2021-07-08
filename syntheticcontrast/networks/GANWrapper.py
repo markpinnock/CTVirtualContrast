@@ -1,19 +1,19 @@
 import matplotlib.pyplot as plt
 import sys
 import tensorflow as tf
-import tensorflow.keras as keras
 
 from .Pix2Pix import Discriminator, Generator
-from syntheticcontrast.utils.DataLoader import DiffAug
-from syntheticcontrast.utils.Losses_v01 import Loss, FocalMetric
-from syntheticcontrast.utils.Losses_v02 import (
+from .STN import SpatialTransformer
+from utils.dataloader import DiffAug
+from utils.losses_v01 import Loss, FocalMetric
+from utils.losses_v02 import (
     minimax_D, minimax_G, L1, wasserstein_D, wasserstein_G, gradient_penalty)
 
 
 #-------------------------------------------------------------------------
 """ Wrapper for standard Pix2pix GAN """
 
-class GAN(keras.Model):
+class GAN(tf.keras.Model):
 
     """ GAN class
         - config: configuration json
@@ -21,7 +21,7 @@ class GAN(keras.Model):
 
     def __init__(self, config, GAN_type="original", name="GAN"):
         super().__init__(name=name)
-        self.initialiser = keras.initializers.RandomNormal(0, 0.02)
+        self.initialiser = tf.keras.initializers.RandomNormal(0, 0.02)
         self.lambda_ = config["HYPERPARAMS"]["LAMBDA"]
 
         if len(config["DATA"]["SEGS"]) > 0:
@@ -42,6 +42,12 @@ class GAN(keras.Model):
         # Initialise generator and discriminators
         self.generator_init(config)
         self.discriminator_init(config)
+
+        # Spatial transformer if necessary
+        if config["HYPERPARAMS"]["STN_LAYERS"] > 0:
+            self.STN = SpatialTransformer(config=config)
+        else:
+            self.STN = None
 
     def generator_init(self, config):
         # Check generator output dims match input
@@ -69,24 +75,25 @@ class GAN(keras.Model):
             self.g_loss = wasserstein_G
 
         # Set up metrics
-        self.d_metric = keras.metrics.Mean(name="d_metric")
-        self.g_metric = keras.metrics.Mean(name="g_metric")
-        self.train_L1_metric = keras.metrics.Mean(name="train_L1")
-        self.val_L1_metric = keras.metrics.Mean(name="val_L1")
+        self.d_metric = tf.keras.metrics.Mean(name="d_metric")
+        self.g_metric = tf.keras.metrics.Mean(name="g_metric")
+        self.train_L1_metric = tf.keras.metrics.Mean(name="train_L1")
+        self.val_L1_metric = tf.keras.metrics.Mean(name="val_L1")
     
     def summary(self):
-        inputs = keras.Input(shape=self.img_dims + [1])
-        outputs = self.Generator.call(inputs)
+        source = tf.keras.Input(shape=self.img_dims + [1])
+        outputs = self.Generator.call(source)
         print("===========================================================")
         print("Generator")
         print("===========================================================")
-        keras.Model(inputs=inputs, outputs=outputs).summary()
-        inputs = keras.Input(shape=self.img_dims + [2])
-        outputs = self.Discriminator.call(inputs)
+        tf.keras.Model(inputs=source, outputs=outputs).summary()
+        source = tf.keras.Input(shape=self.img_dims + [1])
+        if self.STN: target = self.STN.call(source, source)
+        outputs = self.Discriminator.call(tf.concat([source, source], axis=4))
         print("===========================================================")
         print("Discriminator")
         print("===========================================================")
-        keras.Model(inputs=inputs, outputs=outputs).summary()
+        tf.keras.Model(inputs=source, outputs=outputs).summary()
     
     @tf.function
     def train_step(self, source, target, seg=None):
@@ -118,6 +125,14 @@ class GAN(keras.Model):
                 d_real_target = target[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
                 d_fake_target = self.Generator(d_source)
                 if seg: d_seg = seg[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
+            
+            # Spatial transformer if required TODO: BN TRAINING
+            if self.STN:
+                if seg:
+                    d_real_target, d_seg = self.STN(source=d_source, target=d_real_target, seg=d_seg, training=True)
+
+                else:
+                    d_real_target = self.STN(source=d_source, target=d_real_target, training=True)
 
             # DiffAug if required
             if self.Aug:
@@ -147,6 +162,9 @@ class GAN(keras.Model):
         # Generator training       
         # Get gradients from discriminator predictions of generated fake images and update weights
         with tf.GradientTape() as g_tape:
+            if self.STN:
+                g_real_target = self.STN(source=g_source, target=g_real_target, training=True)
+
             g_fake_target = self.Generator(g_source)
 
             # Calculate L1 before augmentation
@@ -163,15 +181,20 @@ class GAN(keras.Model):
             g_loss = self.g_loss(g_pred_fake)
             g_total_loss = g_loss + self.lambda_ * g_L1
 
-        g_grads = g_tape.gradient(g_total_loss, self.Generator.trainable_variables)
-        self.g_optimiser.apply_gradients(zip(g_grads, self.Generator.trainable_variables))
+        if self.STN:
+            g_grads = g_tape.gradient(g_total_loss, self.Generator.trainable_variables + self.STN.trainable_variables)
+            self.g_optimiser.apply_gradients(zip(g_grads, self.Generator.trainable_variables + self.STN.trainable_variables))
+        
+        else:
+            g_grads = g_tape.gradient(g_total_loss, self.Generator.trainable_variables)
+            self.g_optimiser.apply_gradients(zip(g_grads, self.Generator.trainable_variables))
 
         # Update metric
         self.g_metric.update_state(g_loss)
 
     @tf.function
-    def val_step(self, data):
-        source, target = data
+    def val_step(self, source, target):
+        target = self.STN(source=source, target=target, training=False)
         g_fake = self.Generator(source)
         g_L1 = L1(target, g_fake)
         self.val_L1_metric.update_state(g_L1)

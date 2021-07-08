@@ -233,7 +233,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
             self.Model.d_metric.reset_states()
 
             for data in self.ds_train:
-                self.Model.train_step(data)
+                self.Model.train_step(*data)
 
             # for key, value in model.generator_metrics.items():
             self._results["g_metric"].append(float(self.Model.g_metric.result()))
@@ -250,7 +250,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
                 self.Model.val_L1_metric.reset_states()
 
                 for data in self.ds_val:
-                    self.Model.val_step(data)
+                    self.Model.val_step(*data)
                 
                 self._results["val_L1"].append(float(self.Model.val_L1_metric.result()))
 
@@ -274,6 +274,11 @@ class TrainingLoopGAN(BaseTrainingLoop):
         """ Saves sample of images """
 
         source, target = self.val_generator.example_images()
+
+        # Spatial transformer if necessary # TODO: segmentations
+        if self.Model.STN:
+            target = self.Model.STN(source=source, target=target, print_matrix=False)
+
         pred = self.Model.Generator(source, training=False).numpy()
         super().save_images(source, target, pred, epoch, tuning_path)
 
