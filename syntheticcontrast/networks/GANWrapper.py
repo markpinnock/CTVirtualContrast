@@ -22,6 +22,7 @@ class GAN(tf.keras.Model):
     def __init__(self, config, GAN_type="original", name="GAN"):
         super().__init__(name=name)
         self.initialiser = tf.keras.initializers.RandomNormal(0, 0.02)
+        self.config = config
         self.lambda_ = config["HYPERPARAMS"]["LAMBDA"]
 
         if len(config["DATA"]["SEGS"]) > 0:
@@ -79,6 +80,9 @@ class GAN(tf.keras.Model):
         self.g_metric = tf.keras.metrics.Mean(name="g_metric")
         self.train_L1_metric = tf.keras.metrics.Mean(name="train_L1")
         self.val_L1_metric = tf.keras.metrics.Mean(name="val_L1")
+
+        if self.STN:
+            self.s_optimiser = tf.keras.optimizers.Adam(self.config["HYPERPARAMS"]["STN_ETA"])
     
     def summary(self):
         source = tf.keras.Input(shape=self.img_dims + [1])
@@ -182,9 +186,11 @@ class GAN(tf.keras.Model):
             g_total_loss = g_loss + self.lambda_ * g_L1
 
         if self.STN:
-            g_grads = g_tape.gradient(g_total_loss, self.Generator.trainable_variables + self.STN.trainable_variables)
-            self.g_optimiser.apply_gradients(zip(g_grads, self.Generator.trainable_variables + self.STN.trainable_variables))
-        
+            gen_grads = len(self.STN.trainable_variables)
+            g_grads = g_tape.gradient(g_total_loss, self.STN.trainable_variables + self.Generator.trainable_variables)
+            self.s_optimiser.apply_gradients(zip(g_grads[0:gen_grads], self.STN.trainable_variables))
+            self.g_optimiser.apply_gradients(zip(g_grads[gen_grads:], self.Generator.trainable_variables))
+  
         else:
             g_grads = g_tape.gradient(g_total_loss, self.Generator.trainable_variables)
             self.g_optimiser.apply_gradients(zip(g_grads, self.Generator.trainable_variables))

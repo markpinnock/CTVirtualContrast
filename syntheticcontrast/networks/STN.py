@@ -42,7 +42,11 @@ class SpatialTransformer(tf.keras.layers.Layer):
         
         x = self.dense(self.flatten(x))
         x = self.identity - x
-        if print_matrix: print(tf.reshape(x[0, ...], [2, 3]))
+
+        # For debugging
+        if print_matrix:
+            print(tf.reshape(x[0, ...], [2, 3]))
+
         if seg != None:
             target_seg = tf.concat([source, seg], axis=4)
             target_seg = self.transform(im=target_seg, mb_size=mb_size, thetas=x)
