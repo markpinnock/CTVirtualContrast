@@ -1,13 +1,11 @@
 import matplotlib.pyplot as plt
-import sys
 import tensorflow as tf
 
 from .Pix2Pix import Discriminator, Generator
 from .STN import SpatialTransformer
-from utils.dataloader import DiffAug
-from utils.losses_v01 import Loss, FocalMetric
+from utils.augmentation import DiffAug
 from utils.losses_v02 import (
-    minimax_D, minimax_G, L1, wasserstein_D, wasserstein_G, gradient_penalty)
+    minimax_D, minimax_G, L1, wasserstein_D, wasserstein_G, gradient_penalty, FocalLoss, FocalMetric)
 
 
 #-------------------------------------------------------------------------
@@ -74,12 +72,22 @@ class GAN(tf.keras.Model):
         elif loss == "wasserstein-GP":
             self.d_loss = wasserstein_D
             self.g_loss = wasserstein_G
+        
+        if self.config["EXPT"]["FOCAL"]:
+            self.L1_loss = FocalLoss(self.config["HYPERPARAMS"]["MU"], name="FocalLoss")
+        else:
+            self.L1_loss = L1
 
         # Set up metrics
         self.d_metric = tf.keras.metrics.Mean(name="d_metric")
         self.g_metric = tf.keras.metrics.Mean(name="g_metric")
-        self.train_L1_metric = tf.keras.metrics.Mean(name="train_L1")
-        self.val_L1_metric = tf.keras.metrics.Mean(name="val_L1")
+
+        if len(self.config["DATA"]["SEGS"]) > 0:
+            self.train_L1_metric = FocalMetric(name="train_L1")
+            self.val_L1_metric = FocalMetric(name="val_L1")
+        else:
+            self.train_L1_metric = tf.keras.metrics.Mean(name="train_L1")
+            self.val_L1_metric = tf.keras.metrics.Mean(name="val_L1")
 
         if self.STN:
             self.s_optimiser = tf.keras.optimizers.Adam(self.config["HYPERPARAMS"]["STN_ETA"])
@@ -93,93 +101,40 @@ class GAN(tf.keras.Model):
         tf.keras.Model(inputs=source, outputs=outputs).summary()
         source = tf.keras.Input(shape=self.img_dims + [1])
         if self.STN: target = self.STN.call(source, source)
-        outputs = self.Discriminator.call(tf.concat([source, source], axis=4))
+        outputs = self.Discriminator.call(tf.concat([source] * self.d_in_ch, axis=4))
         print("===========================================================")
         print("Discriminator")
         print("===========================================================")
         tf.keras.Model(inputs=source, outputs=outputs).summary()
     
-    @tf.function
-    def train_step(self, source, target, seg=None):
-        """ Expects data in order 'source, target' or 'source, target, segmentations'"""
-
-        # Determine size of mb for each critic training run
-        # (size of real_images = minibatch size * number of critic runs)
-        g_mb = source.shape[0] // (1 + self.n_critic)
-        if g_mb < 1: g_mb = source.shape[0]
-        d_mb = g_mb * self.n_critic # TODO: TEST WITH N_CRITIC > 1
-
-        # Select minibatch of images and masks for generator training
-        g_source = source[0:g_mb, :, :, :, :]
-        g_real_target = target[0:g_mb, :, :, :, :]
-        if seg: g_seg = seg[0:g_mb, :, :, :, :]
-
-        # Critic training loop
-        for idx in range(self.n_critic):
-            # Select minibatch of real images and generate fake images for critic run
-            # If not enough different images for both generator and discriminator, share minibatch
-            if g_mb == source.shape[0]:
-                d_source = source[0:d_mb, :, :, :, :]
-                d_fake_target = self.Generator(d_source)
-                d_real_target = target[0:d_mb, :, :, :, :]
-                if seg: d_seg = seg[0:d_mb, :, :, :, :]
-
-            else:
-                d_source = source[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
-                d_real_target = target[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
-                d_fake_target = self.Generator(d_source)
-                if seg: d_seg = seg[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
-            
-            # Spatial transformer if required TODO: BN TRAINING
-            if self.STN:
-                if seg:
-                    d_real_target, d_seg = self.STN(source=d_source, target=d_real_target, seg=d_seg, training=True)
-
-                else:
-                    d_real_target = self.STN(source=d_source, target=d_real_target, training=True)
-
-            # DiffAug if required
-            if self.Aug:
-                imgs, _ = self.Aug.augment(imgs=[d_source, d_real_target, d_fake_target])
-                d_source, d_real_target, d_fake_target = imgs
-
-            d_fake_in = tf.concat([d_source, d_fake_target], axis=4, name="d_fake_concat")
-            d_real_in = tf.concat([d_source, d_real_target], axis=4, name="d_real_concat")
-
-            # Get gradients from critic predictions and update weights
-            with tf.GradientTape() as d_tape:
-                d_pred_fake = self.Discriminator(d_fake_in)
-                d_pred_real = self.Discriminator(d_real_in)
-                d_loss = self.d_loss(d_pred_real, d_pred_fake)
-
-                # Gradient penalty if indicated
-                if self.loss_type == "wasserstein-GP":
-                    grad_penalty = gradient_penalty(d_real_target, d_fake_target, self.Discriminator)
-                    d_loss += 10 * grad_penalty
-            
-            d_grads = d_tape.gradient(d_loss, self.Discriminator.trainable_variables)
-            self.d_optimiser.apply_gradients(zip(d_grads, self.Discriminator.trainable_variables))
-
-            # Update metrics
-            self.d_metric.update_state(d_loss)
-
-        # Generator training       
+    def generator_step(self, g_source, g_real_target, g_seg=None):
+        """ Generator training """
         # Get gradients from discriminator predictions of generated fake images and update weights
         with tf.GradientTape() as g_tape:
             if self.STN:
-                g_real_target = self.STN(source=g_source, target=g_real_target, training=True)
+                g_real_target, g_seg = self.STN(source=g_source, target=g_real_target, seg=g_seg, training=True)
 
             g_fake_target = self.Generator(g_source)
 
             # Calculate L1 before augmentation
-            g_L1 = L1(g_real_target, g_fake_target)
-            self.train_L1_metric.update_state(g_L1)
+            if g_seg != None:
+                g_L1 = self.L1_loss(g_real_target, g_fake_target, g_seg)
+            else:
+                g_L1 = self.L1_loss(g_real_target, g_fake_target)
+
+            if g_seg != None:
+                self.train_L1_metric.update_state(g_real_target, g_fake_target, g_seg)
+            else:
+                self.train_L1_metric.update_state(g_L1)
             
             if self.Aug:
-                imgs, g_mask = self.Aug.augment(imgs=[g_source, g_fake_target])
+                imgs, g_seg = self.Aug(imgs=[g_source, g_fake_target], seg=g_seg)
                 g_source, g_fake_target = imgs
 
-            g_fake_in = tf.concat([g_source, g_fake_target], axis=4, name="g_fake_concat")
+            if g_seg != None:
+                g_fake_in = tf.concat([g_source, g_fake_target, g_seg], axis=4, name="g_fake_concat")
+            else:
+                g_fake_in = tf.concat([g_source, g_fake_target], axis=4, name="g_fake_concat")
 
             g_pred_fake = self.Discriminator(g_fake_in)
             g_loss = self.g_loss(g_pred_fake)
@@ -198,12 +153,101 @@ class GAN(tf.keras.Model):
         # Update metric
         self.g_metric.update_state(g_loss)
 
+    def discriminator_step(self, d_source, d_real_target, d_fake_target, d_seg=None):
+        """ Discriminator training """
+        # Spatial transformer if required
+        if self.STN:
+            d_real_target, d_seg = self.STN(source=d_source, target=d_real_target, seg=d_seg, training=True)
+
+        # DiffAug if required
+        if self.Aug:
+            imgs, d_seg = self.Aug(imgs=[d_source, d_real_target, d_fake_target], seg=d_seg)
+            d_source, d_real_target, d_fake_target = imgs
+
+        if d_seg != None:
+            d_fake_in = tf.concat([d_source, d_fake_target, d_seg], axis=4, name="d_fake_concat")
+            d_real_in = tf.concat([d_source, d_real_target, d_seg], axis=4, name="d_real_concat")
+        else:
+            d_fake_in = tf.concat([d_source, d_fake_target], axis=4, name="d_fake_concat")
+            d_real_in = tf.concat([d_source, d_real_target], axis=4, name="d_real_concat")
+
+        # Get gradients from critic predictions and update weights
+        with tf.GradientTape() as d_tape:
+            d_pred_fake = self.Discriminator(d_fake_in)
+            d_pred_real = self.Discriminator(d_real_in)
+            d_loss = self.d_loss(d_pred_real, d_pred_fake)
+
+            # Gradient penalty if indicated
+            if self.loss_type == "wasserstein-GP":
+                grad_penalty = gradient_penalty(d_real_target, d_fake_target, self.Discriminator)
+                d_loss += 10 * grad_penalty
+        
+        d_grads = d_tape.gradient(d_loss, self.Discriminator.trainable_variables)
+        self.d_optimiser.apply_gradients(zip(d_grads, self.Discriminator.trainable_variables))
+
+        # Update metrics
+        self.d_metric.update_state(d_loss)
+    
     @tf.function
-    def val_step(self, source, target):
-        target = self.STN(source=source, target=target, training=False)
+    def train_step(self, source, target, seg=None):
+        """ Expects data in order 'source, target' or 'source, target, segmentations'"""
+
+        # Determine size of mb for each critic training run
+        # (size of real_images = minibatch size * number of critic runs)
+        g_mb = source.shape[0] // (1 + self.n_critic)
+        if g_mb < 1: g_mb = source.shape[0]
+        d_mb = g_mb * self.n_critic # TODO: TEST WITH N_CRITIC > 1
+
+        # Select minibatch of images and masks for generator training
+        g_source = source[0:g_mb, :, :, :, :]
+        g_real_target = target[0:g_mb, :, :, :, :]
+
+        if seg != None:
+            g_seg = seg[0:g_mb, :, :, :, :]
+        else:
+            g_seg = None
+
+        # Critic training loop
+        for idx in range(self.n_critic):
+            # Select minibatch of real images and generate fake images for critic run
+            # If not enough different images for both generator and discriminator, share minibatch
+            if g_mb == source.shape[0]:
+                d_source = source[0:d_mb, :, :, :, :]
+                d_fake_target = self.Generator(d_source)
+                d_real_target = target[0:d_mb, :, :, :, :]
+
+                if seg != None:
+                    d_seg = seg[0:d_mb, :, :, :, :]
+                else:
+                    d_seg = None
+
+            else:
+                d_source = source[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
+                d_real_target = target[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
+                d_fake_target = self.Generator(d_source)
+
+                if seg != None:
+                    d_seg = seg[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
+                else:
+                    d_seg = None
+            
+            self.discriminator_step(d_source, d_real_target, d_fake_target, d_seg)
+
+        self.generator_step(g_source, g_real_target, g_seg)
+
+
+    @tf.function
+    def test_step(self, source, target, seg=None):
+        if self.STN:
+            target, seg = self.STN(source=source, target=target, seg=seg, training=False)
+
         g_fake = self.Generator(source)
         g_L1 = L1(target, g_fake)
-        self.val_L1_metric.update_state(g_L1)
+
+        if seg != None:
+            self.val_L1_metric.update_state(target, g_fake, seg)
+        else:
+            self.val_L1_metric.update_state(g_L1)
 
 
 #-------------------------------------------------------------------------
@@ -244,25 +288,6 @@ class CropGAN_v01(GAN):
         mask = tf.reshape(mask, [MB_SIZE, CROP_HEIGHT, CROP_WIDTH, IMG_DEPTH, 1])
 
         return source, target, mask
-
-    def compile():
-        self.g_optimiser = g_optimiser
-        self.d_optimiser = d_optimiser
-        self.loss_type = loss
-
-        # Losses
-        if loss == "minmax":
-            self.d_loss = minimax_D
-            self.g_loss = minimax_G
-        elif loss == "wasserstein-GP":
-            self.d_loss = wasserstein_D
-            self.g_loss = wasserstein_G
-
-        # Set up metrics
-        self.discriminator_metric = keras.metrics.Mean(name="d_metric")
-        self.g_metric = keras.metrics.Mean(name="g_metric")
-        self.train_L1_metric = keras.metrics.Mean(name="train_L1")
-        self.val_L1_metric = keras.metrics.Mean(name="val_L1") 
     
     @tf.function
     def train_step(self, data):

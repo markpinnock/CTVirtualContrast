@@ -1,5 +1,4 @@
 import tensorflow as tf
-from tensorflow.python.ops.gen_array_ops import identity
 
 from utils.affinetransformation import AffineTransform2D
 
@@ -51,9 +50,9 @@ class SpatialTransformer(tf.keras.layers.Layer):
             target_seg = tf.concat([source, seg], axis=4)
             target_seg = self.transform(im=target_seg, mb_size=mb_size, thetas=x)
             
-            return target_seg[:, :, :, :, 0], target_seg[:, :, :, :, 1]
+            return target_seg[:, :, :, :, 0][:, :, :, :, tf.newaxis], target_seg[:, :, :, :, 1][:, :, :, :, tf.newaxis]
         
         else:
             target = self.transform(im=target, mb_size=mb_size, thetas=x)
 
-            return target
+            return target, None

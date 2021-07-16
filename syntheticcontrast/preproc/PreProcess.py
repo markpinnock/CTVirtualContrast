@@ -145,7 +145,7 @@ class ImgConvBase(ABC):
             else:
                 raise ValueError(type(proc))
 
-            img_arrays = [itk.GetArrayFromImage(s).transpose([1, 2, 0]) for s in imgs.values()]
+            img_arrays = [itk.GetArrayFromImage(i).transpose([1, 2, 0]) for i in imgs.values()]
             img_names = list(imgs.keys())
             NCCs = [self.calc_NCC(img_arrays[i], img_arrays[0]) for i in range(len(img_arrays))]
             print(subject, img_arrays[0].shape)
@@ -183,6 +183,46 @@ class ImgConvBase(ABC):
     def save_data(self, subject_ID: list = None, HU_min=None, HU_max=None) -> int:
         raise NotImplementedError
 
+    @staticmethod
+    def check_seg_dims(img_path: str, seg_path: str, phase: str = 'AC'):
+        for f in os.listdir(img_path):
+            if f"{f}S" not in os.listdir(seg_path):
+                print(f"No segmentations matching folder {f}")
+                continue
+
+            ims = [i for i in os.listdir(f"{img_path}/{f}") if phase in i]
+            
+            if len(ims) == 0:
+                print(f"No images matching phase {phase} in folder {f}")
+                continue
+            
+            for im in ims:
+                img = itk.ReadImage(f"{img_path}/{f}/{im}")
+
+                try:
+                    seg = itk.ReadImage(f"{seg_path}/{f}S/{im[:-5]}.seg.nrrd")
+                except FileNotFoundError:
+                    print(f"No segmentation matching {im}")
+                else:
+                    print(im, img.GetSize(), seg.GetSize())
+                    if (np.array(img.GetSize()) != np.array(seg.GetSize())).all(): print(f"Mismatched dims for {im}")
+    
+    @staticmethod
+    def check_processed_imgs(file_path: str, phase: str = 'AC'):
+        imgs = os.listdir(f"{file_path}/Images/{phase}")
+        segs = os.listdir(f"{file_path}/Segmentations/{phase}")
+        print(len(imgs), len(segs))
+
+        if len(imgs) >= len(segs):
+            for im in imgs:
+                if im not in segs:
+                    print(f"No segmentation matching {im}")
+
+        else:
+            for seg in segs:
+                if seg not in imgs:
+                    print(f"No image matching {seg}")
+
 
 class ImgConv02(ImgConvBase):
 
@@ -202,7 +242,7 @@ class ImgConv02(ImgConvBase):
             assert img.GetSpacing()[2] == 1.0, f"{image_names[i]}: {img.GetSpacing()}"
 
             if self.seg_path != None:
-                seg_name = f"{self.seg_path}/{subject_ID}S/{image_names[i][-16:-5]}M.seg.nrrd"
+                seg_name = f"{self.seg_path}/{subject_ID}S/{image_names[i][-16:-5]}.seg.nrrd"
 
                 try:
                     seg = itk.ReadImage(seg_name)
@@ -212,8 +252,14 @@ class ImgConv02(ImgConvBase):
                     seg = None
                 
                 else:
+
                     seg_names.append(seg_name)
                     assert np.isclose(img.GetSpacing(), seg.GetSpacing()).all() and np.isclose(img.GetDirection(), seg.GetDirection()).all(), f"{image_names[i]}: {img.GetSpacing()}, {seg.GetSpacing()}, {img.GetDirection()}, {seg.GetDirection()}"
+                    
+                    if 'AC' in image_names[i]:
+                        assert np.isclose(img.GetOrigin(), seg.GetOrigin()).all(), f"{image_names[i]}: {img.GetOrigin()}, {seg.GetOrigin()}"
+                    else:
+                        print(f"{image_names[i]}, {seg_name} origin issues: {img.GetOrigin()} {seg.GetOrigin()}")
 
             # Check image is orientated correctly and flip/rotate if necessary
             if image_dir[0] == 0.0 or image_dir[4] == 0.0:
@@ -224,6 +270,7 @@ class ImgConv02(ImgConvBase):
                 if seg != None:
                     seg = itk.PermuteAxes(seg, [1, 0, 2])
                     seg = seg[::int(image_dir[0]), ::int(image_dir[4]), :]
+                    segs.append(seg)
 
             else:
                 img = img[::int(image_dir[0]), ::int(image_dir[4]), :]
@@ -337,11 +384,11 @@ class ImgConv02(ImgConvBase):
             else:
                 raise ValueError(type(proc))
 
-            img_arrays = [itk.GetArrayFromImage(s).transpose([1, 2, 0]) for s in imgs.values()]
+            img_arrays = [itk.GetArrayFromImage(i).transpose([1, 2, 0]).astype("float32") for i in imgs.values()]
             img_names = list(imgs.keys())
 
             if segs != None:
-                seg_arrays = [itk.GetArrayFromImage(s).transpose([1, 2, 0, 3]) for s in segs.values()]
+                seg_arrays = [itk.GetArrayFromImage(s).transpose([1, 2, 0, 3]).astype("bool") for s in segs.values()]
                 seg_names = list(segs.keys())
 
             vol_thick = img_arrays[0].shape[2]      
@@ -365,7 +412,7 @@ class ImgConv02(ImgConvBase):
 
             for name, seg in zip(seg_names, seg_arrays):
                 idx = 0  
-                stem = name[-21:-10]
+                stem = name[-20:-9]
 
                 if not os.path.exists(f"{self.save_path}/Segmentations/{stem[6:8]}"):
                     os.makedirs(f"{self.save_path}/Segmentations/{stem[6:8]}")
@@ -699,12 +746,17 @@ if __name__ == "__main__":
 
     FILE_PATH = "D:/ProjectImages"
     SAVE_PATH = "D:/ProjectImages/SyntheticContrast"
-    l = ["T028A0", "T029A0", "T030A0", "T031A0"]
-    ignore = [
+    subject_ignore = ["T025A1", "T037A0"]
+    # subject_ignore = ["T002A1", "T006A0", "T009A0", "T014A0", "T019A0", "T023A0", "T026A0", "T029A0", "T032A0", "T037A0", "T041A0",
+    # "T004A0", "T006A1", "T011A0", "T016A0", "T021A0", "T024A0", "T027A0", "T035A0", "T038A0", "T005A0", "T007A0", "T013A0", "T018A0",  "T022A0", "T025A1", "T028A0", "T031A0", "T036A0", "T040A0"]
+    image_ignore = [
         "T005A0HQ002.nrrd",
         "T006A1HQ002.nrrd", "T009A0HQ002.nrrd", "T009A0HQ003.nrrd", "T024A0HQ002.nrrd",
         "T026A0HQ002.nrrd", "T026A0HQ003.nrrd", "T027A0HQ002.nrrd", "T029A0HQ002.nrrd", "T029A0HQ004.nrrd",
         "T031A0HQ002.nrrd", "T031A0HQ003.nrrd", "T031A0HQ005.nrrd", "T031A0HQ006.nrrd"]
-    Test = ImgConv02(image_path=FILE_PATH + "/Imgs", segmentation_path=FILE_PATH + "/Segs", save_path=SAVE_PATH, output_dims=(512, 512, 12), ignore=["T025A1", "T037A0"], NCC_tol=0.0)
-    Test.list_images(ignore=ignore, num_AC=1, num_VC=1, num_HQ=2).display(display=True, HU_min=-500, HU_max=50000)
-    # print(Test.list_images(ignore=ignore, num_AC=1, num_VC=0, num_HQ=1).save_data(HU_min=-500, HU_max=50000))
+
+
+    Test = ImgConv02(image_path=FILE_PATH + "/Imgs", segmentation_path=FILE_PATH + "/Segs", save_path=SAVE_PATH, output_dims=(512, 512, 12), ignore=subject_ignore, NCC_tol=0.0)
+    # Test.list_images(ignore=image_ignore, num_AC=1, num_VC=1, num_HQ=2).display(display=True, HU_min=-500, HU_max=2500)
+    print(Test.list_images(ignore=image_ignore, num_AC=1, num_VC=0, num_HQ=1).save_data(HU_min=-500, HU_max=2500))
+    ImgConv02.check_processed_imgs(SAVE_PATH)

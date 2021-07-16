@@ -29,7 +29,7 @@ def minimax_G(fake_output):
 
 @tf.function
 def L1(real_img, fake_img):
-    return tf.reduce_mean(tf.abs(real_img - fake_img))
+    return tf.reduce_mean(tf.abs(real_img - fake_img), name="L1")
 
 
 #-------------------------------------------------------------------------
@@ -66,3 +66,58 @@ def gradient_penalty(real_img, fake_img, D, scale):
     grad_penalty = tf.reduce_mean(tf.square(grad_norm - 1))
 
     return grad_penalty
+
+
+#-------------------------------------------------------------------------
+""" Focused L1 loss, calculates L1 inside and outside masked area """
+
+@tf.function
+def focused_mae(x, y, m):
+    global_absolute_err = tf.abs(x - y)
+    focal_absolute_err = tf.abs(x - y) * m
+    global_mae = tf.reduce_mean(global_absolute_err)
+    focal_mae = tf.reduce_sum(focal_absolute_err) / (tf.reduce_sum(m) + 1e-12)
+
+    return global_mae, focal_mae
+
+
+#-------------------------------------------------------------------------
+""" Focal loss, weights loss according to masked area """
+
+class FocalLoss(keras.layers.Layer):
+    def __init__(self, mu, name=None):
+        super().__init__(name=name)
+        assert mu <= 1.0 and mu >= 0.0, "Mu must be in range [0, 1]"
+        self.mu = mu
+        self.loss = focused_mae
+
+    def call(self, y, x, mask):
+        global_loss, focal_loss = self.loss(x, y, mask)
+
+        return (1 - self.mu) * global_loss + self.mu * focal_loss
+
+
+#-------------------------------------------------------------------------
+""" Focal metric, weights loss according to masked area """
+
+class FocalMetric(keras.metrics.Metric):
+    def __init__(self, name=None):
+        super().__init__(name=name)
+        self.global_loss = self.add_weight(name="global", initializer="zeros")
+        self.focal_loss = self.add_weight(name="focal", initializer="zeros")
+        self.N = self.add_weight(name="N", initializer="zeros")
+        self.loss = focused_mae
+
+    def update_state(self, y, x, mask):
+        global_loss, focal_loss = self.loss(x, y, mask)
+        self.global_loss.assign_add(global_loss)
+        self.focal_loss.assign_add(focal_loss)
+        self.N.assign_add(x.shape[0])
+    
+    def result(self):
+        return [self.global_loss / self.N, self.focal_loss / self.N]
+
+    def reset_states(self):
+        self.global_loss.assign(0.0)
+        self.focal_loss.assign(0.0)
+        self.N.assign(1e-12) # So no nans if result called after reset_states

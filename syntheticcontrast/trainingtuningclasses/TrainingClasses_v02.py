@@ -2,7 +2,6 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-import sys
 import tensorflow as tf
 import time
 
@@ -237,7 +236,11 @@ class TrainingLoopGAN(BaseTrainingLoop):
 
             # for key, value in model.generator_metrics.items():
             self._results["g_metric"].append(float(self.Model.g_metric.result()))
-            self._results["train_L1"].append(float(self.Model.train_L1_metric.result()))
+
+            if self.Model.train_L1_metric.result().shape[0] > 1:
+                self._results["train_L1"].append([float(self.Model.train_L1_metric.result()[0]), float(self.Model.train_L1_metric.result()[1])])
+            else:
+                self._results["train_L1"].append(float(self.Model.train_L1_metric.result()))
             
             # for key, value in model.discriminator_metrics.items():
             self._results["d_metric"].append(float(self.Model.d_metric.result()))
@@ -250,9 +253,12 @@ class TrainingLoopGAN(BaseTrainingLoop):
                 self.Model.val_L1_metric.reset_states()
 
                 for data in self.ds_val:
-                    self.Model.val_step(*data)
+                    self.Model.test_step(*data)
                 
-                self._results["val_L1"].append(float(self.Model.val_L1_metric.result()))
+                if self.Model.train_L1_metric.result().shape[0] > 1:
+                    self._results["val_L1"].append([float(self.Model.val_L1_metric.result()[0]), float(self.Model.val_L1_metric.result()[1])])
+                else:
+                    self._results["val_L1"].append(float(self.Model.val_L1_metric.result()))
 
                 if verbose:
                     print(f"Val epoch {epoch + 1}, L1: {self.Model.val_L1_metric.result()}")
@@ -260,10 +266,10 @@ class TrainingLoopGAN(BaseTrainingLoop):
             if (epoch + 1) % self.SAVE_EVERY == 0:
                 self.save_images(epoch + 1)
 
-            if self.Model.val_L1_metric.result() < best_L1 and not self.config["EXPT"]["VERBOSE"]:
-                self.Model.save_weights(f"{self.MODEL_SAVE_PATH}{self.config['EXPT']['EXPT_NAME']}")
-                best_L1 = self.Model.val_L1_metric.result()
-                super().save_results()
+            # if self.Model.val_L1_metric.result() < best_L1 and not self.config["EXPT"]["VERBOSE"]:
+            #     self.Model.save_weights(f"{self.MODEL_SAVE_PATH}{self.config['EXPT']['EXPT_NAME']}")
+            #     best_L1 = self.Model.val_L1_metric.result()
+            #     super().save_results()
 
         self._results["time"] = (time.time() - start_time) / 3600
         
@@ -273,11 +279,16 @@ class TrainingLoopGAN(BaseTrainingLoop):
     def save_images(self, epoch=None, tuning_path=None):
         """ Saves sample of images """
 
-        source, target = self.val_generator.example_images()
+        data = self.val_generator.example_images()
+
+        if len(data) == 2:
+            source, target = data
+        else:
+            source, target, _ = data
 
         # Spatial transformer if necessary # TODO: segmentations
         if self.Model.STN:
-            target = self.Model.STN(source=source, target=target, print_matrix=False)
+            target, _ = self.Model.STN(source=source, target=target, print_matrix=False)
 
         pred = self.Model.Generator(source, training=False).numpy()
         super().save_images(source, target, pred, epoch, tuning_path)
@@ -296,10 +307,20 @@ class TrainingLoopGAN(BaseTrainingLoop):
         plt.legend()
 
         plt.subplot(2, 1, 2)
-        plt.plot(self.results["epochs"], self.results["train_L1"], 'k-', label="Train L1")
 
-        if self.config["EXPT"]["CV_FOLDS"]:
-            plt.plot(self.results["epochs"], self.results["val_L1"], 'r-', label="Val L1")
+        if isinstance(self.results["train_L1"][0], list):
+            plt.plot(self.results["epochs"], np.array(self.results["train_L1"])[:, 0], 'k-', label="Train global L1")
+            plt.plot(self.results["epochs"], np.array(self.results["train_L1"])[:, 1], 'k--', label="Train global L1")
+
+            if self.config["EXPT"]["CV_FOLDS"]:
+                plt.plot(self.results["epochs"], np.array(self.results["val_L1"])[:, 0], 'r-', label="Val global L1")
+                plt.plot(self.results["epochs"], np.array(self.results["val_L1"])[:, 1], 'r--', label="Val global L1")
+        
+        else:
+            plt.plot(self.results["epochs"], self.results["train_L1"], 'k-', label="Train L1")
+
+            if self.config["EXPT"]["CV_FOLDS"]:
+                plt.plot(self.results["epochs"], self.results["val_L1"], 'r-', label="Val L1")
 
         plt.xlabel("Epochs")
         plt.ylabel("L1")
