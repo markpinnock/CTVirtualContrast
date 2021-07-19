@@ -140,8 +140,8 @@ class BaseImgLoader(ABC):
         if len(self.config["DATA"]["SEGS"]) > 0:
             assert len(self._fold_targets) == len(self._fold_segs), f"{len(self._fold_targets)} targets, {len(self._fold_segs)} segmentations"
             self._ex_segs = np.stack([np.load(f"{self._seg_paths[img[6:8]]}/{img}") for img in ex_targets_list], axis=0)
-            self._ex_segs = self._ex_segs[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
-        
+            self._ex_segs = np.sum(self._ex_segs[:, :, :, :, :-1], axis=-1)[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
+
         else:
             self._ex_segs = []
 
@@ -317,24 +317,67 @@ class UnpairedLoader(BaseImgLoader):
  
 if __name__ == "__main__":
 
+    """ Routine for visually testing dataloader """
+
     FILE_PATH = "D:/ProjectImages/SyntheticContrast"
-    TestLoader = PairedLoader({"DATA": {"DATA_PATH": FILE_PATH, "TARGET": ["AC"], "SOURCE": ["HQ"], "SEGS": ["AC"], "JSON": "", "DOWN_SAMP": 4, "NUM_EXAMPLES": 4}, "EXPT": {"CV_FOLDS": 3, "FOLD": 2}}, dataset_type="training")
+    segs = ["AC"]
+    TestLoader = PairedLoader({"DATA": {"DATA_PATH": FILE_PATH, "TARGET": ["AC"], "SOURCE": ["HQ"], "SEGS": segs, "JSON": "", "DOWN_SAMP": 4, "NUM_EXAMPLES": 4}, "EXPT": {"CV_FOLDS": 3, "FOLD": 2}}, dataset_type="training")
     TestLoader.set_normalisation(norm_type="std", param_1=-288, param_2=254)
 
-    train_ds = tf.data.Dataset.from_generator(
-        TestLoader.data_generator, output_types=(tf.float32, tf.float32))#, tf.float32))
+    if len(segs) > 0:
+        train_ds = tf.data.Dataset.from_generator(
+            TestLoader.data_generator, output_types=("float32", "float32", "float32"))
 
-    for data in train_ds.batch(4):
-        source, target = data
+    else:
+        train_ds = tf.data.Dataset.from_generator(
+            TestLoader.data_generator, output_types=("float32", "float32"))
 
-        plt.subplot(2, 2, 1)
-        plt.imshow(source[0, :, :, 0, 0])
-        plt.subplot(2, 2, 2)
-        plt.imshow(source[1, :, :, 0, 0])
-        
-        plt.subplot(2, 2, 3)
-        plt.imshow(target[0, :, :, 0, 0])
-        plt.subplot(2, 2, 4)
-        plt.imshow(target[1, :, :, 0, 0])
+    for data in train_ds.batch(4).take(2):
+        if len(segs) > 0:
+            source, target, seg = data
+        else:
+            source, target = data
+
+        plt.subplot(3, 2, 1)
+        plt.imshow(source[0, :, :, 0, 0], cmap="gray")
+        plt.axis("off")
+        plt.subplot(3, 2, 2)
+        plt.imshow(source[1, :, :, 0, 0], cmap="gray")
+        plt.axis("off")
+
+        plt.subplot(3, 2, 3)
+        plt.imshow(target[0, :, :, 0, 0], cmap="gray")
+        plt.axis("off")
+        plt.subplot(3, 2, 4)
+        plt.imshow(target[1, :, :, 0, 0], cmap="gray")
+        plt.axis("off")
+
+        if len(segs) > 0:
+            plt.subplot(3, 2, 5)
+            plt.imshow(seg[0, :, :, 0, 0])
+            plt.axis("off")
+            plt.subplot(3, 2, 6)
+            plt.imshow(seg[1, :, :, 0, 0])
+            plt.axis("off")
 
         plt.show()
+
+    if len(segs) > 0:
+        source, target, seg = TestLoader.example_images()
+
+    else:
+        source, target = TestLoader.example_images()
+    
+    fig, axs = plt.subplots(target.shape[0], 3)
+
+    for i in range(target.shape[0]):
+        axs[i, 0].imshow(source[i, :, :, 11, 0], cmap="gray")
+        axs[i, 0].axis("off")
+        axs[i, 1].imshow(target[i, :, :, 11, 0], cmap="gray")
+        axs[i, 1].axis("off")
+
+        if len(segs) > 0:
+            axs[i, 2].imshow(seg[i, :, :, 11, 0])
+            axs[i, 2].axis("off")
+    
+    plt.show()

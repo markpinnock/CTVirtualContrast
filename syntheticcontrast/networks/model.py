@@ -117,12 +117,12 @@ class GAN(tf.keras.Model):
             g_fake_target = self.Generator(g_source)
 
             # Calculate L1 before augmentation
-            if g_seg != None:
+            if g_seg is not None:
                 g_L1 = self.L1_loss(g_real_target, g_fake_target, g_seg)
             else:
                 g_L1 = self.L1_loss(g_real_target, g_fake_target)
 
-            if g_seg != None:
+            if g_seg is not None:
                 self.train_L1_metric.update_state(g_real_target, g_fake_target, g_seg)
             else:
                 self.train_L1_metric.update_state(g_L1)
@@ -131,7 +131,7 @@ class GAN(tf.keras.Model):
                 imgs, g_seg = self.Aug(imgs=[g_source, g_fake_target], seg=g_seg)
                 g_source, g_fake_target = imgs
 
-            if g_seg != None:
+            if g_seg is not None:
                 g_fake_in = tf.concat([g_source, g_fake_target, g_seg], axis=4, name="g_fake_concat")
             else:
                 g_fake_in = tf.concat([g_source, g_fake_target], axis=4, name="g_fake_concat")
@@ -164,7 +164,7 @@ class GAN(tf.keras.Model):
             imgs, d_seg = self.Aug(imgs=[d_source, d_real_target, d_fake_target], seg=d_seg)
             d_source, d_real_target, d_fake_target = imgs
 
-        if d_seg != None:
+        if d_seg is not None:
             d_fake_in = tf.concat([d_source, d_fake_target, d_seg], axis=4, name="d_fake_concat")
             d_real_in = tf.concat([d_source, d_real_target, d_seg], axis=4, name="d_real_concat")
         else:
@@ -202,7 +202,7 @@ class GAN(tf.keras.Model):
         g_source = source[0:g_mb, :, :, :, :]
         g_real_target = target[0:g_mb, :, :, :, :]
 
-        if seg != None:
+        if seg is not None:
             g_seg = seg[0:g_mb, :, :, :, :]
         else:
             g_seg = None
@@ -216,7 +216,7 @@ class GAN(tf.keras.Model):
                 d_fake_target = self.Generator(d_source)
                 d_real_target = target[0:d_mb, :, :, :, :]
 
-                if seg != None:
+                if seg is not None:
                     d_seg = seg[0:d_mb, :, :, :, :]
                 else:
                     d_seg = None
@@ -226,7 +226,7 @@ class GAN(tf.keras.Model):
                 d_real_target = target[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
                 d_fake_target = self.Generator(d_source)
 
-                if seg != None:
+                if seg is not None:
                     d_seg = seg[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
                 else:
                     d_seg = None
@@ -244,7 +244,7 @@ class GAN(tf.keras.Model):
         g_fake = self.Generator(source)
         g_L1 = L1(target, g_fake)
 
-        if seg != None:
+        if seg is not None:
             self.val_L1_metric.update_state(target, g_fake, seg)
         else:
             self.val_L1_metric.update_state(g_L1)

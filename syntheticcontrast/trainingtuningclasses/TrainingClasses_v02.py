@@ -39,7 +39,7 @@ class BaseTrainingLoop(ABC):
 
         raise NotImplementedError
 
-    def save_images(self, target, source, pred, epoch=None, tuning_path=None):
+    def save_images(self, source, target, pred, epoch=None, tuning_path=None):
         """ Saves sample of images """
 
         fig, axs = plt.subplots(target.shape[0], 5)
@@ -237,7 +237,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
             # for key, value in model.generator_metrics.items():
             self._results["g_metric"].append(float(self.Model.g_metric.result()))
 
-            if self.Model.train_L1_metric.result().shape[0] > 1:
+            if self.config["EXPT"]["FOCAL"]:
                 self._results["train_L1"].append([float(self.Model.train_L1_metric.result()[0]), float(self.Model.train_L1_metric.result()[1])])
             else:
                 self._results["train_L1"].append(float(self.Model.train_L1_metric.result()))
@@ -255,7 +255,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
                 for data in self.ds_val:
                     self.Model.test_step(*data)
                 
-                if self.Model.train_L1_metric.result().shape[0] > 1:
+                if self.config["EXPT"]["FOCAL"]:
                     self._results["val_L1"].append([float(self.Model.val_L1_metric.result()[0]), float(self.Model.val_L1_metric.result()[1])])
                 else:
                     self._results["val_L1"].append(float(self.Model.val_L1_metric.result()))
@@ -284,11 +284,15 @@ class TrainingLoopGAN(BaseTrainingLoop):
         if len(data) == 2:
             source, target = data
         else:
-            source, target, _ = data
+            source, target, seg = data
 
-        # Spatial transformer if necessary # TODO: segmentations
-        if self.Model.STN:
+        # Spatial transformer if necessary
+        if self.Model.STN and len(data) == 2:
             target, _ = self.Model.STN(source=source, target=target, print_matrix=False)
+        elif self.Model.STN and len(data) == 3:
+            target, _ = self.Model.STN(source=source, target=target, seg=seg, print_matrix=False)
+        else:
+            pass
 
         pred = self.Model.Generator(source, training=False).numpy()
         super().save_images(source, target, pred, epoch, tuning_path)
@@ -308,7 +312,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
 
         plt.subplot(2, 1, 2)
 
-        if isinstance(self.results["train_L1"][0], list):
+        if self.config["EXPT"]["FOCAL"]:
             plt.plot(self.results["epochs"], np.array(self.results["train_L1"])[:, 0], 'k-', label="Train global L1")
             plt.plot(self.results["epochs"], np.array(self.results["train_L1"])[:, 1], 'k--', label="Train global L1")
 

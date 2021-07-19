@@ -46,7 +46,7 @@ class SpatialTransformer(tf.keras.layers.Layer):
         if print_matrix:
             print(tf.reshape(x[0, ...], [2, 3]))
 
-        if seg != None:
+        if seg is not None:
             target_seg = tf.concat([source, seg], axis=4)
             target_seg = self.transform(im=target_seg, mb_size=mb_size, thetas=x)
             
@@ -56,3 +56,79 @@ class SpatialTransformer(tf.keras.layers.Layer):
             target = self.transform(im=target, mb_size=mb_size, thetas=x)
 
             return target, None
+
+
+if __name__ == "__main__":
+
+    import matplotlib.pyplot as plt
+    from ..utils.dataloader import PairedLoader
+
+    """ Routine for visually testing STN output """
+
+    FILE_PATH = "D:/ProjectImages/SyntheticContrast"
+    segs = ["AC"]
+    TestLoader = PairedLoader({"DATA": {"DATA_PATH": FILE_PATH, "TARGET": ["AC"], "SOURCE": ["HQ"], "SEGS": segs, "JSON": "", "DOWN_SAMP": 4, "NUM_EXAMPLES": 4}, "EXPT": {"CV_FOLDS": 3, "FOLD": 2}}, dataset_type="training")
+    TestLoader.set_normalisation(norm_type="std", param_1=-288, param_2=254)
+    STN = SpatialTransformer({"DATA": {"SEGS": segs, "IMG_DIMS": [128, 128, 12]}, "HYPERPARAMS": {"STN_LAYERS" : 2, "STN_OUT": 6}})
+
+    if len(segs) > 0:
+        train_ds = tf.data.Dataset.from_generator(
+            TestLoader.data_generator, output_types=("float32", "float32", "float32"))
+
+    else:
+        train_ds = tf.data.Dataset.from_generator(
+            TestLoader.data_generator, output_types=("float32", "float32"))
+
+    for data in train_ds.batch(4).take(2):
+        if len(segs) > 0:
+            source, target, seg = data
+            target, seg = STN(source, target, seg=seg)
+        else:
+            source, target = data
+            target, _ = STN(source, target, seg=None)
+
+        plt.subplot(3, 2, 1)
+        plt.imshow(source[0, :, :, 0, 0], cmap="gray")
+        plt.axis("off")
+        plt.subplot(3, 2, 2)
+        plt.imshow(source[1, :, :, 0, 0], cmap="gray")
+        plt.axis("off")
+
+        plt.subplot(3, 2, 3)
+        plt.imshow(target[0, :, :, 0, 0], cmap="gray")
+        plt.axis("off")
+        plt.subplot(3, 2, 4)
+        plt.imshow(target[1, :, :, 0, 0], cmap="gray")
+        plt.axis("off")
+
+        if len(segs) > 0:
+            plt.subplot(3, 2, 5)
+            plt.imshow(seg[0, :, :, 0, 0])
+            plt.axis("off")
+            plt.subplot(3, 2, 6)
+            plt.imshow(seg[1, :, :, 0, 0])
+            plt.axis("off")
+
+        plt.show()
+
+    if len(segs) > 0:
+        source, target, seg = TestLoader.example_images()
+        target, seg = STN(source, target, seg=seg)
+
+    else:
+        source, target = TestLoader.example_images()
+        target, _ = STN(source, target, seg=None)
+    
+    fig, axs = plt.subplots(target.shape[0], 3)
+
+    for i in range(target.shape[0]):
+        axs[i, 0].imshow(source[i, :, :, 11, 0], cmap="gray")
+        axs[i, 0].axis("off")
+        axs[i, 1].imshow(target[i, :, :, 11, 0], cmap="gray")
+        axs[i, 1].axis("off")
+
+        if len(segs) > 0:
+            axs[i, 2].imshow(seg[i, :, :, 11, 0])
+            axs[i, 2].axis("off")
+    
+    plt.show()
