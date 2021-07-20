@@ -47,7 +47,7 @@ class SpatialTransformer(tf.keras.layers.Layer):
             print(tf.reshape(x[0, ...], [2, 3]))
 
         if seg is not None:
-            target_seg = tf.concat([source, seg], axis=4)
+            target_seg = tf.concat([target, seg], axis=4)
             target_seg = self.transform(im=target_seg, mb_size=mb_size, thetas=x)
             
             return target_seg[:, :, :, :, 0][:, :, :, :, tf.newaxis], target_seg[:, :, :, :, 1][:, :, :, :, tf.newaxis]

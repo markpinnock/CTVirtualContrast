@@ -150,7 +150,7 @@ class ImgConvBase(ABC):
             NCCs = [self.calc_NCC(img_arrays[i], img_arrays[0]) for i in range(len(img_arrays))]
             print(subject, img_arrays[0].shape)
 
-            if segs != None:
+            if segs is not None:
                 seg_arrays = [itk.GetArrayFromImage(s).transpose([1, 2, 0, 3]) for s in segs.values()]
                 seg_names = list(segs.keys())
             else:
@@ -159,7 +159,7 @@ class ImgConvBase(ABC):
             if display:
                 mid_image = img_arrays[0].shape[2] // 2
 
-                if segs != None:
+                if segs is not None:
                     fig, axs = plt.subplots(4, len(img_arrays))
                 else:
                     fig, axs = plt.subplots(3, len(img_arrays))
@@ -173,7 +173,7 @@ class ImgConvBase(ABC):
                     axs[2, i].axis("off")
                     axs[2, i].set_title(f"{NCCs[i]:.4f}")
                 
-                    if segs != None and len(seg_arrays) > i:
+                    if segs is not None and len(seg_arrays) > i:
                         axs[3, i].imshow(seg_arrays[i][:, :, mid_image, 0:3] * 255, cmap="gray")
                         axs[3, i].axis("off")
 
@@ -241,7 +241,7 @@ class ImgConv02(ImgConvBase):
             image_dir = np.around(img.GetDirection())
             assert img.GetSpacing()[2] == 1.0, f"{image_names[i]}: {img.GetSpacing()}"
 
-            if self.seg_path != None:
+            if self.seg_path is not None:
                 seg_name = f"{self.seg_path}/{subject_ID}S/{image_names[i][-16:-5]}.seg.nrrd"
 
                 try:
@@ -267,7 +267,7 @@ class ImgConv02(ImgConvBase):
                 image_dir = np.around(img.GetDirection())
                 img = img[::int(image_dir[0]), ::int(image_dir[4]), :]
 
-                if seg != None:
+                if seg is not None:
                     seg = itk.PermuteAxes(seg, [1, 0, 2])
                     seg = seg[::int(image_dir[0]), ::int(image_dir[4]), :]
                     segs.append(seg)
@@ -275,7 +275,7 @@ class ImgConv02(ImgConvBase):
             else:
                 img = img[::int(image_dir[0]), ::int(image_dir[4]), :]
 
-                if seg != None:
+                if seg is not None:
                     seg = seg[::int(image_dir[0]), ::int(image_dir[4]), :]
                     segs.append(seg)
 
@@ -320,9 +320,9 @@ class ImgConv02(ImgConvBase):
 
             if segs[i].GetSize()[2] == 0:
                 print(f"{subject_ID} seg: size {segs[i].GetSize()}")
-                return None    
+                return None
 
-        if HU_min != None and HU_max != None:
+        if HU_min is not None and HU_max is not None:
             self.HU_min_all = HU_min
             self.HU_max_all = HU_max
             filter = itk.ClampImageFilter()
@@ -336,13 +336,13 @@ class ImgConv02(ImgConvBase):
             assert images[i].GetSize() == images[0].GetSize()
 
             # Clip target to window if needed
-            if HU_min != None and HU_max != None:
+            if HU_min is not None and HU_max is not None:
                 images[i] = filter.Execute(images[i])
             else:
                 self.HU_min_all = np.min([self.HU_min_all, itk.GetArrayFromImage(images[i]).min()])
                 self.HU_max_all = np.max([self.HU_max_all, itk.GetArrayFromImage(images[i]).max()])
 
-        if HU_min != None and HU_max != None:
+        if HU_min is not None and HU_max is not None:
             images[0] = filter.Execute(images[0])
 
         # TODO: allow choosing which image to resample to
@@ -387,7 +387,7 @@ class ImgConv02(ImgConvBase):
             img_arrays = [itk.GetArrayFromImage(i).transpose([1, 2, 0]).astype("float32") for i in imgs.values()]
             img_names = list(imgs.keys())
 
-            if segs != None:
+            if segs is not None:
                 seg_arrays = [itk.GetArrayFromImage(s).transpose([1, 2, 0, 3]).astype("bool") for s in segs.values()]
                 seg_names = list(segs.keys())
 
