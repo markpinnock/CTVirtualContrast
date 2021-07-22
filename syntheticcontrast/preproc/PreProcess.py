@@ -746,7 +746,7 @@ if __name__ == "__main__":
 
     FILE_PATH = "D:/ProjectImages"
     SAVE_PATH = "D:/ProjectImages/SyntheticContrast"
-    subject_ignore = ["T025A1", "T037A0"]
+    subject_ignore = ["T017A0", "T020A0", "T025A1", "T033A0", "T037A0"]
     image_ignore = [
         "T005A0HQ002.nrrd", "T006A1HQ002.nrrd", "T009A0HQ002.nrrd", "T009A0HQ003.nrrd", "T024A0HQ002.nrrd",
         "T026A0HQ002.nrrd", "T026A0HQ003.nrrd", "T027A0HQ002.nrrd", "T029A0HQ002.nrrd", "T029A0HQ004.nrrd",
