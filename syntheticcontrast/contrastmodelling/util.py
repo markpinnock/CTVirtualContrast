@@ -222,7 +222,7 @@ def get_HUs(imgs: dict, seg: object, keys: list):
 
 #-------------------------------------------------------------------------
 
-def aggregate_HUs(subject_list: list, subject_ignore: list = [], image_ignore: list = [], img_path: str = None, seg_path: str = None):
+def aggregate_HUs(subject_list: list, subject_ignore: list = [], image_ignore: list = [], times: dict = None, img_path: str = None, seg_path: str = None):
     HUs = {}
     fewest_series = 1000
 
@@ -244,13 +244,21 @@ def aggregate_HUs(subject_list: list, subject_ignore: list = [], image_ignore: l
             fewest_series = len(keys)
 
         Ao, RK, LK, Tu = get_HUs(imgs, segs[AC[0]], keys)
-        HUs[subject] = {'Ao': Ao, 'RK': RK, 'LK': LK, 'Tu': Tu}
+        
+        if times is not None:
+            t = [times[f"{k}.nrrd"] for k in keys]
+            assert len(t) == len(Ao), f"Times length != contrast length {len(t)} {len(Ao)}"
+        else:
+            t = None
+
+        HUs[subject] = {'Ao': Ao, 'RK': RK, 'LK': LK, 'Tu': Tu, "times": t}
     
     HU_agg = {
         'Ao': np.vstack([HUs[key]['Ao'][0:fewest_series] for key in HUs.keys()]),
         'RK': np.vstack([HUs[key]['RK'][0:fewest_series] for key in HUs.keys()]),
         'LK': np.vstack([HUs[key]['LK'][0:fewest_series] for key in HUs.keys()]),
-        'Tu': np.vstack([HUs[key]['Tu'][0:fewest_series] for key in HUs.keys()])
+        'Tu': np.vstack([HUs[key]['Tu'][0:fewest_series] for key in HUs.keys()]),
+        'times': np.vstack([HUs[key]['times'][0:fewest_series] for key in HUs.keys()])
         }
 
     return HU_agg
