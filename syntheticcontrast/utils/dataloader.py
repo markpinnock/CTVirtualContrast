@@ -1,3 +1,4 @@
+import glob
 import json
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,52 +16,37 @@ class BaseImgLoader(ABC):
         # Expects at least two sub-folders within data folder e.g. "AC", "VC, "HQ"
         img_path = f"{config['DATA']['DATA_PATH']}/Images"
         seg_path = f"{config['DATA']['DATA_PATH']}/Segmentations"
-        sub_folders = [f for f in os.listdir(img_path) if os.path.isdir(f"{img_path}/{f}")]
-        seg_folders = [f for f in os.listdir(seg_path) if os.path.isdir(f"{img_path}/{f}")]
+        self.sub_folders = [f for f in os.listdir(img_path) if os.path.isdir(f"{img_path}/{f}")]
+        self.seg_folders = [f for f in os.listdir(seg_path) if os.path.isdir(f"{img_path}/{f}")]
 
-        if len(sub_folders) == 0:
-            raise FileNotFoundError("No subfolders found")
+        if len(self.sub_folders) == 0:
+            print("==================================================")
+            print("Assuming unpaired dataset")
+            self._img_paths = img_path
+            self._seg_paths = seg_path
 
-        self._img_paths = {key: f"{img_path}/{key}" for key in sub_folders}
-        self._seg_paths = {key: f"{seg_path}/{key}" for key in seg_folders}
+        else:
+            self._img_paths = {key: f"{img_path}/{key}" for key in self.sub_folders}
+            self._seg_paths = {key: f"{seg_path}/{key}" for key in self.seg_folders}
+
         self._dataset_type = dataset_type
         self.config = config
         self.down_sample = config["DATA"]["DOWN_SAMP"]
 
         if config["DATA"]["JSON"] != "":
-            self._json = json.load(open(f"{img_path}/{config['DATA']['JSON']}", 'r'))
-
-        # Expects list of targets and sources e.g. ["AC", "VC"], ["HQ"], leave blank for unpaired
-        self._targets = []
-        self._sources = []
-        self._segs = []
-
-        if len(config["DATA"]["TARGET"]) > 0:
-            for key in config["DATA"]["TARGET"]:
-                self._targets += os.listdir(self._img_paths[key])
-
-        elif len(config["DATA"]["TARGET"]) == 0:
-            for key in sub_folders:
-                self._targets += os.listdir(self._img_paths[key])
-
-        if len(config["DATA"]["SOURCE"]) > 0:
-            for key in config["DATA"]["SOURCE"]:
-                self._sources += os.listdir(self._img_paths[key])
-
-        elif len(config["DATA"]["SOURCE"]) == 0:
-            for key in sub_folders:
-                self._sources += os.listdir(self._img_paths[key])
+            self._json = json.load(open(f"{config['DATA']['DATA_PATH']}/{config['DATA']['JSON']}", 'r'))
         
-        if len(config["DATA"]["SEGS"]) > 0:
-            for key in config["DATA"]["SEGS"]:
-                self._segs += os.listdir(self._seg_paths[key])
+        else:
+            self._json = None
 
-        if len(self._targets) == 0 or len(self._sources) == 0:
-            raise FileNotFoundError(f"No data found: {len(self._targets)} targets, {len(self._sources)} sources")
+    def example_images(self):
+        if len(self._ex_segs) > 0:
+            return self._normalise(self._ex_sources), self._normalise(self._ex_targets), self._ex_segs
 
-        print("==================================================")
-        print(f"Data: {len(self._targets)} targets, {len(self._sources)} sources, {len(self._segs)} segmentations")
-
+        else:
+            return self._normalise(self._ex_sources), self._normalise(self._ex_targets)
+    
+    def train_val_split(self, seed: int = 5) -> None:
         # Get unique subject IDs for subject-level train/val split
         self._unique_ids = []
 
@@ -83,14 +69,6 @@ class BaseImgLoader(ABC):
         for key in self._subject_imgs.keys():
             self._subject_imgs[key] = sorted(self._subject_imgs[key], key=lambda x: int(x[-3:]))
 
-    def example_images(self):
-        if len(self._ex_segs) > 0:
-            return self._normalise(self._ex_sources), self._normalise(self._ex_targets), self._ex_segs
-
-        else:
-            return self._normalise(self._ex_sources), self._normalise(self._ex_targets)
-    
-    def train_val_split(self, seed: int = 5) -> None:
         if self.config["EXPT"]["FOLD"] > self.config["EXPT"]["CV_FOLDS"] - 1:
             raise ValueError(f"Fold number {self.config['EXPT']['FOLD']} of {self.config['EXPT']['CV_FOLDS']} folds")
 
@@ -125,22 +103,30 @@ class BaseImgLoader(ABC):
         
         else:
             raise ValueError("Number of folds must be > 0")
-        
-        assert len(self._fold_targets) == len(self._fold_sources)
 
         example_idx = np.random.randint(0, len(self._fold_sources), self.config["DATA"]["NUM_EXAMPLES"])
         ex_sources_list = list(np.array([self._fold_sources]).squeeze()[example_idx])
-        ex_targets_list = list(np.array([self._fold_targets]).squeeze()[example_idx])
-        self._ex_sources = np.stack([np.load(f"{self._img_paths[img[6:8]]}/{img}") for img in ex_sources_list], axis=0)
-        self._ex_targets = np.stack([np.load(f"{self._img_paths[img[6:8]]}/{img}") for img in ex_targets_list], axis=0)
+
+        if len(self.sub_folders) == 0:
+            ex_targets_list = [np.random.choice([t[0:11] + s[-8:] for t in self._fold_targets if s[0:6] in t and t[0:11] + s[-8:] not in s]) for s in ex_sources_list]
+            self._ex_sources = np.stack([np.load(f"{self._img_paths}/{img}") for img in ex_sources_list], axis=0)
+            self._ex_targets = np.stack([np.load(f"{self._img_paths}/{img}") for img in ex_targets_list], axis=0)
+        else:
+            ex_targets_list = list(np.array([self._fold_targets]).squeeze()[example_idx])
+            self._ex_sources = np.stack([np.load(f"{self._img_paths[img[6:8]]}/{img}") for img in ex_sources_list], axis=0)
+            self._ex_targets = np.stack([np.load(f"{self._img_paths[img[6:8]]}/{img}") for img in ex_targets_list], axis=0)
 
         self._ex_sources = self._ex_sources[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
         self._ex_targets = self._ex_targets[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
 
-        if len(self.config["DATA"]["SEGS"]) > 0:
-            assert len(self._fold_targets) == len(self._fold_segs), f"{len(self._fold_targets)} targets, {len(self._fold_segs)} segmentations"
+        if len(self.config["DATA"]["SEGS"]) > 0 and len(self.sub_folders) == 0:
+            candidate_segs = [glob.glob(f"{self._seg_paths}/{img[0:6]}AC*{img[-8:]}")[0] for img in ex_targets_list]
+            self._ex_segs = np.stack([np.load(seg) for seg in candidate_segs], axis=0)
+            self._ex_segs = self._ex_segs[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
+
+        elif len(self.config["DATA"]["SEGS"]) > 0 and len(self.sub_folders) > 0:
             self._ex_segs = np.stack([np.load(f"{self._seg_paths[img[6:8]]}/{img}") for img in ex_targets_list], axis=0)
-            self._ex_segs = np.sum(self._ex_segs[:, :, :, :, :-1], axis=-1)[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
+            self._ex_segs = self._ex_segs[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
 
         else:
             self._ex_segs = []
@@ -241,24 +227,48 @@ class BaseImgLoader(ABC):
             names = self.img_pairer(source_name)
             target_name = names["target"]
             source_name = names["source"]
-            target = np.load(f"{self._img_paths[target_name[6:8]]}/{target_name}")
-            source = np.load(f"{self._img_paths[source_name[6:8]]}/{source_name}")
+
+            if len(self.sub_folders) == 0:
+                target = np.load(f"{self._img_paths}/{target_name}")
+                source = np.load(f"{self._img_paths}/{source_name}")
+            else:
+                target = np.load(f"{self._img_paths[target_name[6:8]]}/{target_name}")
+                source = np.load(f"{self._img_paths[source_name[6:8]]}/{source_name}")
 
             target = target[::self.down_sample, ::self.down_sample, :, np.newaxis]
             source = source[::self.down_sample, ::self.down_sample, :, np.newaxis]
             target = self._normalise(target)
             source = self._normalise(source)
 
+            if self._json is not None:
+                source_time = self._json[names["source"][:-8] + ".nrrd"]
+                target_time = self._json[names["target"][:-8] + ".nrrd"]
+
             # TODO: allow using different seg channels
             if len(self._fold_segs) > 0:
-                seg = np.load(f"{self._seg_paths[target_name[6:8]]}/{target_name}")
-                seg = np.sum(seg[:, :, :, :-1], axis=-1)[::self.down_sample, ::self.down_sample, :, np.newaxis]
-                seg[seg > 1] = 1
-                # TODO: return index
-                yield (source, target, seg)
-            
+                if len(self.sub_folders) == 0:
+                    candidate_segs = glob.glob(f"{self._seg_paths}/{target_name[0:6]}AC*{target_name[-8:]}")
+                    assert len(candidate_segs) == 1, candidate_segs
+                    seg = np.load(candidate_segs[0])
+                    seg = seg[::self.down_sample, ::self.down_sample, :, np.newaxis]
+                    seg[seg > 1] = 1
+                    # TODO: return index
+
+                else:
+                    seg = np.load(f"{self._seg_paths[target_name[6:8]]}/{target_name}")
+                    seg = seg[::self.down_sample, ::self.down_sample, :, np.newaxis]
+                    seg[seg > 1] = 1
+
+                if self._json is not None:
+                    yield (source, source_time, target, target_time, seg)
+                else:
+                    yield (source, target, seg)
+
             else:
-                yield (source, target)
+                if self._json is not None:
+                    yield (source, source_time, target, target_time)
+                else:
+                    yield (source, target)
 
             i += 1
 
@@ -268,8 +278,41 @@ class BaseImgLoader(ABC):
 class PairedLoader(BaseImgLoader):
     def __init__(self, config: dict, dataset_type: str):
         super().__init__(config, dataset_type)
+
+        # Expects list of targets and sources e.g. ["AC", "VC"], ["HQ"]
+        self._targets = []
+        self._sources = []
+        self._segs = []
+
+        if len(config["DATA"]["TARGET"]) > 0:
+            for key in config["DATA"]["TARGET"]:
+                self._targets += os.listdir(self._img_paths[key])
+
+        elif len(config["DATA"]["TARGET"]) == 0:
+            for key in self.sub_folders:
+                self._targets += os.listdir(self._img_paths[key])
+
+        if len(config["DATA"]["SOURCE"]) > 0:
+            for key in config["DATA"]["SOURCE"]:
+                self._sources += os.listdir(self._img_paths[key])
+
+        elif len(config["DATA"]["SOURCE"]) == 0:
+            for key in self.sub_folders:
+                self._sources += os.listdir(self._img_paths[key])
+        
+        if len(config["DATA"]["SEGS"]) > 0:
+            for key in config["DATA"]["SEGS"]:
+                self._segs += os.listdir(self._seg_paths[key])
+
+        if len(self._targets) == 0 or len(self._sources) == 0:
+            raise FileNotFoundError(f"No data found: {len(self._targets)} targets, {len(self._sources)} sources")
+
+        print("==================================================")
+        print(f"Data: {len(self._targets)} targets, {len(self._sources)} sources, {len(self._segs)} segmentations")
         print(f"Using paired loader for {self._dataset_type}")
+
         super().train_val_split()
+
         self._subject_targets = {k: [img for img in v if img[6:8] in self.config["DATA"]["TARGET"]] for k, v in self._subject_imgs.items()}
         self._subject_sources = {k: [img for img in v if img[6:8] in self.config["DATA"]["SOURCE"]] for k, v in self._subject_imgs.items()}
     
@@ -294,8 +337,39 @@ class PairedLoader(BaseImgLoader):
 class UnpairedLoader(BaseImgLoader):
     def __init__(self, config: dict, dataset_type: str):
         super().__init__(config, dataset_type)
+
+        # Optional list of targets and sources e.g. ["AC", "VC"], ["HQ"]
+        self._targets = []
+        self._sources = []
+        self._segs = []
+
+        if len(config["DATA"]["TARGET"]) > 0:
+            for key in config["DATA"]["TARGET"]:
+                self._targets += [t for t in os.listdir(self._img_paths) if key in t]
+
+        elif len(config["DATA"]["TARGET"]) == 0:
+            self._targets += os.listdir(self._img_paths)
+
+        if len(config["DATA"]["SOURCE"]) > 0:
+            for key in config["DATA"]["SOURCE"]:
+                self._sources += [s for s in os.listdir(self._img_paths) if key in s]
+
+        elif len(config["DATA"]["SOURCE"]) == 0:
+            self._sources += os.listdir(self._img_paths)
+        
+        if len(config["DATA"]["SEGS"]) > 0:
+            self._segs += os.listdir(self._seg_paths)
+
+        print("==================================================")
+        print(f"Data: {len(self._targets)} targets, {len(self._sources)} sources, {len(self._segs)} segmentations")
         print(f"Using unpaired loader for {self._dataset_type}")
+
         super().train_val_split()
+
+        if len(self.config["DATA"]["TARGET"]) > 0:
+            self._subject_targets = {k: [img for img in v if img[6:8] in self.config["DATA"]["TARGET"]] for k, v in self._subject_imgs.items()}
+        else:
+            self._subject_targets = None
 
     @property
     def subject_imgs(self):
@@ -304,8 +378,16 @@ class UnpairedLoader(BaseImgLoader):
 
     def img_pairer(self, source: object, direction: str = None) -> dict:
         # TODO: add forwards/backwards sampling, return idx
-        target_candidates = self._subject_imgs[source[0:6]]
-        target_candidates.remove(source[0:-8])
+        if self._subject_targets is None:
+            target_candidates = list(self._subject_imgs[source[0:6]])
+        else:
+            target_candidates = list(self._subject_targets[source[0:6]])
+
+        try:
+            target_candidates.remove(source[0:-8])
+        except ValueError:
+            pass
+
         assert len(target_candidates) > 0, source
         target_stem = target_candidates[np.random.randint(len(target_candidates))]
         target = f"{target_stem}_{source[-7:]}"
@@ -321,36 +403,43 @@ if __name__ == "__main__":
 
     FILE_PATH = "D:/ProjectImages/SyntheticContrast"
     segs = ["AC"]
-    TestLoader = PairedLoader({"DATA": {"DATA_PATH": FILE_PATH, "TARGET": ["AC"], "SOURCE": ["HQ"], "SEGS": segs, "JSON": "", "DOWN_SAMP": 4, "NUM_EXAMPLES": 4}, "EXPT": {"CV_FOLDS": 3, "FOLD": 2}}, dataset_type="training")
-    TestLoader.set_normalisation(norm_type="std", param_1=-288, param_2=254)
+    TestLoader = UnpairedLoader({"DATA": {"DATA_PATH": FILE_PATH, "TARGET": ["AC", "VC"], "SOURCE": ["HQ"], "SEGS": segs, "JSON": "times.json", "DOWN_SAMP": 4, "NUM_EXAMPLES": 4}, "EXPT": {"CV_FOLDS": 3, "FOLD": 2}}, dataset_type="training")
+    TestLoader.set_normalisation(norm_type="minmax", param_1=-500, param_2=2500)
 
     if len(segs) > 0:
         train_ds = tf.data.Dataset.from_generator(
-            TestLoader.data_generator, output_types=("float32", "float32", "float32"))
+            TestLoader.data_generator, output_types=("float32", "float32", "float32", "float32", "float32"))
 
     else:
         train_ds = tf.data.Dataset.from_generator(
-            TestLoader.data_generator, output_types=("float32", "float32"))
+            TestLoader.data_generator, output_types=("float32", "float32", "float32", "float32"))
 
     for data in train_ds.batch(4).take(2):
         if len(segs) > 0:
-            source, target, seg = data
+            source, source_time, target, target_time, seg = data
         else:
-            source, target = data
+            source, source_time, target, target_time = data
+        
+        source = source * (TestLoader.norm_params[1] - TestLoader.norm_params[0]) + TestLoader.norm_params[0]
+        target = target * (TestLoader.norm_params[1] - TestLoader.norm_params[0]) + TestLoader.norm_params[0]
 
         plt.subplot(3, 2, 1)
-        plt.imshow(source[0, :, :, 0, 0], cmap="gray")
+        plt.imshow(source[0, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
         plt.axis("off")
+        plt.title(source_time[0].numpy())
         plt.subplot(3, 2, 2)
-        plt.imshow(source[1, :, :, 0, 0], cmap="gray")
+        plt.imshow(source[1, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
         plt.axis("off")
+        plt.title(source_time[1].numpy())
 
         plt.subplot(3, 2, 3)
-        plt.imshow(target[0, :, :, 0, 0], cmap="gray")
+        plt.imshow(target[0, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
         plt.axis("off")
+        plt.title(target_time[0].numpy())
         plt.subplot(3, 2, 4)
-        plt.imshow(target[1, :, :, 0, 0], cmap="gray")
+        plt.imshow(target[1, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
         plt.axis("off")
+        plt.title(target_time[1].numpy())
 
         if len(segs) > 0:
             plt.subplot(3, 2, 5)
@@ -367,13 +456,16 @@ if __name__ == "__main__":
 
     else:
         source, target = TestLoader.example_images()
+
+    source = source * (TestLoader.norm_params[1] - TestLoader.norm_params[0]) + TestLoader.norm_params[0]
+    target = target * (TestLoader.norm_params[1] - TestLoader.norm_params[0]) + TestLoader.norm_params[0]
     
     fig, axs = plt.subplots(target.shape[0], 3)
 
     for i in range(target.shape[0]):
-        axs[i, 0].imshow(source[i, :, :, 11, 0], cmap="gray")
+        axs[i, 0].imshow(source[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
         axs[i, 0].axis("off")
-        axs[i, 1].imshow(target[i, :, :, 11, 0], cmap="gray")
+        axs[i, 1].imshow(target[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
         axs[i, 1].axis("off")
 
         if len(segs) > 0:

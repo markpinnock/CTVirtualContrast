@@ -8,7 +8,7 @@ from .util import load_images, resample, display_imgs, get_HUs, aggregate_HUs
 
 #-------------------------------------------------------------------------
 
-def display_subjects(subject_list: list, subject_ignore: list = [], image_ignore: list = [], depth_idx: int = None):
+def display_subjects(subject_list: list, subject_ignore: list = [], image_ignore: list = [], times: dict = None, depth_idx: int = None):
     for subject in subject_list:
         if subject in subject_ignore:
             continue
@@ -20,22 +20,35 @@ def display_subjects(subject_list: list, subject_ignore: list = [], image_ignore
         VC = [n for n in imgs.keys() if 'VC' in n]
         HQ = [n for n in imgs.keys() if 'HQ' in n]
         keys = sorted(AC + VC + HQ, key=lambda x: int(x[-3:]))
-        overlay = segs[AC[0]]
+
+        if times is not None:
+            t = [times[f"{k}.nrrd"] for k in keys]
+
+        overlay = np.copy(segs[AC[0]])
 
         display_imgs(imgs, segs, keys, overlay=overlay, depth_idx=depth_idx)
-        display_HUs(imgs, segs[AC[0]], keys)
+        display_HUs(imgs, segs[AC[0]], keys, t)
 
 
 #-------------------------------------------------------------------------
 
-def display_HUs(imgs: dict, seg: object, keys: list):
+def display_HUs(imgs: dict, seg: object, keys: list, t: list = None):
     Ao, RK, LK, Tu = get_HUs(imgs, seg, keys)
 
     plt.figure(figsize=(18, 10))
-    plt.plot(Ao, label="Ao")
-    plt.plot(RK, label="RK")
-    plt.plot(LK, label="LK")
-    plt.plot(Tu, label="Tu")
+
+    if times is None:
+        plt.plot(Ao, label="Ao")
+        plt.plot(RK, label="RK")
+        plt.plot(LK, label="LK")
+        plt.plot(Tu, label="Tu")
+
+    else:
+        plt.plot(t, Ao, label="Ao")
+        plt.plot(t, RK, label="RK")
+        plt.plot(t, LK, label="LK")
+        plt.plot(t, Tu, label="Tu")
+
     plt.xlabel("Series")
     plt.ylabel("HU")
     plt.title(keys[0][0:6])
@@ -86,26 +99,23 @@ def display_aggregate_HUs(HUs):
 
 if __name__ == "__main__":
 
-    # with open("syntheticcontrast/preproc/ignore.json", 'r') as fp:
-        # ignore = json.load(fp)
+    with open("syntheticcontrast/preproc/ignore.json", 'r') as fp:
+        ignore = json.load(fp)
 
     with open("syntheticcontrast/contrastmodelling/times.json", 'r') as fp:
         times = json.load(fp)
 
-    subject_ignore = []#ignore["subject_ignore"]
-    image_ignore = []#ignore["image_ignore"]
-    subject_ignore += ["T017A0", "T020A0", "T021F1", "T029A0"]
-    image_ignore += ["T002A1HQ002", "T002A1HQ004", "T006A1HQ002", "T009A0HQ002", "T009A0HQ003", "T024A0HQ002", "T026A0HQ002", "T026A0HQ003", "T026A0HQ005", "T027A0HQ002"]
+    subject_ignore = list(ignore["subject_ignore"].keys())
+    image_ignore = ignore["image_ignore"]
+    # subject_ignore += ["T029A0"]
 
-    IMG_PATH = "C:/ProjectImages/Images"
-    SEG_PATH = "C:/ProjectImages/Segmentations"
+    IMG_PATH = "D:/ProjectImages/Images"
+    SEG_PATH = "D:/ProjectImages/Segmentations"
     subjects = os.listdir(IMG_PATH)
-    # subjects = ["T002A1", "T004A0"]
-    subject_ignore += ["T005A0", "T016A0", "T021A0", "T030A0", "T031A0", "T038A0"] # misregistered
-    subject_ignore += ["T025A1", "T033A0"] # issues with contrast timings
+    subject_ignore += ["T005A0", "T016A0", "T021A0", "T024A0", "T030A0", "T031A0", "T038A0"] # misregistered
 
-    # display_subjects(subjects, subject_ignore=subject_ignore, image_ignore=image_ignore, depth_idx=None)
+    # display_subjects(subjects, subject_ignore=subject_ignore, image_ignore=image_ignore, times=times, depth_idx=None)
     HUs = aggregate_HUs(subjects, subject_ignore=subject_ignore, image_ignore=image_ignore, times=times, img_path=IMG_PATH, seg_path=SEG_PATH)
     display_aggregate_HUs(HUs)
 
-# Misregistered: T005A0HQ004, T016A0, T021A0HQ002, T030A0, T031A0HQ007, T038A0
+# Misregistered: T005A0HQ004, T016A0, T021A0HQ002, T024A0HQ056, T030A0, T031A0HQ007, T038A0

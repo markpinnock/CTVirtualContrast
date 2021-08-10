@@ -127,8 +127,8 @@ def resample(images, segs):
 
     for i in range(len(segs)):
         key = list(segs.keys())[i]
-        segs[key] = itk.GetArrayFromImage(itk.Resample(segs[key], images[list(images.keys())[0]], defaultPixelValue=-2048)).transpose([1, 2, 0, 3])
-        assert segs[key].shape[:-1] == images[list(images.keys())[0]].GetSize()
+        segs[key] = itk.GetArrayFromImage(itk.Resample(segs[key], images[list(images.keys())[0]], defaultPixelValue=0)).transpose([1, 2, 0])
+        assert segs[key].shape == images[list(images.keys())[0]].GetSize()
 
     images[list(images.keys())[0]] = itk.GetArrayFromImage(images[list(images.keys())[0]]).transpose([1, 2, 0])
 
@@ -139,10 +139,9 @@ def resample(images, segs):
 
 def display_imgs(imgs, segs, keys, overlay=None, depth_idx=None):
     if overlay is not None:
-        overlay = np.sum(overlay[:, :, :, :-1], axis=-1)
-        overlay[overlay > 1] = 1
+        overlay[overlay > 0] = 1
         mask = np.ma.masked_where(overlay == False, overlay)
-    
+
     if depth_idx is None:
         mid_point = imgs[keys[0]].shape[2] // 2
     else:
@@ -173,8 +172,6 @@ def display_imgs(imgs, segs, keys, overlay=None, depth_idx=None):
         except KeyError:
             pass
         else:
-            seg = np.sum(seg[:, :, :, :-1], axis=-1)
-            seg[seg > 1] = 1
             axs[1, i].imshow(seg[:, :, mid_point], cmap="gray")
         finally:
             axs[1, i].axis("off")
@@ -182,7 +179,7 @@ def display_imgs(imgs, segs, keys, overlay=None, depth_idx=None):
     for i in range(offset):
         img = imgs[keys[i + len(keys) // 2]]
         axs[2, i].imshow(img[:, :, mid_point], cmap="gray", vmin=-150, vmax=250)
-        axs[2, i].set_title(keys[i])
+        axs[2, i].set_title(keys[i + len(keys) // 2])
 
         if overlay is not None:
             axs[2, i].imshow(mask[:, :, mid_point], alpha=0.3, cmap='Set1')
@@ -194,8 +191,6 @@ def display_imgs(imgs, segs, keys, overlay=None, depth_idx=None):
         except KeyError:
             pass
         else:
-            seg = np.sum(seg[:, :, :, :-1], axis=-1)
-            seg[seg > 1] = 1
             axs[3, i].imshow(seg[:, :, mid_point], cmap="gray")
         finally:
             axs[3, i].axis("off")    
@@ -211,11 +206,13 @@ def get_HUs(imgs: dict, seg: object, keys: list):
     LK = []
     Tu = []
 
+    assert seg.min() == 0 and seg.max() == 4
+
     for key in keys:
-        Ao.append(seg_mean(imgs[key], seg[:, :, :, 0]))
-        RK.append(seg_mean(imgs[key], seg[:, :, :, 1]))
-        LK.append(seg_mean(imgs[key], seg[:, :, :, 2]))
-        Tu.append(seg_mean(imgs[key], seg[:, :, :, 3]))
+        Ao.append(seg_mean(imgs[key], seg * (seg == 1)))
+        RK.append(seg_mean(imgs[key], seg * (seg == 2)))
+        LK.append(seg_mean(imgs[key], seg * (seg == 3)))
+        Tu.append(seg_mean(imgs[key], seg * (seg == 4)))
 
     return Ao, RK, LK, Tu
 
