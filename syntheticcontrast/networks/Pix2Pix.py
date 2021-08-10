@@ -3,6 +3,7 @@ import sys
 import tensorflow as tf
 
 from .layers import GANDownBlock, GANUpBlock
+from .hypernetlayers import HyperGANDownBlock, HyperGANUpBlock
 
 
 #-------------------------------------------------------------------------
@@ -17,7 +18,7 @@ class Discriminator(tf.keras.Model):
         - keras.Model """
 
     def __init__(self, initialiser, config, d_focal=False, name=None):
-        super(Discriminator, self).__init__(name=name)
+        super().__init__(name=name)
     
         # Check network and image dimensions
         img_dims = config["DATA"]["IMG_DIMS"]
@@ -120,7 +121,7 @@ class Generator(tf.keras.Model):
         - keras.Model """
 
     def __init__(self, initialiser, config, name=None):
-        super(Generator, self).__init__(name=name)
+        super().__init__(name=name)
 
         # Check network and image dimensions
         img_dims = config["DATA"]["IMG_DIMS"]
@@ -190,7 +191,7 @@ class Generator(tf.keras.Model):
 
         self.final_layer = tf.keras.layers.Conv3DTranspose(
             1, (4, 4, 4), (2, 2, 2),
-            padding='same', activation='tanh',
+            padding="SAME", activation="tanh",
             kernel_initializer=initialiser, name="output")
 
     def build_model(self, x):
@@ -200,27 +201,115 @@ class Generator(tf.keras.Model):
         
         return self(x).shape
 
-    def call(self, x, test=False):
+    def call(self, x):
         skip_layers = []
-        if test: output_shapes = []
 
         for conv in self.encoder:
             x = conv(x, training=True)
             skip_layers.append(x)
-            if test: output_shapes.append(x.shape)
         
         x = self.bottom_layer(x, training=True)
-        if test: output_shapes.append(x.shape)
         skip_layers.reverse()
 
         for skip, tconv in zip(skip_layers, self.decoder):
             x = tconv(x, skip, training=True)
-            if test: output_shapes.append(x.shape)
         
         x = self.final_layer(x, training=True)
-        if test: output_shapes.append(x.shape)
         
-        if test:
-            return output_shapes
-        else:
-            return x
+        return x
+
+
+#-------------------------------------------------------------------------
+""" Generator for Pix2pix with HyperNetwork """
+
+class HyperGenerator(tf.keras.Model):
+
+    """ Input:
+        - initialiser e.g. keras.initializers.RandomNormal
+        - nc: number of channels in first layer
+        - num_layers: number of layers
+        - img_dims: input image size
+        Returns:
+        - keras.Model """
+
+    def __init__(self, initialiser, config, name=None):
+        super().__init__(name=name)
+
+        # Check network and image dimensions
+        img_dims = config["DATA"]["IMG_DIMS"]
+        assert len(img_dims) == 3, "3D input only"
+        max_num_layers = int(np.log2(np.min([img_dims[0], img_dims[1]])))
+        max_z_downsample = int(np.floor(np.log2(img_dims[2])))
+        ngf = config["HYPERPARAMS"]["NGF"]
+        num_layers = config["HYPERPARAMS"]["G_LAYERS"]
+        assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum number of discriminator layers: {max_num_layers}"
+        self.encoder = []
+
+        # Cache channels, strides and weights
+        cache = {"channels": [], "strides": [], "kernels": []}
+
+        for i in range(0, num_layers - 1):
+            channels = np.min([ngf * 2 ** i, 512])
+
+            if i >= max_z_downsample - 1:
+                strides = (2, 2, 1)
+                kernel = (4, 4, 1)
+            else:
+                strides = (2, 2, 2)
+                kernel = (4, 4, 2)
+
+            cache["channels"].append(channels)
+            cache["strides"].append(strides)
+            cache["kernels"].append(kernel)
+
+            self.encoder.append(HyperGANDownBlock(strides, batch_norm=True, name=f"down_{i}"))
+        
+        # TODO: Needs better implementation to avoid concat bug from above loop
+        self.bottom_strides = strides
+        self.bottom_layer = tf.nn.conv3d
+
+        cache["strides"].append(strides)
+        cache["kernels"].append(kernel)
+
+        cache["channels"].reverse()
+        cache["kernels"].reverse()
+        cache["strides"].reverse()
+
+        self.decoder = []
+        dropout = True
+
+        for i in range(0, num_layers - 1):
+            if i > 2: dropout = False
+            channels = cache["channels"][i]
+            strides = cache["strides"][i]
+            kernel = cache["kernels"][i]
+            
+            self.decoder.append(HyperGANUpBlock(strides, initialiser=initialiser, batch_norm=True, dropout=dropout, name=f"up_block{i}"))
+
+        self.final_upsample = tf.keras.layers.UpSampling3D((2, 2, 2), name="final_upsample")
+        self.final_layer = tf.nn.conv3d
+
+    def build_model(self, x):
+
+        """ Build method takes tf.zeros((input_dims)) and returns
+            shape of output - all layers implicitly built and weights set to trainable """
+        
+        return self(x).shape
+
+    def call(self, x):
+        skip_layers = []
+
+        for conv, w in zip(self.encoder, self.encoder_weights):
+            x = conv(x, w, training=True)
+            skip_layers.append(x)
+        
+        x = self.bottom_layer(x, self.bottom_weights, self.bottom_strides, padding="SAME", name="bottom") # RELU???
+        skip_layers.reverse()
+
+        for skip, tconv, w in zip(skip_layers, self.decoder, self.decoder_weights):
+            x = tconv(x, w, skip, training=True)
+
+        x = self.final_upsample(x)
+        x = self.final_layer(x, self.final_weights, (2, 2, 2), padding="SAME", name="final_conv")
+
+        return x

@@ -1,11 +1,10 @@
 import tensorflow as tf
-import tensorflow.keras as keras
 
 
 #-------------------------------------------------------------------------
 """ Down-sampling convolutional block for U-Net"""
 
-class DownBlock(keras.layers.Layer):
+class DownBlock(tf.keras.layers.Layer):
 
     """ Input:
         - nc: number of channels in block
@@ -15,11 +14,11 @@ class DownBlock(keras.layers.Layer):
         super().__init__()
         self.bn = bn
 
-        self.conv1 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
-        if bn: self.bn1 = keras.layers.BatchNormalization()
-        self.conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
-        if bn: self.bn2 = keras.layers.BatchNormalization()
-        self.pool = keras.layers.MaxPool3D((2, 2, 2), strides=pool_strides, padding='same')
+        self.conv1 = tf.keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
+        if bn: self.bn1 = tf.keras.layers.BatchNormalization()
+        self.conv2 = tf.keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
+        if bn: self.bn2 = tf.keras.layers.BatchNormalization()
+        self.pool = tf.keras.layers.MaxPool3D((2, 2, 2), strides=pool_strides, padding='same')
         # TODO: Consider group normalisation
         # TODO: Consider pool -> conv3
     def call(self, x, training):
@@ -34,10 +33,11 @@ class DownBlock(keras.layers.Layer):
 
         return self.pool(x), x
 
+
 #-------------------------------------------------------------------------
 """ Up-sampling convolutional block for U-Net"""
 
-class UpBlock(keras.layers.Layer):
+class UpBlock(tf.keras.layers.Layer):
 
     """ Inputs:
         - nc: number of channels in block
@@ -47,10 +47,10 @@ class UpBlock(keras.layers.Layer):
         super().__init__()
         self.bn = bn
 
-        self.tconv = keras.layers.Conv3DTranspose(nc, (2, 2, 2), strides=tconv_strides, padding='same', activation='linear')
-        if bn: self.bn1 = keras.layers.BatchNormalization()
-        self.conv1 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
-        if bn: self.bn2 = keras.layers.BatchNormalization()
+        self.tconv = tf.keras.layers.Conv3DTranspose(nc, (2, 2, 2), strides=tconv_strides, padding='same', activation='linear')
+        if bn: self.bn1 = tf.keras.layers.BatchNormalization()
+        self.conv1 = tf.keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
+        if bn: self.bn2 = tf.keras.layers.BatchNormalization()
         # self.conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
         # if bn: self.bn3 = keras.layers.BatchNormalization()
 
@@ -58,20 +58,21 @@ class UpBlock(keras.layers.Layer):
 
         if self.bn:
             x = tf.nn.relu(self.bn1(self.tconv(x), training))
-            x = keras.layers.concatenate([x, skip], axis=4)
+            x = tf.keras.layers.concatenate([x, skip], axis=4)
             x = tf.nn.relu(self.bn2(self.conv1(x), training))
         
         else:
             x = tf.nn.relu(self.tconv(x))
-            x = keras.layers.concatenate([x, skip], axis=4)
+            x = tf.keras.layers.concatenate([x, skip], axis=4)
             x = tf.nn.relu(self.conv1(x))
 
         return x
 
+
 #-------------------------------------------------------------------------
 """ Down-sampling convolutional block for Pix2pix discriminator and generator """
 
-class GANDownBlock(keras.layers.Layer):
+class GANDownBlock(tf.keras.layers.Layer):
 
     """ Input:
         - nc: number of feature maps
@@ -80,13 +81,13 @@ class GANDownBlock(keras.layers.Layer):
         - batch_norm: True/False """
 
     def __init__(self, nc, weights, strides, initialiser, batch_norm=True, name=None):
-        super(GANDownBlock, self).__init__(name=name)
+        super().__init__(name=name)
         self.batch_norm = batch_norm
 
-        self.conv = keras.layers.Conv3D(nc, weights, strides=strides, padding='same', kernel_initializer=initialiser, name="conv")
+        self.conv = tf.keras.layers.Conv3D(nc, weights, strides=strides, padding="SAME", kernel_initializer=initialiser, name="conv")
         
         if batch_norm:
-            self.bn = keras.layers.BatchNormalization(name="batchnorm")
+            self.bn = tf.keras.layers.BatchNormalization(name="batchnorm")
 
     def call(self, x, training):
 
@@ -97,10 +98,11 @@ class GANDownBlock(keras.layers.Layer):
 
         return tf.nn.leaky_relu(x, alpha=0.2, name="l_relu")
 
+
 #-------------------------------------------------------------------------
 """ Up-sampling convolutional block for Pix2pix generator """
 
-class GANUpBlock(keras.layers.Layer):
+class GANUpBlock(tf.keras.layers.Layer):
 
     """ Input:
         - nc: number of feature maps
@@ -110,18 +112,18 @@ class GANUpBlock(keras.layers.Layer):
         - dropout: True/False """
 
     def __init__(self, nc, weights, strides, initialiser, batch_norm=True, dropout=False, name=None):
-        super(GANUpBlock, self).__init__(name=name)
+        super().__init__(name=name)
         self.batch_norm = batch_norm
         self.dropout = dropout
 
-        self.tconv = keras.layers.Conv3DTranspose(nc, weights, strides=strides, padding='same', kernel_initializer=initialiser, name="tconv")
+        self.tconv = tf.keras.layers.Conv3DTranspose(nc, weights, strides=strides, padding="SAME", kernel_initializer=initialiser, name="tconv")
 
         if batch_norm:
-            self.bn = keras.layers.BatchNormalization(name="batchnorm")
+            self.bn = tf.keras.layers.BatchNormalization(name="batchnorm")
         if dropout:
-            self.dropout = keras.layers.Dropout(0.5, name="dropout")
+            self.dropout = tf.keras.layers.Dropout(0.5, name="dropout")
         
-        self.concat = keras.layers.Concatenate(name="concat")
+        self.concat = tf.keras.layers.Concatenate(name="concat")
     
     def call(self, x, skip, training):
         x = self.tconv(x)

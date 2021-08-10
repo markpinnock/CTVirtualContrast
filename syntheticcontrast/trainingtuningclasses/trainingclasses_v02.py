@@ -19,6 +19,7 @@ class BaseTrainingLoop(ABC):
 
         self.Model = Model
         self.train_ds, self.val_ds = dataset
+        self.norm_params = dataset.norm_params
         self.val_generator = val_generator
         self._config = config
         self.EPOCHS = config["EXPT"]["EPOCHS"]
@@ -41,17 +42,20 @@ class BaseTrainingLoop(ABC):
 
     def save_images(self, source, target, pred, epoch=None, tuning_path=None):
         """ Saves sample of images """
+        source = source * (self.norm_params[1] - self.norm_params[0]) + self.norm_params[0]
+        target = target * (self.norm_params[1] - self.norm_params[0]) + self.norm_params[0]
+        pred = pred * (self.norm_params[1] - self.norm_params[0]) + self.norm_params[0]
 
         fig, axs = plt.subplots(target.shape[0], 5)
 
         for i in range(target.shape[0]):
-            axs[i, 0].imshow(source[i, :, :, 11, 0], cmap="gray")
+            axs[i, 0].imshow(source[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
             axs[i, 0].axis("off")
-            axs[i, 1].imshow(target[i, :, :, 11, 0], cmap="gray")
+            axs[i, 1].imshow(target[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
             axs[i, 1].axis("off")
             axs[i, 3].imshow(np.abs(target[i, :, :, 11, 0] - source[i, :, :, 11, 0]), cmap="hot")
             axs[i, 3].axis("off")
-            axs[i, 2].imshow(pred[i, :, :, 11, 0], cmap="gray")
+            axs[i, 2].imshow(pred[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
             axs[i, 2].axis("off")
             axs[i, 4].imshow(np.abs(target[i, :, :, 11, 0] - pred[i, :, :, 11, 0]), cmap="hot")
             axs[i, 4].axis("off")
