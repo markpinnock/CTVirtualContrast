@@ -7,9 +7,9 @@ import skimage.metrics as skim
 import tensorflow.keras as keras
 import tensorflow as tf
 
-from networks.GANWrapper import GAN, CropGAN
+from networks.model import GAN, CropGAN
 from networks.UNet import UNet, CropUNet
-from utils.DataLoader import OneToOneLoader, ManyToOneLoader
+from utils.dataloader import OneToOneLoader, ManyToOneLoader
 
 
 """ Inference script """

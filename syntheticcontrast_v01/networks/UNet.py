@@ -1,13 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import sys
 import tensorflow as tf
 import tensorflow.keras as keras
 
-sys.path.append("..")
-
-from .layers import DownBlock, UpBlock
-from utils.losses_v01 import Loss, FocalMetric, calc_RBF
+from syntheticcontrast_v01.networks.layers import DownBlock, UpBlock
+from utils.losses import Loss, FocalMetric, calc_RBF
 from utils.UNetAug import affine_transformation, TransMatGen
 from utils.transformation import affineTransformation
 

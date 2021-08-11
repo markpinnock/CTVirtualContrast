@@ -131,7 +131,7 @@ def transformer(U, theta, out_size, name='SpatialTransformer', **kwargs):
     
 
 if __name__ == "__main__":
-
+    start_t = time.time()
     img_vol = np.zeros((4, 9, 9, 1))
     img_vol[:, 3:6, 3:6, :] = 1
 
@@ -142,7 +142,6 @@ if __name__ == "__main__":
 
     theta = tf.convert_to_tensor(np.stack([theta0, theta1, theta2, theta3], axis=0))
 
-    start_t = time.time()
     new_vol = transformer(img_vol, theta, [9, 9])
 
     print(time.time() - start_t)

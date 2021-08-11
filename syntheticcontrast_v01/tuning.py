@@ -5,8 +5,8 @@ import numpy as np
 import os
 import tensorflow as tf
 
-from TrainingLoops import TrainingLoopUNet, TrainingLoopGAN
-from tuners.TuningClasses import GridSearch, RandomSearch
+from trainingloops import TrainingLoopUNet, TrainingLoopGAN
+from tuners.tuningclasses import GridSearch, RandomSearch
 
 np.set_printoptions(suppress=True)
 
