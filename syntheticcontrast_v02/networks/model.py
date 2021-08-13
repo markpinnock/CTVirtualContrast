@@ -13,68 +13,57 @@ from utils.losses import (
 
 class GAN(tf.keras.Model):
 
-    """ GAN class
-        - config: configuration json
-        - GAN_type: 'original', 'least_square', 'wasserstein' or 'wasserstein-GP' """
-
-    def __init__(self, config, GAN_type="original", name="GAN"):
+    def __init__(self, config, name="GAN"):
         super().__init__(name=name)
         self.initialiser = tf.keras.initializers.RandomNormal(0, 0.02)
         self.config = config
-        self.lambda_ = config["HYPERPARAMS"]["LAMBDA"]
+        self.lambda_ = config["hyperparameters"]["lambda"]
+        self.mb_size = config["expt"]["mb_size"]
 
-        if len(config["DATA"]["SEGS"]) > 0:
+        if len(config["data"]["segs"]) > 0:
             self.d_in_ch = 3
         else:
             self.d_in_ch = 2
 
-        self.img_dims = config["DATA"]["IMG_DIMS"]
-        self.n_critic = config["HYPERPARAMS"]["N_CRITIC"]
-        self.mb_size = config["HYPERPARAMS"]["MB_SIZE"]
+        self.img_dims = config["hyperparameters"]["img_dims"]
 
         # Set up augmentation
-        if config["HYPERPARAMS"]["AUGMENT"]:
+        if config["hyperparameters"]["augmentation"]:
             self.Aug = DiffAug({"colour": True, "translation": True, "cutout": True})
         else:
             self.Aug = None
 
         # Initialise generator and discriminators
-        self.generator_init(config)
-        self.discriminator_init(config)
+        self.generator_init(config["hyperparameters"])
+        self.discriminator_init(config["hyperparameters"])
 
         # Spatial transformer if necessary
-        if config["HYPERPARAMS"]["STN_LAYERS"] > 0:
+        if config["hyperparameters"]["stn_layers"] > 0:
             self.STN = SpatialTransformer(config=config)
         else:
             self.STN = None
 
     def generator_init(self, config):
         # Check generator output dims match input
-        G_input_size = [1] + config["DATA"]["IMG_DIMS"] + [1]
+        G_input_size = [1] + self.img_dims + [1]
         self.Generator = Generator(self.initialiser, config, name="generator")
         assert self.Generator.build_model(tf.zeros(G_input_size)) == G_input_size
 
     def discriminator_init(self, config):
         # Get discriminator patch size
-        D_input_size = [1] + config["DATA"]["IMG_DIMS"] + [self.d_in_ch]
+        D_input_size = [1] + self.img_dims + [self.d_in_ch]
         self.Discriminator = Discriminator(self.initialiser, config, name="discriminator")
         self.patch_size = self.Discriminator.build_model(tf.zeros(D_input_size))
 
-    def compile(self, g_optimiser, d_optimiser, loss):
+    def compile(self, g_optimiser, d_optimiser):
         self.g_optimiser = g_optimiser
         self.d_optimiser = d_optimiser
-        self.loss_type = loss
 
-        # Losses
-        if loss == "minmax":
-            self.d_loss = minimax_D
-            self.g_loss = minimax_G
-        elif loss == "wasserstein-GP":
-            self.d_loss = wasserstein_D
-            self.g_loss = wasserstein_G
+        self.d_loss = minimax_D
+        self.g_loss = minimax_G
         
-        if self.config["EXPT"]["FOCAL"]:
-            self.L1_loss = FocalLoss(self.config["HYPERPARAMS"]["MU"], name="FocalLoss")
+        if self.config["expt"]["focal"]:
+            self.L1_loss = FocalLoss(self.config["hyperparameters"]["mu"], name="FocalLoss")
         else:
             self.L1_loss = L1
 
@@ -82,15 +71,16 @@ class GAN(tf.keras.Model):
         self.d_metric = tf.keras.metrics.Mean(name="d_metric")
         self.g_metric = tf.keras.metrics.Mean(name="g_metric")
 
-        if len(self.config["DATA"]["SEGS"]) > 0:
+        if len(self.config["data"]["segs"]) > 0:
             self.train_L1_metric = FocalMetric(name="train_L1")
             self.val_L1_metric = FocalMetric(name="val_L1")
+
         else:
             self.train_L1_metric = tf.keras.metrics.Mean(name="train_L1")
             self.val_L1_metric = tf.keras.metrics.Mean(name="val_L1")
 
         if self.STN:
-            self.s_optimiser = tf.keras.optimizers.Adam(self.config["HYPERPARAMS"]["STN_ETA"])
+            self.s_optimiser = tf.keras.optimizers.Adam(self.config["hyperparameters"]["stn_eta"])
     
     def summary(self):
         source = tf.keras.Input(shape=self.img_dims + [1])
@@ -108,7 +98,9 @@ class GAN(tf.keras.Model):
         tf.keras.Model(inputs=source, outputs=outputs).summary()
     
     def generator_step(self, g_source, g_real_target, g_seg=None):
+
         """ Generator training """
+
         # Get gradients from discriminator predictions of generated fake images and update weights
         with tf.GradientTape() as g_tape:
             if self.STN:
@@ -154,7 +146,9 @@ class GAN(tf.keras.Model):
         self.g_metric.update_state(g_loss)
 
     def discriminator_step(self, d_source, d_real_target, d_fake_target, d_seg=None):
+
         """ Discriminator training """
+
         # Spatial transformer if required
         if self.STN:
             d_real_target, d_seg = self.STN(source=d_source, target=d_real_target, seg=d_seg, training=True)
@@ -171,16 +165,11 @@ class GAN(tf.keras.Model):
             d_fake_in = tf.concat([d_source, d_fake_target], axis=4, name="d_fake_concat")
             d_real_in = tf.concat([d_source, d_real_target], axis=4, name="d_real_concat")
 
-        # Get gradients from critic predictions and update weights
+        # Get gradients from discriminator predictions and update weights
         with tf.GradientTape() as d_tape:
             d_pred_fake = self.Discriminator(d_fake_in)
             d_pred_real = self.Discriminator(d_real_in)
             d_loss = self.d_loss(d_pred_real, d_pred_fake)
-
-            # Gradient penalty if indicated
-            if self.loss_type == "wasserstein-GP":
-                grad_penalty = gradient_penalty(d_real_target, d_fake_target, self.Discriminator)
-                d_loss += 10 * grad_penalty
         
         d_grads = d_tape.gradient(d_loss, self.Discriminator.trainable_variables)
         self.d_optimiser.apply_gradients(zip(d_grads, self.Discriminator.trainable_variables))
@@ -189,50 +178,42 @@ class GAN(tf.keras.Model):
         self.d_metric.update_state(d_loss)
     
     @tf.function
-    def train_step(self, source, target, seg=None):
+    def train_step(self, source, target, seg=None, source_time=None, seg_time=None):
+
         """ Expects data in order 'source, target' or 'source, target, segmentations'"""
 
-        # Determine size of mb for each critic training run
-        # (size of real_images = minibatch size * number of critic runs)
-        g_mb = source.shape[0] // (1 + self.n_critic)
-        if g_mb < 1: g_mb = source.shape[0]
-        d_mb = g_mb * self.n_critic # TODO: TEST WITH N_CRITIC > 1
-
         # Select minibatch of images and masks for generator training
-        g_source = source[0:g_mb, :, :, :, :]
-        g_real_target = target[0:g_mb, :, :, :, :]
+        g_source = source[0:self.mb_size, :, :, :, :]
+        g_real_target = target[0:self.mb_size, :, :, :, :]
 
         if seg is not None:
-            g_seg = seg[0:g_mb, :, :, :, :]
+            g_seg = seg[0:self.mb_size, :, :, :, :]
         else:
             g_seg = None
 
-        # Critic training loop
-        for idx in range(self.n_critic):
-            # Select minibatch of real images and generate fake images for critic run
-            # If not enough different images for both generator and discriminator, share minibatch
-            if g_mb == source.shape[0]:
-                d_source = source[0:d_mb, :, :, :, :]
-                d_fake_target = self.Generator(d_source)
-                d_real_target = target[0:d_mb, :, :, :, :]
+        # Select minibatch of real images and generate fake images for discriminator run
+        # If not enough different images for both generator and discriminator, share minibatch
+        if self.mb_size == source.shape[0]:
+            d_source = source[0:self.mb_size, :, :, :, :]
+            d_fake_target = self.Generator(d_source)
+            d_real_target = target[0:self.mb_size, :, :, :, :]
 
-                if seg is not None:
-                    d_seg = seg[0:d_mb, :, :, :, :]
-                else:
-                    d_seg = None
-
+            if seg is not None:
+                d_seg = seg[0:self.mb_size, :, :, :, :]
             else:
-                d_source = source[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
-                d_real_target = target[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
-                d_fake_target = self.Generator(d_source)
+                d_seg = None
 
-                if seg is not None:
-                    d_seg = seg[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
-                else:
-                    d_seg = None
-            
-            self.discriminator_step(d_source, d_real_target, d_fake_target, d_seg)
+        else:
+            d_source = source[self.mb_size:, :, :, :, :]
+            d_real_target = target[self.mb_size:, :, :, :, :]
+            d_fake_target = self.Generator(d_source)
 
+            if seg is not None:
+                d_seg = seg[self.mb_size:, :, :, :, :]
+            else:
+                d_seg = None
+        
+        self.discriminator_step(d_source, d_real_target, d_fake_target, d_seg)
         self.generator_step(g_source, g_real_target, g_seg)
 
 
@@ -253,122 +234,116 @@ class GAN(tf.keras.Model):
 #-------------------------------------------------------------------------
 """ Wrapper for Pix2pix GAN with HyperNetwork """
 
-class HyperGAN(tf.keras.Model):
+class HyperGAN(GAN):
 
     """ GAN class using HyperNetwork for generator """
 
-    def __init__(self, config, GAN_type="original", name="GAN"):
-        super().__init__(name=name)
+    def __init__(self, config, name="HyperGAN"):
+        super().__init__(config, name=name)
 
     def generator_init(self, config):
         # Check generator output dims match input
-        G_input_size = [1] + config["DATA"]["IMG_DIMS"] + [1]
+        G_input_size = [1] + config["hyperparameters"]["img_dims"] + [1]
         self.Generator = HyperGenerator(self.initialiser, config, name="generator")
         assert self.Generator.build_model(tf.zeros(G_input_size)) == G_input_size
     
-    def generator_step(self, g_source, g_real_target, g_seg=None):
-        """ Generator training """
-        # Get gradients from discriminator predictions of generated fake images and update weights
-        with tf.GradientTape() as g_tape:
-            if self.STN:
-                g_real_target, g_seg = self.STN(source=g_source, target=g_real_target, seg=g_seg, training=True)
+    # def generator_step(self, g_source, g_real_target, g_seg=None):
 
-            g_fake_target = self.Generator(g_source)
+    #     """ Generator training """
 
-            # Calculate L1 before augmentation
-            if g_seg is not None:
-                g_L1 = self.L1_loss(g_real_target, g_fake_target, g_seg)
-            else:
-                g_L1 = self.L1_loss(g_real_target, g_fake_target)
+    #     # Get gradients from discriminator predictions of generated fake images and update weights
+    #     with tf.GradientTape() as g_tape:
+    #         if self.STN:
+    #             g_real_target, g_seg = self.STN(source=g_source, target=g_real_target, seg=g_seg, training=True)
 
-            if g_seg is not None:
-                self.train_L1_metric.update_state(g_real_target, g_fake_target, g_seg)
-            else:
-                self.train_L1_metric.update_state(g_L1)
+    #         g_fake_target = self.Generator(g_source)
+
+    #         # Calculate L1 before augmentation
+    #         if g_seg is not None:
+    #             g_L1 = self.L1_loss(g_real_target, g_fake_target, g_seg)
+    #         else:
+    #             g_L1 = self.L1_loss(g_real_target, g_fake_target)
+
+    #         if g_seg is not None:
+    #             self.train_L1_metric.update_state(g_real_target, g_fake_target, g_seg)
+    #         else:
+    #             self.train_L1_metric.update_state(g_L1)
             
-            if self.Aug:
-                imgs, g_seg = self.Aug(imgs=[g_source, g_fake_target], seg=g_seg)
-                g_source, g_fake_target = imgs
+    #         if self.Aug:
+    #             imgs, g_seg = self.Aug(imgs=[g_source, g_fake_target], seg=g_seg)
+    #             g_source, g_fake_target = imgs
 
-            if g_seg is not None:
-                g_fake_in = tf.concat([g_source, g_fake_target, g_seg], axis=4, name="g_fake_concat")
-            else:
-                g_fake_in = tf.concat([g_source, g_fake_target], axis=4, name="g_fake_concat")
+    #         if g_seg is not None:
+    #             g_fake_in = tf.concat([g_source, g_fake_target, g_seg], axis=4, name="g_fake_concat")
+    #         else:
+    #             g_fake_in = tf.concat([g_source, g_fake_target], axis=4, name="g_fake_concat")
 
-            g_pred_fake = self.Discriminator(g_fake_in)
-            g_loss = self.g_loss(g_pred_fake)
-            g_total_loss = g_loss + self.lambda_ * g_L1
+    #         g_pred_fake = self.Discriminator(g_fake_in)
+    #         g_loss = self.g_loss(g_pred_fake)
+    #         g_total_loss = g_loss + self.lambda_ * g_L1
 
-        if self.STN:
-            gen_grads = len(self.STN.trainable_variables)
-            g_grads = g_tape.gradient(g_total_loss, self.STN.trainable_variables + self.Generator.trainable_variables)
-            self.s_optimiser.apply_gradients(zip(g_grads[0:gen_grads], self.STN.trainable_variables))
-            self.g_optimiser.apply_gradients(zip(g_grads[gen_grads:], self.Generator.trainable_variables))
+    #     if self.STN:
+    #         gen_grads = len(self.STN.trainable_variables)
+    #         g_grads = g_tape.gradient(g_total_loss, self.STN.trainable_variables + self.Generator.trainable_variables)
+    #         self.s_optimiser.apply_gradients(zip(g_grads[0:gen_grads], self.STN.trainable_variables))
+    #         self.g_optimiser.apply_gradients(zip(g_grads[gen_grads:], self.Generator.trainable_variables))
   
-        else:
-            g_grads = g_tape.gradient(g_total_loss, self.Generator.trainable_variables)
-            self.g_optimiser.apply_gradients(zip(g_grads, self.Generator.trainable_variables))
+    #     else:
+    #         g_grads = g_tape.gradient(g_total_loss, self.Generator.trainable_variables)
+    #         self.g_optimiser.apply_gradients(zip(g_grads, self.Generator.trainable_variables))
 
-        # Update metric
-        self.g_metric.update_state(g_loss)
+    #     # Update metric
+    #     self.g_metric.update_state(g_loss)
     
-    @tf.function
-    def train_step(self, source, target, seg=None):
-        """ Expects data in order 'source, target' or 'source, target, segmentations'"""
+    # @tf.function
+    # def train_step(self, source, target, seg=None):
 
-        # Determine size of mb for each critic training run
-        # (size of real_images = minibatch size * number of critic runs)
-        g_mb = source.shape[0] // (1 + self.n_critic)
-        if g_mb < 1: g_mb = source.shape[0]
-        d_mb = g_mb * self.n_critic # TODO: TEST WITH N_CRITIC > 1
+    #     """ Expects data in order 'source, target' or 'source, target, segmentations'"""
 
-        # Select minibatch of images and masks for generator training
-        g_source = source[0:g_mb, :, :, :, :]
-        g_real_target = target[0:g_mb, :, :, :, :]
+    #     # Select minibatch of images and masks for generator training
+    #     g_source = source[0:self.mb_size, :, :, :, :]
+    #     g_real_target = target[0:self.mb_size, :, :, :, :]
 
-        if seg is not None:
-            g_seg = seg[0:g_mb, :, :, :, :]
-        else:
-            g_seg = None
+    #     if seg is not None:
+    #         g_seg = seg[0:self.mb_size, :, :, :, :]
+    #     else:
+    #         g_seg = None
 
-        # Critic training loop
-        for idx in range(self.n_critic):
-            # Select minibatch of real images and generate fake images for critic run
-            # If not enough different images for both generator and discriminator, share minibatch
-            if g_mb == source.shape[0]:
-                d_source = source[0:d_mb, :, :, :, :]
-                d_fake_target = self.Generator(d_source)
-                d_real_target = target[0:d_mb, :, :, :, :]
+    #     # Select minibatch of real images and generate fake images for discriminator run
+    #     # If not enough different images for both generator and discriminator, share minibatch
+    #     if self.mb_size == source.shape[0]:
+    #         d_source = source[0:self.mb_size, :, :, :, :]
+    #         d_fake_target = self.Generator(d_source)
+    #         d_real_target = target[0:self.mb_size, :, :, :, :]
 
-                if seg is not None:
-                    d_seg = seg[0:d_mb, :, :, :, :]
-                else:
-                    d_seg = None
+    #         if seg is not None:
+    #             d_seg = seg[0:self.mb_size, :, :, :, :]
+    #         else:
+    #             d_seg = None
 
-            else:
-                d_source = source[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
-                d_real_target = target[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
-                d_fake_target = self.Generator(d_source)
+    #     else:
+    #         d_source = source[self.mb_size:, :, :, :, :]
+    #         d_real_target = target[self.mb_size:, :, :, :, :]
+    #         d_fake_target = self.Generator(d_source)
 
-                if seg is not None:
-                    d_seg = seg[g_mb + idx * d_mb:g_mb + (idx + 1) * d_mb, :, :, :, :]
-                else:
-                    d_seg = None
-            
-            self.discriminator_step(d_source, d_real_target, d_fake_target, d_seg)
-
-        self.generator_step(g_source, g_real_target, g_seg)
+    #         if seg is not None:
+    #             d_seg = seg[self.mb_size:, :, :, :, :]
+    #         else:
+    #             d_seg = None
+        
+    #     self.discriminator_step(d_source, d_real_target, d_fake_target, d_seg)
+    #     self.generator_step(g_source, g_real_target, g_seg)
 
 
-    @tf.function
-    def test_step(self, source, target, seg=None):
-        if self.STN:
-            target, seg = self.STN(source=source, target=target, seg=seg, training=False)
+    # @tf.function
+    # def test_step(self, source, target, seg=None):
+    #     if self.STN:
+    #         target, seg = self.STN(source=source, target=target, seg=seg, training=False)
 
-        g_fake = self.Generator(source)
-        g_L1 = L1(target, g_fake)
+    #     g_fake = self.Generator(source)
+    #     g_L1 = L1(target, g_fake)
 
-        if seg is not None:
-            self.val_L1_metric.update_state(target, g_fake, seg)
-        else:
-            self.val_L1_metric.update_state(g_L1)
+    #     if seg is not None:
+    #         self.val_L1_metric.update_state(target, g_fake, seg)
+    #     else:
+    #         self.val_L1_metric.update_state(g_L1)

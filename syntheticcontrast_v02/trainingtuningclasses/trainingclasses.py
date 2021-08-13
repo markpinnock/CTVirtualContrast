@@ -18,33 +18,27 @@ class BaseTrainingLoop(ABC):
     def __init__(self, Model: object, dataset: object, val_generator: object, config: dict):
 
         self.Model = Model
-        self.train_ds, self.val_ds = dataset
-        self.norm_params = dataset.norm_params
         self.val_generator = val_generator
-        self._config = config
-        self.EPOCHS = config["EXPT"]["EPOCHS"]
-        self.IMAGE_SAVE_PATH = f"{config['EXPT']['SAVE_PATH']}images/{config['EXPT']['MODEL']}/{config['EXPT']['EXPT_NAME']}/"
-        self.MODEL_SAVE_PATH = f"{config['EXPT']['SAVE_PATH']}models/{config['EXPT']['MODEL']}/{config['EXPT']['EXPT_NAME']}/"
-        self.LOG_SAVE_PATH = f"{config['EXPT']['SAVE_PATH']}logs/{config['EXPT']['MODEL']}/{config['EXPT']['EXPT_NAME']}/"
-        self.SAVE_EVERY = config["EXPT"]["SAVE_EVERY"]
-
-        if not os.path.exists(self.IMAGE_SAVE_PATH): os.makedirs(self.IMAGE_SAVE_PATH)
-        if not os.path.exists(self.MODEL_SAVE_PATH): os.makedirs(self.MODEL_SAVE_PATH)
-        if not os.path.exists(self.LOG_SAVE_PATH): os.makedirs(self.LOG_SAVE_PATH)
+        self.config = config
+        self.EPOCHS = config["expt"]["epochs"]
+        self.IMAGE_SAVE_PATH = f"{config['paths']['expt_path']}/images"
+        self.MODEL_SAVE_PATH = f"{config['paths']['expt_path']}/models"
+        self.LOG_SAVE_PATH = f"{config['paths']['expt_path']}/logs"
+        self.SAVE_EVERY = config["expt"]["save_every"]
 
         self.ds_train, self.ds_val = dataset
         
     @abstractmethod
     def training_loop(self):
-        """ Main training loop for models """
-
         raise NotImplementedError
 
     def save_images(self, source, target, pred, epoch=None, tuning_path=None):
+
         """ Saves sample of images """
-        source = source * (self.norm_params[1] - self.norm_params[0]) + self.norm_params[0]
-        target = target * (self.norm_params[1] - self.norm_params[0]) + self.norm_params[0]
-        pred = pred * (self.norm_params[1] - self.norm_params[0]) + self.norm_params[0]
+
+        source = self.val_generator.un_normalise(source)
+        target = self.val_generator.un_normalise(target)
+        pred = self.val_generator.un_normalise(pred)
 
         fig, axs = plt.subplots(target.shape[0], 5)
 
@@ -65,142 +59,17 @@ class BaseTrainingLoop(ABC):
         if tuning_path:
             plt.savefig(f"{tuning_path}.png", dpi=250)
         else:
-            plt.savefig(f"{self.IMAGE_SAVE_PATH}{epoch}.png", dpi=250)
+            plt.savefig(f"{self.IMAGE_SAVE_PATH}/{epoch}.png", dpi=250)
 
         plt.close()
 
     @abstractmethod
     def save_results(self):
+
         """ Saves json of results """
 
-        json.dump(self.results, open(f"{self.LOG_SAVE_PATH}results.json", 'w'), indent=4)
-    
-    @property
-    def results(self):
-        """ Potentially avoids shallow copy problem """
-        return self._results
-        # return {key: val for key, val in self._results.items()}
-    
-    @property
-    def config(self):
-        """ Potentially avoids shallow copy problem """
-        return self._config
-        # return {key: val for key, val in self._config.items()}
+        json.dump(self.results, open(f"{self.LOG_SAVE_PATH}/results.json", 'w'), indent=4)
 
-#-------------------------------------------------------------------------
-""" UNet training loop - inherits from BaseTrainingLoop """
-
-class TrainingLoopUNet(BaseTrainingLoop):
-
-    def __init__(self, Model, dataset, config):
-        super().__init__(Model, dataset, config)
-
-    def training_loop(self, verbose=1):
-        """ Main training loop for UNet """
-
-        self._results = {}
-        self._results["train_metric"] = {"global": [], "focal": [], "weights": []}
-        self._results["val_metric"] = {"global": [], "focal": [], "weights": []}
-        self._results["config"] = self._config
-        self._results["epochs"] = []
-        self._results["time"] = 0
-
-        start_time = time.time()
-
-        for epoch in range(self.EPOCHS):
-            self._results["epochs"].append(epoch + 1)
-            self.Model.metric.reset_states()
-
-            for data in self.ds_train:
-                self.Model.train_step(data)
-
-            self._results["train_metric"]["global"].append(float(self.Model.metric.result()[0]))
-            self._results["train_metric"]["focal"].append(float(self.Model.metric.result()[1]))
-            self._results["train_metric"]["weights"].append(float(self.Model.metric.result()[2]))
-            
-            if verbose:
-                print(f"Train epoch {epoch + 1}, loss [global, focal, weights]: {self.Model.metric.result()}")
-
-            if self.config["EXPT"]["CV_FOLDS"]:
-                self.Model.metric.reset_states()
-
-                for data in self.ds_val:
-                    self.Model.val_step(data)
-
-                self._results["val_metric"]["global"].append(float(self.Model.metric.result()[0]))
-                self._results["val_metric"]["focal"].append(float(self.Model.metric.result()[1]))
-                self._results["val_metric"]["weights"].append(float(self.Model.metric.result()[2]))
-
-                if verbose:
-                    print(f"Val epoch {epoch + 1}, loss [global, focal, weights]: {self.Model.metric.result()}")
-
-            if (epoch + 1) % self.SAVE_EVERY == 0 and verbose:
-                if self.config["EXPT"]["CROP"]:
-                    self.save_images_ROI(epoch + 1)
-                else:
-                    self.save_images(epoch + 1)
-            
-            self.Model.save_weights(f"{self.MODEL_SAVE_PATH}/{self.config['EXPT']['EXPT_NAME']}")
-            self.save_results()
-
-        self._results["time"] = (time.time() - start_time) / 3600
-
-        if verbose:
-            print(f"Time taken: {(time.time() - start_time) / 3600}")
-            self.Model.save_weights(f"{self.MODEL_SAVE_PATH}/{self.config['EXPT']['EXPT_NAME']}")
-
-    def save_images(self, epoch=None, tuning_path=None):
-        """ Saves sample of images """
-
-        NCE, ACE, _, _ = next(iter(self.ds_val))
-        NCE, ACE = NCE[0:4, ...].numpy(), ACE[0:4, ...].numpy()
-        pred = self.Model(NCE, training=False).numpy()
-        super().save_images(NCE, ACE, pred, epoch, tuning_path)
-    
-    def save_images_ROI(self, epoch=None, tuning_path=None):
-        """ Saves sample of cropped images """
-
-        ds_iter = iter(self.ds_val)
-        _, _, _, _ = next(ds_iter)
-        NCE, ACE, seg, coords = next(ds_iter)
-        NCEs, ACEs, pred = [], [], []
-
-        for i in range(3):
-            rNCE, rACE, _ = self.Model.crop_ROI(NCE, ACE, seg, coords[:, i, :])
-            NCEs.append(rNCE[0, ...])
-            ACEs.append(rACE[0, ...])
-        
-        NCEs = tf.stack(NCEs, axis=0)
-        ACEs = tf.stack(ACEs, axis=0)
-
-        pred = self.Model(NCEs, training=False).numpy()
-        super().save_images(NCEs.numpy(), ACEs.numpy(), pred, epoch, tuning_path)
-    
-    def save_results(self, tuning_path=None):
-        """ Saves json of results and saves loss curves """
-
-        plt.figure()
-        plt.plot(self.results["epochs"], self.results["train_metric"]["global"], 'k--', label="Train global")
-        plt.plot(self.results["epochs"], self.results["train_metric"]["focal"], 'r--', label="Train focal")
-
-        if self.config["EXPT"]["CV_FOLDS"]:
-            plt.plot(self.results["epochs"], self.results["val_metric"]["global"], 'k-', label="Val global")
-            plt.plot(self.results["epochs"], self.results["val_metric"]["focal"], 'r-', label="Val focal")
-
-        plt.xlabel("Epochs")
-        plt.ylabel("Loss")
-        plt.title("Losses")
-        plt.legend()
-
-        plt.tight_layout()
-        
-        if tuning_path:
-            plt.savefig(tuning_path)
-        else:
-            plt.savefig(f"{self.LOG_SAVE_PATH}losses.png")
-            super().save_results()
-
-        plt.close()
 
 #-------------------------------------------------------------------------
 """ GAN training loop - inherits from BaseTrainingLoop """
@@ -211,22 +80,22 @@ class TrainingLoopGAN(BaseTrainingLoop):
         super().__init__(Model, dataset, val_generator, config)
 
     def training_loop(self, verbose=1):
+
         """ Main training loop for GAN """
 
-        self._results = {}
-        self._results["g_metric"] = []
-        self._results["d_metric"] = []
-        self._results["train_L1"] = []
-        self._results["val_L1"] = []
-        self._results["config"] = self._config
-        self._results["epochs"] = []
-        self._results["time"] = 0
+        self.results = {}
+        self.results["g_metric"] = []
+        self.results["d_metric"] = []
+        self.results["train_L1"] = []
+        self.results["val_L1"] = []
+        self.results["epochs"] = []
+        self.results["time"] = 0
 
         start_time = time.time()
         best_L1 = 1e6
 
         for epoch in range(self.EPOCHS):
-            self._results["epochs"].append(epoch + 1)
+            self.results["epochs"].append(epoch + 1)
 
             # for key, value in model.generator_metrics.items():
             self.Model.g_metric.reset_states()
@@ -239,30 +108,30 @@ class TrainingLoopGAN(BaseTrainingLoop):
                 self.Model.train_step(*data)
 
             # for key, value in model.generator_metrics.items():
-            self._results["g_metric"].append(float(self.Model.g_metric.result()))
+            self.results["g_metric"].append(float(self.Model.g_metric.result()))
 
-            if self.config["EXPT"]["FOCAL"]:
-                self._results["train_L1"].append([float(self.Model.train_L1_metric.result()[0]), float(self.Model.train_L1_metric.result()[1])])
+            if self.config["expt"]["focal"]:
+                self.results["train_L1"].append([float(self.Model.train_L1_metric.result()[0]), float(self.Model.train_L1_metric.result()[1])])
             else:
-                self._results["train_L1"].append(float(self.Model.train_L1_metric.result()))
+                self.results["train_L1"].append(float(self.Model.train_L1_metric.result()))
             
             # for key, value in model.discriminator_metrics.items():
-            self._results["d_metric"].append(float(self.Model.d_metric.result()))
+            self.results["d_metric"].append(float(self.Model.d_metric.result()))
 
             # for key in model.discriminator_metrics.keys():
             if verbose:
                 print(f"Train epoch {epoch + 1}, G: {self.Model.g_metric.result():.4f} D: {self.Model.d_metric.result():.4f}, L1: {self.Model.train_L1_metric.result()}")
 
-            if self.config["EXPT"]["CV_FOLDS"] > 1:
+            if self.config["data"]["cv_folds"] > 1:
                 self.Model.val_L1_metric.reset_states()
 
                 for data in self.ds_val:
                     self.Model.test_step(*data)
                 
-                if self.config["EXPT"]["FOCAL"]:
-                    self._results["val_L1"].append([float(self.Model.val_L1_metric.result()[0]), float(self.Model.val_L1_metric.result()[1])])
+                if self.config["expt"]["focal"]:
+                    self.results["val_L1"].append([float(self.Model.val_L1_metric.result()[0]), float(self.Model.val_L1_metric.result()[1])])
                 else:
-                    self._results["val_L1"].append(float(self.Model.val_L1_metric.result()))
+                    self.results["val_L1"].append(float(self.Model.val_L1_metric.result()))
 
                 if verbose:
                     print(f"Val epoch {epoch + 1}, L1: {self.Model.val_L1_metric.result()}")
@@ -275,12 +144,13 @@ class TrainingLoopGAN(BaseTrainingLoop):
             #     best_L1 = self.Model.val_L1_metric.result()
             #     super().save_results()
 
-        self._results["time"] = (time.time() - start_time) / 3600
+        self.results["time"] = (time.time() - start_time) / 3600
         
         if verbose:
             print(f"Time taken: {(time.time() - start_time) / 3600}")
     
     def save_images(self, epoch=None, tuning_path=None):
+
         """ Saves sample of images """
 
         data = self.val_generator.example_images()
@@ -291,9 +161,9 @@ class TrainingLoopGAN(BaseTrainingLoop):
             source, target, seg = data
 
         # Spatial transformer if necessary
-        if self.Model.STN and len(data) == 2:
+        if self.Model.STN is not None and len(data) == 2:
             target, _ = self.Model.STN(source=source, target=target, print_matrix=False)
-        elif self.Model.STN and len(data) == 3:
+        elif self.Model.STN is not None and len(data) == 3:
             target, _ = self.Model.STN(source=source, target=target, seg=seg, print_matrix=False)
         else:
             pass
@@ -302,6 +172,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
         super().save_images(source, target, pred, epoch, tuning_path)
 
     def save_results(self, tuning_path=None):
+
         """ Saves json of results and saves loss curves """
 
         plt.figure()
@@ -316,18 +187,18 @@ class TrainingLoopGAN(BaseTrainingLoop):
 
         plt.subplot(2, 1, 2)
 
-        if self.config["EXPT"]["FOCAL"]:
+        if self.config["expt"]["focal"]:
             plt.plot(self.results["epochs"], np.array(self.results["train_L1"])[:, 0], 'k-', label="Train global L1")
             plt.plot(self.results["epochs"], np.array(self.results["train_L1"])[:, 1], 'k--', label="Train global L1")
 
-            if self.config["EXPT"]["CV_FOLDS"]:
+            if self.config["data"]["cv_folds"]:
                 plt.plot(self.results["epochs"], np.array(self.results["val_L1"])[:, 0], 'r-', label="Val global L1")
                 plt.plot(self.results["epochs"], np.array(self.results["val_L1"])[:, 1], 'r--', label="Val global L1")
         
         else:
             plt.plot(self.results["epochs"], self.results["train_L1"], 'k-', label="Train L1")
 
-            if self.config["EXPT"]["CV_FOLDS"]:
+            if self.config["data"]["cv_folds"]:
                 plt.plot(self.results["epochs"], self.results["val_L1"], 'r-', label="Val L1")
 
         plt.xlabel("Epochs")
@@ -338,7 +209,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
         if tuning_path:
             plt.savefig(tuning_path)
         else:
-            plt.savefig(f"{self.LOG_SAVE_PATH}losses.png")
+            plt.savefig(f"{self.LOG_SAVE_PATH}/losses.png")
             super().save_results()
         
         plt.close()

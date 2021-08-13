@@ -1,80 +1,66 @@
 import argparse
 import datetime
-import json
 import os
 import tensorflow as tf
+import yaml
 
-from trainingtuningclasses.trainingclasses_v02 import TrainingLoopUNet, TrainingLoopGAN
-from networks.model import GAN, CropGAN_v01
-from networks.UNet import UNet, CropUNet
+from trainingtuningclasses.trainingclasses import TrainingLoopGAN
+from networks.model import GAN, HyperGAN
 from utils.dataloader import PairedLoader, UnpairedLoader
 
 
 def train(CONFIG):
 
-    if CONFIG["DATA"]["DATA_TYPE"] == "paired":
+    if CONFIG["data"]["data_type"] == "paired":
         Loader = PairedLoader
 
-    elif CONFIG["DATA"]["DATA_TYPE"] == "unpaired":
+    elif CONFIG["data"]["data_type"] == "unpaired":
         Loader = UnpairedLoader
 
     else:
         raise ValueError("Select paired or unpaired dataloader")
 
+    # TODO: move into dataloader
     # Initialise datasets and set normalisation parameters
-    if CONFIG["DATA"]["NORM_PARAM_1"] == "" or CONFIG["DATA"]["NORM_PARAM_2"] == "":
-        param_1 = None
-        param_2 = None
+    TrainGenerator = Loader(config=CONFIG["data"], dataset_type="training")
+    param_1, param_2 = TrainGenerator.set_normalisation()
+    ValGenerator = Loader(config=CONFIG["data"], dataset_type="validation")
+    _, _ = ValGenerator.set_normalisation(param_1, param_2)
 
-    else:
-        param_1 = CONFIG["DATA"]["NORM_PARAM_1"]
-        param_2 = CONFIG["DATA"]["NORM_PARAM_2"]
+    CONFIG["data"]["norm_param_1"] = param_1
+    CONFIG["data"]["norm_param_2"] = param_2
 
-    TrainGenerator = Loader(config=CONFIG, dataset_type="training")
-    param_1, param_2 = TrainGenerator.set_normalisation(CONFIG["DATA"]["NORM_TYPE"], param_1, param_2)
-    ValGenerator = Loader(config=CONFIG, dataset_type="validation")
-    _, _ = ValGenerator.set_normalisation(CONFIG["DATA"]["NORM_TYPE"], param_1, param_2)
+    # Specify output types
+    output_types = ["float32", "float32"]
 
-    CONFIG["DATA"]["NORM_PARAM_1"] = int(param_1)
-    CONFIG["DATA"]["NORM_PARAM_2"] = int(param_2)
+    if len(CONFIG["data"]["segs"]) > 0:
+        output_types += ["float32"]
 
-    # Batch size (separate batches for generator and critic runs if Wasserstein GAN)
-    if CONFIG["EXPT"]["MODEL"] == "GAN":
-        MB_SIZE = CONFIG["HYPERPARAMS"]["MB_SIZE"] + CONFIG["HYPERPARAMS"]["MB_SIZE"] * CONFIG["HYPERPARAMS"]["N_CRITIC"]
-    else:
-        MB_SIZE = CONFIG["HYPERPARAMS"]["MB_SIZE"]
-
-    # Allow use of segmentations if necessary
-    if len(CONFIG["DATA"]["SEGS"]) > 0:
-        output_tensors = (tf.float32, tf.float32, tf.float32)
-    else:
-        output_tensors = (tf.float32, tf.float32)
-
-    # Create dataloader
+    # Create dataloader (one mb for generator, one for discriminator)
     train_ds = tf.data.Dataset.from_generator(
         generator=TrainGenerator.data_generator,
-        output_types=output_tensors
-        ).batch(MB_SIZE)
+        output_types=tuple(output_types)
+        ).batch(CONFIG["expt"]["mb_size"] * 2)
 
     val_ds = tf.data.Dataset.from_generator(
         generator=ValGenerator.data_generator,
-        output_types=output_tensors
-        ).batch(MB_SIZE)
+        output_types=tuple(output_types)
+        ).batch(CONFIG["expt"]["mb_size"] * 2)
 
     # Compile model
     Model = GAN(config=CONFIG)
-    d_opt = tf.keras.optimizers.Adam(CONFIG["HYPERPARAMS"]["D_ETA"], 0.5, 0.999, name="d_opt")
-    g_opt = tf.keras.optimizers.Adam(CONFIG["HYPERPARAMS"]["G_ETA"], 0.5, 0.999, name="g_opt")
+    d_opt = tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["d_opt"], name="d_opt")
+    g_opt = tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt")
 
-    Model.compile(g_optimiser=g_opt, d_optimiser=d_opt, loss="minmax")
+    Model.compile(g_optimiser=g_opt, d_optimiser=d_opt)
 
-    if CONFIG["EXPT"]["VERBOSE"]:
+    if CONFIG["expt"]["verbose"]:
         Model.summary()
 
     # Write graph for visualising in Tensorboard
-    if CONFIG["EXPT"]["GRAPH"]:
+    if CONFIG["expt"]["graph"]:
         curr_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        log_dir = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/logs/" + CONFIG["EXPT"]["MODEL"] + "/" + curr_time
+        log_dir = f"{CONFIG['paths']['expt_path']}/logs/{curr_time}"
         writer = tf.summary.create_file_writer(log_dir)
 
         @tf.function
@@ -82,11 +68,10 @@ def train(CONFIG):
             return Model.Generator(x)
 
         tf.summary.trace_on(graph=True)
-        trace(tf.zeros((1, 128, 128, 12, 1)))
+        trace(tf.zeros([1] + CONFIG["hyperparameters"]["img_dims"] + [1]))
 
         with writer.as_default():
-            tf.summary.trace_export('graph', step=0)
-        exit()
+            tf.summary.trace_export("graph", step=0)
 
     TrainingLoop = TrainingLoopGAN(Model=Model, dataset=(train_ds, val_ds), val_generator=ValGenerator, config=CONFIG)
 
@@ -96,34 +81,38 @@ def train(CONFIG):
 
 
 if __name__ == "__main__":
+
     """ Training routine """
 
     # Handle arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config_path", "-cp", help="Config json path", type=str)
-    parser.add_argument("--expt_name", "-en", help="Expt name", type=str)
-    parser.add_argument("--lambda_", "-l", help="Lambda", type=float)
+    parser.add_argument("--path", "-p", help="Expt path", type=str)
     parser.add_argument("--gpu", "-g", help="GPU number", type=int)
     arguments = parser.parse_args()
 
+    EXPT_PATH = arguments.path
+
+    if not os.path.exists(f"{EXPT_PATH}/images"):
+        os.makedirs(f"{EXPT_PATH}/images")
+
+    if not os.path.exists(f"{EXPT_PATH}/logs"):
+        os.makedirs(f"{EXPT_PATH}/logs")
+
+    if not os.path.exists(f"{EXPT_PATH}/models"):
+        os.makedirs(f"{EXPT_PATH}/models")
+
     # Parse config json
-    with open(arguments.config_path, 'r') as infile:
-        CONFIG = json.load(infile)
-
-    if arguments.expt_name is not None:
-        CONFIG["EXPT"]["EXPT_NAME"] = arguments.expt_name
-    else:
-        CONFIG["EXPT"]["EXPT_NAME"] = "test"
-
-    if arguments.lambda_ is not None:
-        CONFIG["HYPERPARAMS"]["LAMBDA"] = arguments.lambda_
+    with open(f"{EXPT_PATH}/config.yml", 'r') as infile:
+        CONFIG = yaml.load(infile, yaml.FullLoader)
+    
+    CONFIG["paths"]["expt_path"] = arguments.path
 
     # Set GPU
     if arguments.gpu is not None:
         gpu_number = arguments.gpu
-        os.environ["LD_LIBRARY_PATH"] = CONFIG["CUDA_PATH"]
+        os.environ["LD_LIBRARY_PATH"] = CONFIG["cuda_path"]
         gpus = tf.config.experimental.list_physical_devices("GPU")
-        tf.config.experimental.set_visible_devices(gpus[gpu_number], "GPU")
+        tf.config.set_visible_devices(gpus[gpu_number], "GPU")
         tf.config.experimental.set_memory_growth(gpus[gpu_number], True)
     
     train(CONFIG)

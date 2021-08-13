@@ -16,6 +16,7 @@ class HyperNet(tf.keras.layers.Layer):
             - out_dims: kernel out channels (in first layer) """
 
         super().__init__(self, name=name)
+
         # Hidden dims assumed to be Nz
         self.Nz = Nz
         self.f = f
@@ -34,9 +35,9 @@ class HyperNet(tf.keras.layers.Layer):
 
         """ Takes layer embedding z, and returns kernel for that layer """
 
-        a = tf.add(tf.multiply(z, self.Wi), self.bi)
+        a = tf.add(tf.matmul(z, self.Wi), self.bi)
         a = tf.reshape(a, [self.in_dims, self.Nz])
-        k = tf.add(tf.multiply(a, self.Wo), self.bo)
+        k = tf.add(tf.matmul(a, self.Wo), self.bo)
         k = tf.reshape(k, [self.f, self.f, self.in_dims, self.out_dims])
 
         return k
@@ -54,6 +55,7 @@ class LayerEmbedding(tf.keras.layers.Layer):
             - out_kernels: number of kernels to combine to make out_dims """
 
         super().__init__(self, name=name)
+
         self.Nz = Nz
         self.in_kernels = in_kernels
         self.out_kernels = out_kernels
@@ -61,12 +63,12 @@ class LayerEmbedding(tf.keras.layers.Layer):
 
     def build(self, input_shape):
         self.z = []
-
+        # for k in range... depthwise
         for i in range(self.in_kernels):
             temp = []
 
             for j in range(self.out_kernels):
-                temp.append(self.add_weight(name=f"z{self.out_kernels * i + j}", shape=[self.Nz], initializer=self.init, trainable=True))
+                temp.append(self.add_weight(name=f"z{self.out_kernels * i + j}", shape=[1, self.Nz], initializer=self.init, trainable=True))
             
             self.z.append(temp)
 
@@ -74,6 +76,6 @@ class LayerEmbedding(tf.keras.layers.Layer):
 
         """ Takes HyperNetwork as input and converts embedding to kernel """
 
-        ks = tf.concat([tf.concat([h(self.z[i, j]) for j in range(self.out_kernels)], axis=4) for i in range(self.in_kernels)], axis=3)
+        ks = tf.concat([tf.concat([h(self.z[i][j]) for j in range(self.out_kernels)], axis=3) for i in range(self.in_kernels)], axis=2)
 
         return ks

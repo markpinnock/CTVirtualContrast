@@ -14,8 +14,8 @@ from abc import ABC, abstractmethod
 class BaseImgLoader(ABC):
     def __init__(self, config: dict, dataset_type: str):
         # Expects at least two sub-folders within data folder e.g. "AC", "VC, "HQ"
-        img_path = f"{config['DATA']['DATA_PATH']}/Images"
-        seg_path = f"{config['DATA']['DATA_PATH']}/Segmentations"
+        img_path = f"{config['data_path']}/Images"
+        seg_path = f"{config['data_path']}/Segmentations"
         self.sub_folders = [f for f in os.listdir(img_path) if os.path.isdir(f"{img_path}/{f}")]
         self.seg_folders = [f for f in os.listdir(seg_path) if os.path.isdir(f"{img_path}/{f}")]
 
@@ -31,10 +31,10 @@ class BaseImgLoader(ABC):
 
         self._dataset_type = dataset_type
         self.config = config
-        self.down_sample = config["DATA"]["DOWN_SAMP"]
+        self.down_sample = config["down_sample"]
 
-        if config["DATA"]["JSON"] != "":
-            self._json = json.load(open(f"{config['DATA']['DATA_PATH']}/{config['DATA']['JSON']}", 'r'))
+        if config["times"] is not None:
+            self._json = json.load(open(f"{config['data_path']}/{config['times']}", 'r'))
         
         else:
             self._json = None
@@ -69,24 +69,24 @@ class BaseImgLoader(ABC):
         for key in self._subject_imgs.keys():
             self._subject_imgs[key] = sorted(self._subject_imgs[key], key=lambda x: int(x[-3:]))
 
-        if self.config["EXPT"]["FOLD"] > self.config["EXPT"]["CV_FOLDS"] - 1:
-            raise ValueError(f"Fold number {self.config['EXPT']['FOLD']} of {self.config['EXPT']['CV_FOLDS']} folds")
+        if self.config["fold"] > self.config["cv_folds"] - 1:
+            raise ValueError(f"Fold number {self.config['fold']} of {self.config['cv_folds']} folds")
 
         np.random.seed(seed)
         N = len(self._unique_ids)
         np.random.shuffle(self._unique_ids)
 
         # Split into folds by subject
-        if self.config["EXPT"]["CV_FOLDS"] > 1:
+        if self.config["cv_folds"] > 1:
             if seed == None:
                 self._unique_ids.sort()
 
-            num_in_fold = N // self.config["EXPT"]["CV_FOLDS"]
+            num_in_fold = N // self.config["cv_folds"]
 
             if self._dataset_type == "training":
-                fold_ids = self._unique_ids[0:self.config["EXPT"]["FOLD"] * num_in_fold] + self._unique_ids[(self.config["EXPT"]["FOLD"] + 1) * num_in_fold:]
+                fold_ids = self._unique_ids[0:self.config["fold"] * num_in_fold] + self._unique_ids[(self.config["fold"] + 1) * num_in_fold:]
             elif self._dataset_type == "validation":
-                fold_ids = self._unique_ids[self.config["EXPT"]["FOLD"] * num_in_fold:(self.config["EXPT"]["FOLD"] + 1) * num_in_fold]
+                fold_ids = self._unique_ids[self.config["fold"] * num_in_fold:(self.config["fold"] + 1) * num_in_fold]
             else:
                 raise ValueError("Select 'training' or 'validation'")
 
@@ -96,7 +96,7 @@ class BaseImgLoader(ABC):
             self._fold_sources = sorted([img for img in self._sources if img[0:4] in fold_ids])
             self._fold_segs = sorted([seg for seg in self._segs if seg[0:4] in fold_ids])
         
-        elif self.config["EXPT"]["CV_FOLDS"] == 1:
+        elif self.config["cv_folds"] == 1:
             self._fold_targets = self._targets
             self._fold_sources = self._sources
             self._fold_segs = self._segs
@@ -104,7 +104,7 @@ class BaseImgLoader(ABC):
         else:
             raise ValueError("Number of folds must be > 0")
 
-        example_idx = np.random.randint(0, len(self._fold_sources), self.config["DATA"]["NUM_EXAMPLES"])
+        example_idx = np.random.randint(0, len(self._fold_sources), self.config["num_examples"])
         ex_sources_list = list(np.array([self._fold_sources]).squeeze()[example_idx])
 
         if len(self.sub_folders) == 0:
@@ -119,12 +119,12 @@ class BaseImgLoader(ABC):
         self._ex_sources = self._ex_sources[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
         self._ex_targets = self._ex_targets[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
 
-        if len(self.config["DATA"]["SEGS"]) > 0 and len(self.sub_folders) == 0:
+        if len(self.config["segs"]) > 0 and len(self.sub_folders) == 0:
             candidate_segs = [glob.glob(f"{self._seg_paths}/{img[0:6]}AC*{img[-8:]}")[0] for img in ex_targets_list]
             self._ex_segs = np.stack([np.load(seg) for seg in candidate_segs], axis=0)
             self._ex_segs = self._ex_segs[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
 
-        elif len(self.config["DATA"]["SEGS"]) > 0 and len(self.sub_folders) > 0:
+        elif len(self.config["segs"]) > 0 and len(self.sub_folders) > 0:
             self._ex_segs = np.stack([np.load(f"{self._seg_paths[img[6:8]]}/{img}") for img in ex_targets_list], axis=0)
             self._ex_segs = self._ex_segs[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
 
@@ -153,18 +153,22 @@ class BaseImgLoader(ABC):
     def subject_imgs(self):
         raise NotImplementedError
     
-    def set_normalisation(self, norm_type, param_1=None, param_2=None):
+    def set_normalisation(self, param_1: float = None, param_2: float = None):
         # Mean -281.528, std = 261.552
         # Min -500, max = 22451
-        self.norm_type = norm_type
+        self.norm_type = self.config["norm_type"]
 
-        if param_1 != None and param_2 != None:
+        if param_1 is not None and param_2 is not None:
             self.param_1 = param_1
             self.param_2 = param_2
 
+        elif self.config["norm_param_1"] is not None and self.config["norm_param_1"] is not None:
+            self.param_1 = self.config["norm_param_1"]
+            self.param_2 = self.config["norm_param_2"]
+
         else:
             # If mean and std of data not available, we get rolling averages
-            if norm_type == "meanstd" or norm_type == "std":
+            if self.norm_type == "meanstd" or self.norm_type == "std":
                 mean = 0
                 std = 0
 
@@ -177,7 +181,7 @@ class BaseImgLoader(ABC):
                 self.param_2 = std
 
             # If min and max not available, we get min and max of whole dataset
-            elif norm_type == "minmax":
+            elif self.norm_type == "minmax":
                 min_val = 2048
                 max_val = -2048
 
@@ -192,8 +196,8 @@ class BaseImgLoader(ABC):
             else:
                 raise ValueError("Choose meanstd or minmax")
 
-        print(f"{norm_type} normalisation: mean/min {self.param_1}, std/max {self.param_2}")
         print("==================================================")
+        print(f"{self.norm_type} normalisation: mean/min {self.param_1}, std/max {self.param_2}")
 
         return self.param_1, self.param_2
     
@@ -213,6 +217,14 @@ class BaseImgLoader(ABC):
             return img / self.param_2
         else:
             return (img - self.param_1) / (self.param_2 - self.param_1)
+    
+    def un_normalise(self, img):
+        if self.norm_type == "meanstd":
+            return img * self.param_2 + self.param_1
+        elif self.norm_type == "std":
+            return img * self.param_2
+        else:
+            return img * (self.param_2 - self.param_1) + self.param_1
 
     def data_generator(self):
         if self._dataset_type == "training":
@@ -255,18 +267,18 @@ class BaseImgLoader(ABC):
                     # TODO: return index
 
                 else:
-                    seg = np.load(f"{self._seg_paths[target_name[6:8]]}/{target_name}")
+                    seg = np.load(f"{self._seg_paths[target_name[6:8]]}/{target_name}").astype("float32")
                     seg = seg[::self.down_sample, ::self.down_sample, :, np.newaxis]
                     seg[seg > 1] = 1
 
                 if self._json is not None:
-                    yield (source, source_time, target, target_time, seg)
+                    yield (source, target, seg, source_time, target_time)
                 else:
                     yield (source, target, seg)
 
             else:
                 if self._json is not None:
-                    yield (source, source_time, target, target_time)
+                    yield (source, target, source_time, target_time)
                 else:
                     yield (source, target)
 
@@ -284,24 +296,24 @@ class PairedLoader(BaseImgLoader):
         self._sources = []
         self._segs = []
 
-        if len(config["DATA"]["TARGET"]) > 0:
-            for key in config["DATA"]["TARGET"]:
+        if len(config["target"]) > 0:
+            for key in config["target"]:
                 self._targets += os.listdir(self._img_paths[key])
 
-        elif len(config["DATA"]["TARGET"]) == 0:
+        elif len(config["target"]) == 0:
             for key in self.sub_folders:
                 self._targets += os.listdir(self._img_paths[key])
 
-        if len(config["DATA"]["SOURCE"]) > 0:
-            for key in config["DATA"]["SOURCE"]:
+        if len(config["source"]) > 0:
+            for key in config["source"]:
                 self._sources += os.listdir(self._img_paths[key])
 
-        elif len(config["DATA"]["SOURCE"]) == 0:
+        elif len(config["source"]) == 0:
             for key in self.sub_folders:
                 self._sources += os.listdir(self._img_paths[key])
         
-        if len(config["DATA"]["SEGS"]) > 0:
-            for key in config["DATA"]["SEGS"]:
+        if len(config["sgs"]) > 0:
+            for key in config["segs"]:
                 self._segs += os.listdir(self._seg_paths[key])
 
         if len(self._targets) == 0 or len(self._sources) == 0:
@@ -313,8 +325,8 @@ class PairedLoader(BaseImgLoader):
 
         super().train_val_split()
 
-        self._subject_targets = {k: [img for img in v if img[6:8] in self.config["DATA"]["TARGET"]] for k, v in self._subject_imgs.items()}
-        self._subject_sources = {k: [img for img in v if img[6:8] in self.config["DATA"]["SOURCE"]] for k, v in self._subject_imgs.items()}
+        self._subject_targets = {k: [img for img in v if img[6:8] in self.config["target"]] for k, v in self._subject_imgs.items()}
+        self._subject_sources = {k: [img for img in v if img[6:8] in self.config["source"]] for k, v in self._subject_imgs.items()}
     
     @property
     def subject_imgs(self):
@@ -343,21 +355,21 @@ class UnpairedLoader(BaseImgLoader):
         self._sources = []
         self._segs = []
 
-        if len(config["DATA"]["TARGET"]) > 0:
-            for key in config["DATA"]["TARGET"]:
+        if len(config["target"]) > 0:
+            for key in config["target"]:
                 self._targets += [t for t in os.listdir(self._img_paths) if key in t]
 
-        elif len(config["DATA"]["TARGET"]) == 0:
+        elif len(config["target"]) == 0:
             self._targets += os.listdir(self._img_paths)
 
-        if len(config["DATA"]["SOURCE"]) > 0:
-            for key in config["DATA"]["SOURCE"]:
+        if len(config["source"]) > 0:
+            for key in config["source"]:
                 self._sources += [s for s in os.listdir(self._img_paths) if key in s]
 
-        elif len(config["DATA"]["SOURCE"]) == 0:
+        elif len(config["source"]) == 0:
             self._sources += os.listdir(self._img_paths)
         
-        if len(config["DATA"]["SEGS"]) > 0:
+        if len(config["segs"]) > 0:
             self._segs += os.listdir(self._seg_paths)
 
         print("==================================================")
@@ -366,8 +378,8 @@ class UnpairedLoader(BaseImgLoader):
 
         super().train_val_split()
 
-        if len(self.config["DATA"]["TARGET"]) > 0:
-            self._subject_targets = {k: [img for img in v if img[6:8] in self.config["DATA"]["TARGET"]] for k, v in self._subject_imgs.items()}
+        if len(self.config["target"]) > 0:
+            self._subject_targets = {k: [img for img in v if img[6:8] in self.config["target"]] for k, v in self._subject_imgs.items()}
         else:
             self._subject_targets = None
 
@@ -403,16 +415,15 @@ if __name__ == "__main__":
 
     FILE_PATH = "D:/ProjectImages/SyntheticContrast"
     segs = ["AC"]
-    TestLoader = UnpairedLoader({"DATA": {"DATA_PATH": FILE_PATH, "TARGET": ["AC", "VC"], "SOURCE": ["HQ"], "SEGS": segs, "JSON": "times.json", "DOWN_SAMP": 4, "NUM_EXAMPLES": 4}, "EXPT": {"CV_FOLDS": 3, "FOLD": 2}}, dataset_type="training")
+    TestLoader = UnpairedLoader({"data_path": FILE_PATH, "target": ["AC", "VC"], "source": ["HQ"], "segs": segs, "times": "times.json", "down_samp": 4, "num_examples": 4, "cv_folds": 3, "fold": 2}, dataset_type="training")
     TestLoader.set_normalisation(norm_type="minmax", param_1=-500, param_2=2500)
 
-    if len(segs) > 0:
-        train_ds = tf.data.Dataset.from_generator(
-            TestLoader.data_generator, output_types=("float32", "float32", "float32", "float32", "float32"))
+    output_types = ["float32", "float32"]
 
-    else:
-        train_ds = tf.data.Dataset.from_generator(
-            TestLoader.data_generator, output_types=("float32", "float32", "float32", "float32"))
+    if len(segs) > 0:
+        output_types += ["float8"]
+    
+    train_ds = tf.data.Dataset.from_generator(TestLoader.data_generator, output_types=output_types)
 
     for data in train_ds.batch(4).take(2):
         if len(segs) > 0:
@@ -420,8 +431,8 @@ if __name__ == "__main__":
         else:
             source, source_time, target, target_time = data
         
-        source = source * (TestLoader.norm_params[1] - TestLoader.norm_params[0]) + TestLoader.norm_params[0]
-        target = target * (TestLoader.norm_params[1] - TestLoader.norm_params[0]) + TestLoader.norm_params[0]
+        source = TestLoader.un_normalise(source)
+        target = TestLoader.un_normalise(target)
 
         plt.subplot(3, 2, 1)
         plt.imshow(source[0, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
@@ -457,8 +468,8 @@ if __name__ == "__main__":
     else:
         source, target = TestLoader.example_images()
 
-    source = source * (TestLoader.norm_params[1] - TestLoader.norm_params[0]) + TestLoader.norm_params[0]
-    target = target * (TestLoader.norm_params[1] - TestLoader.norm_params[0]) + TestLoader.norm_params[0]
+    source = TestLoader.un_normalise(source)
+    target = TestLoader.un_normalise(target)
     
     fig, axs = plt.subplots(target.shape[0], 3)
 

@@ -18,18 +18,18 @@ class SpatialTransformer(tf.keras.layers.Layer):
         zero_init = tf.keras.initializers.RandomNormal(0, 0.001)
         self.identity = tf.constant([1.0, 0.0, 0.0, 0.0, 1.0, 0.0])
 
-        for i in range(1, config["HYPERPARAMS"]["STN_LAYERS"] + 1):
+        for i in range(1, config["hyperparameters"]["stn_layers"] + 1):
             self.conv.append(tf.keras.layers.Conv2D(filters=nc * i, kernel_size=(2, 2), strides=(2, 2), activation="relu", kernel_initializer=zero_init))
             self.batch_norm.append(tf.keras.layers.BatchNormalization())
 
         self.flatten = tf.keras.layers.Flatten()
-        self.dense = tf.keras.layers.Dense(units=config["HYPERPARAMS"]["STN_OUT"], activation="linear", kernel_initializer=zero_init)
+        self.dense = tf.keras.layers.Dense(units=config["hyperparameters"]["stn_output"], activation="linear", kernel_initializer=zero_init)
 
         # If segmentations available, these can be stacked on the target for transforming
-        if len(config["DATA"]["SEGS"]) > 0:
-            self.transform = AffineTransform2D(config["DATA"]["IMG_DIMS"] + [2])
+        if len(config["data"]["segs"]) > 0:
+            self.transform = AffineTransform2D(config["hyperparameters"]["img_dims"] + [2])
         else:
-            self.transform = AffineTransform2D(config["DATA"]["IMG_DIMS"] + [1])
+            self.transform = AffineTransform2D(config["hyperparameters"]["img_dims"] + [1])
     
     def call(self, source, target, seg=None, training=False, print_matrix=False):
         mb_size = source.shape[0]
@@ -67,17 +67,17 @@ if __name__ == "__main__":
 
     FILE_PATH = "D:/ProjectImages/SyntheticContrast"
     segs = ["AC"]
-    TestLoader = PairedLoader({"DATA": {"DATA_PATH": FILE_PATH, "TARGET": ["AC"], "SOURCE": ["HQ"], "SEGS": segs, "JSON": "", "DOWN_SAMP": 4, "NUM_EXAMPLES": 4}, "EXPT": {"CV_FOLDS": 3, "FOLD": 2}}, dataset_type="training")
+    TestLoader = PairedLoader({"data_path": FILE_PATH, "target": ["AC"], "source": ["HQ"], "segs": segs, "times": None, "down_sample": 4, "num_examples": 4, "cv_folds": 3, "fold": 2}, dataset_type="training")
     TestLoader.set_normalisation(norm_type="std", param_1=-288, param_2=254)
-    STN = SpatialTransformer({"DATA": {"SEGS": segs, "IMG_DIMS": [128, 128, 12]}, "HYPERPARAMS": {"STN_LAYERS" : 2, "STN_OUT": 6}})
+    STN = SpatialTransformer({"data": {"segs": segs}, "hyperparameters": {"img_dims": [128, 128, 12], "stn_layers" : 2, "stn_output": 6}})
+
+    # Specify output types
+    output_types = ["float32", "float32"]
 
     if len(segs) > 0:
-        train_ds = tf.data.Dataset.from_generator(
-            TestLoader.data_generator, output_types=("float32", "float32", "float32"))
+        output_types += ["float8"]
 
-    else:
-        train_ds = tf.data.Dataset.from_generator(
-            TestLoader.data_generator, output_types=("float32", "float32"))
+    train_ds = tf.data.Dataset.from_generator(TestLoader.data_generator, output_types=output_types)
 
     for data in train_ds.batch(4).take(2):
         if len(segs) > 0:

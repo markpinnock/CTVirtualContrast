@@ -1,9 +1,9 @@
 import numpy as np
 import tensorflow as tf
 
-from syntheticcontrast_v02.networks.layers import GANDownBlock, GANUpBlock
-from syntheticcontrast_v02.networks.hypernet import HyperNet
-from syntheticcontrast_v02.networks.hypernetlayers import HyperGANDownBlock, HyperGANUpBlock
+from .layers import GANDownBlock, GANUpBlock
+from .hypernet import HyperNet, LayerEmbedding
+from .hypernetlayers import HyperGANDownBlock, HyperGANUpBlock
 
 
 #-------------------------------------------------------------------------
@@ -17,21 +17,17 @@ class Discriminator(tf.keras.Model):
         Returns:
         - keras.Model """
 
-    def __init__(self, initialiser, config, d_focal=False, name=None):
+    def __init__(self, initialiser, config, name=None):
         super().__init__(name=name)
     
         # Check network and image dimensions
-        img_dims = config["DATA"]["IMG_DIMS"]
+        img_dims = config["img_dims"]
         assert len(img_dims) == 3, "3D input only"
         max_num_layers = int(np.log2(np.min([img_dims[0], img_dims[1]]) / 4))
         max_z_downsample = int(np.floor(np.log2(img_dims[2])))
 
-        # if d_focal:
-        #     ndf = config["HYPERPARAMS"]["NDF_F"]
-        #     num_layers = config["HYPERPARAMS"]["D_LAYERS_F"]
-        # else:
-        ndf = config["HYPERPARAMS"]["NDF"]
-        num_layers = config["HYPERPARAMS"]["D_LAYERS"]
+        ndf = config["ndf"]
+        num_layers = config["d_layers"]
        
         assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum numnber of discriminator layers: {max_num_layers}"
         self.conv_list = []
@@ -94,18 +90,12 @@ class Discriminator(tf.keras.Model):
 
         return self(x).shape
 
-    def call(self, x, test=False):
-        # Test returns model parameters and feature map sizes
-        if test: output_shapes = []
+    def call(self, x):
 
         for conv in self.conv_list:
             x = conv(x, training=True)
-            if test: output_shapes.append(x.shape)
-        
-        if test:
-            return output_shapes
-        else:
-            return x
+
+        return x
 
 #-------------------------------------------------------------------------
 """ Generator for Pix2pix """
@@ -124,13 +114,13 @@ class Generator(tf.keras.Model):
         super().__init__(name=name)
 
         # Check network and image dimensions
-        img_dims = config["DATA"]["IMG_DIMS"]
+        img_dims = config["img_dims"]
         assert len(img_dims) == 3, "3D input only"
         max_num_layers = int(np.log2(np.min([img_dims[0], img_dims[1]])))
         max_z_downsample = int(np.floor(np.log2(img_dims[2])))
-        ngf = config["HYPERPARAMS"]["NGF"]
-        num_layers = config["HYPERPARAMS"]["G_LAYERS"]
-        assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum number of discriminator layers: {max_num_layers}"
+        ngf = config["ngf"]
+        num_layers = config["g_layers"]
+        assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum number of generator layers: {max_num_layers}"
         self.encoder = []
 
         # Cache channels, strides and weights
@@ -157,8 +147,7 @@ class Generator(tf.keras.Model):
                     strides,
                     initialiser=initialiser,
                     batch_norm=True, name=f"down_{i}"))
-        
-        # TODO: Needs better implementation to avoid concat bug from above loop
+
         self.bottom_layer = tf.keras.layers.Conv3D(
                 channels, kernel, strides,
                 padding="same", activation="relu",
@@ -187,7 +176,7 @@ class Generator(tf.keras.Model):
                     strides,
                     initialiser=initialiser,
                     batch_norm=True,
-                    dropout=dropout, name=f"up_block{i}"))
+                    dropout=dropout, name=f"up_{i}"))
 
         self.final_layer = tf.keras.layers.Conv3DTranspose(
             1, (4, 4, 4), (2, 2, 2),
@@ -236,22 +225,33 @@ class HyperGenerator(tf.keras.Model):
         super().__init__(name=name)
 
         # Check network and image dimensions
-        img_dims = config["DATA"]["IMG_DIMS"]
+        img_dims = config["img_dims"]
         assert len(img_dims) == 3, "3D input only"
         max_num_layers = int(np.log2(np.min([img_dims[0], img_dims[1]])))
         max_z_downsample = int(np.floor(np.log2(img_dims[2])))
-        ngf = config["HYPERPARAMS"]["NGF"]
-        num_layers = config["HYPERPARAMS"]["G_LAYERS"]
-        assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum number of discriminator layers: {max_num_layers}"
+        ngf = config["ngf"]
+        num_layers = config["g_layers"]
+        assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum number of generator layers: {max_num_layers}"
+        
         self.encoder = []
+        self.encoder_embedding = []
 
         # Initialise HyperNet
-        self.Hypernet = HyperNet(Nz=64, f=3, in_dims=ngf, out_dims=ngf * 2, name="HyperNet")
+        self.Hypernet = HyperNet(Nz=64, f=4, in_dims=ngf, out_dims=ngf, name="HyperNet")
 
         # Cache channels, strides and weights
         cache = {"channels": [], "strides": [], "kernels": []}
 
-        for i in range(0, num_layers - 1):
+        cache["channels"].append(ngf)
+        cache["strides"].append([2, 2, 2])
+        cache["kernels"].append([4, 4, 2])
+
+        # First layer is standard non-HyperNet conv layer
+        self.first_layer = GANDownBlock(
+            ngf, [4, 4, 2], [2, 2, 2],
+            initialiser=initialiser, batch_norm=True, name=f"down_0")
+
+        for i in range(1, num_layers - 1):
             channels = np.min([ngf * 2 ** i, 512])
 
             if i >= max_z_downsample - 1:
@@ -266,10 +266,14 @@ class HyperGenerator(tf.keras.Model):
             cache["kernels"].append(kernel)
 
             self.encoder.append(HyperGANDownBlock(strides, batch_norm=True, name=f"down_{i}"))
-        
-        # TODO: Needs better implementation to avoid concat bug from above loop
+            self.encoder_embedding.append(
+                LayerEmbedding(
+                    Nz=64, in_kernels=cache["channels"][-2] // ngf, out_kernels=cache["channels"][-1] // ngf, name=f"z_down_{i}"))
+
         self.bottom_strides = strides
         self.bottom_layer = tf.nn.conv3d
+        self.bottom_embedding = LayerEmbedding(
+            Nz=64, in_kernels=cache["channels"][-2], out_kernels=cache["channels"][-1], name="z_bottom")
 
         cache["strides"].append(strides)
         cache["kernels"].append(kernel)
@@ -279,6 +283,7 @@ class HyperGenerator(tf.keras.Model):
         cache["strides"].reverse()
 
         self.decoder = []
+        self.decoder_embedding = []
         dropout = True
 
         for i in range(0, num_layers - 1):
@@ -287,10 +292,15 @@ class HyperGenerator(tf.keras.Model):
             strides = cache["strides"][i]
             kernel = cache["kernels"][i]
             
-            self.decoder.append(HyperGANUpBlock(strides, initialiser=initialiser, batch_norm=True, dropout=dropout, name=f"up_block{i}"))
+            self.decoder.append(HyperGANUpBlock(strides, batch_norm=True, dropout=dropout, name=f"up_{i}"))
+            self.decoder_embedding.append(
+                LayerEmbedding(
+                    Nz=64, in_kernels=channels // ngf * 2, out_kernels=channels // ngf, name=f"z_up_{i}"))
 
-        self.final_upsample = tf.keras.layers.UpSampling3D((2, 2, 2), name="final_upsample")
-        self.final_layer = tf.nn.conv3d
+        self.final_layer = tf.keras.layers.Conv3DTranspose(
+            1, (4, 4, 4), (2, 2, 2),
+            padding="SAME", activation="tanh",
+            kernel_initializer=initialiser, name="output")
 
     def build_model(self, x):
 
@@ -302,14 +312,19 @@ class HyperGenerator(tf.keras.Model):
     def call(self, x):
         skip_layers = []
 
-        for conv, w in zip(self.encoder, self.encoder_weights):
+        for conv, embedding in zip(self.encoder, self.encoder_embedding):
+            w = embedding(self.Hypernet)
             x = conv(x, w, training=True)
             skip_layers.append(x)
         
-        x = self.bottom_layer(x, self.bottom_weights, self.bottom_strides, padding="SAME", name="bottom") # RELU???
+        w = self.bottom_embedding(self.Hypernet)
+        x = self.bottom_layer(x, w, self.bottom_strides, padding="SAME", name="bottom")
+        x = tf.nn.relu(x)
+
         skip_layers.reverse()
 
-        for skip, tconv, w in zip(skip_layers, self.decoder, self.decoder_weights):
+        for skip, tconv, embedding in zip(skip_layers, self.decoder, self.decoder_embedding):
+            w = embedding(self.Hypernet)
             x = tconv(x, w, skip, training=True)
 
         x = self.final_upsample(x)
