@@ -48,7 +48,13 @@ def train(CONFIG):
         ).batch(CONFIG["expt"]["mb_size"] * 2)
 
     # Compile model
-    Model = GAN(config=CONFIG)
+    if CONFIG["expt"]["model"] == "GAN":
+        Model = GAN(config=CONFIG)
+    elif CONFIG["expt"]["model"] == "HyperGAN":
+        Model = HyperGAN(config=CONFIG)
+    else:
+        raise ValueError
+
     d_opt = tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["d_opt"], name="d_opt")
     g_opt = tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt")
 
@@ -110,7 +116,7 @@ if __name__ == "__main__":
     # Set GPU
     if arguments.gpu is not None:
         gpu_number = arguments.gpu
-        os.environ["LD_LIBRARY_PATH"] = CONFIG["cuda_path"]
+        os.environ["LD_LIBRARY_PATH"] = CONFIG["paths"]["cuda_path"]
         gpus = tf.config.experimental.list_physical_devices("GPU")
         tf.config.set_visible_devices(gpus[gpu_number], "GPU")
         tf.config.experimental.set_memory_growth(gpus[gpu_number], True)

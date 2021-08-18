@@ -261,7 +261,7 @@ class BaseImgLoader(ABC):
                 if len(self.sub_folders) == 0:
                     candidate_segs = glob.glob(f"{self._seg_paths}/{target_name[0:6]}AC*{target_name[-8:]}")
                     assert len(candidate_segs) == 1, candidate_segs
-                    seg = np.load(candidate_segs[0])
+                    seg = np.load(candidate_segs[0]).astype("float32")
                     seg = seg[::self.down_sample, ::self.down_sample, :, np.newaxis]
                     seg[seg > 1] = 1
                     # TODO: return index
@@ -312,7 +312,7 @@ class PairedLoader(BaseImgLoader):
             for key in self.sub_folders:
                 self._sources += os.listdir(self._img_paths[key])
         
-        if len(config["sgs"]) > 0:
+        if len(config["segs"]) > 0:
             for key in config["segs"]:
                 self._segs += os.listdir(self._seg_paths[key])
 

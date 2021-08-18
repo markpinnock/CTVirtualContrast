@@ -15,13 +15,12 @@ class HyperGANDownBlock(tf.keras.layers.Layer):
     def __init__(self, strides, batch_norm=True, name=None):
         super().__init__(name=name)
         self.batch_norm = batch_norm
-        self.strides = strides
+        self.strides = [1] + list(strides) + [1]
         
         if batch_norm:
             self.bn = tf.keras.layers.BatchNormalization(name="batchnorm")
 
     def call(self, x, w, training):
-
         x = tf.nn.conv3d(x, w, self.strides, padding="SAME", name="conv")
 
         if self.batch_norm:
@@ -46,6 +45,7 @@ class HyperGANUpBlock(tf.keras.layers.Layer):
         super().__init__(name=name)
         self.batch_norm = batch_norm
         self.dropout = dropout
+        self.strides = [1] + list(strides) + [1]
 
         if batch_norm:
             self.bn = tf.keras.layers.BatchNormalization(name="batchnorm")
@@ -56,7 +56,8 @@ class HyperGANUpBlock(tf.keras.layers.Layer):
         self.concat = tf.keras.layers.Concatenate(name="concat")
     
     def call(self, x, w, skip, training):
-        x = tf.nn.conv3d(x, w, (1, 1, 1), self.strides, padding="SAME", name="conv")
+        x = self.upsample(x)
+        x = tf.nn.conv3d(x, w, (1, 1, 1, 1, 1), padding="SAME", name="conv")
 
         if self.batch_norm:
             x = self.bn(x, training=training)

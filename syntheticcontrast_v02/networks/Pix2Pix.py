@@ -65,10 +65,10 @@ class Discriminator(tf.keras.Model):
 
                 if i > max_z_downsample:
                     strides = (2, 2, 1)
-                    kernel = (4, 4, 1)
+                    kernel = (4, 4, 2)
                 else:
                     strides = (2, 2, 2)
-                    kernel = (4, 4, 2)
+                    kernel = (4, 4, 4)
                 
                 self.conv_list.append(
                     GANDownBlock(
@@ -131,10 +131,10 @@ class Generator(tf.keras.Model):
 
             if i >= max_z_downsample - 1:
                 strides = (2, 2, 1)
-                kernel = (4, 4, 1)
+                kernel = (4, 4, 2)
             else:
                 strides = (2, 2, 2)
-                kernel = (4, 4, 2)
+                kernel = (4, 4, 4)
 
             cache["channels"].append(channels)
             cache["strides"].append(strides)
@@ -180,7 +180,7 @@ class Generator(tf.keras.Model):
 
         self.final_layer = tf.keras.layers.Conv3DTranspose(
             1, (4, 4, 4), (2, 2, 2),
-            padding="SAME", activation="tanh",
+            padding="SAME", activation="linear",
             kernel_initializer=initialiser, name="output")
 
     def build_model(self, x):
@@ -237,29 +237,29 @@ class HyperGenerator(tf.keras.Model):
         self.encoder_embedding = []
 
         # Initialise HyperNet
-        self.Hypernet = HyperNet(Nz=64, f=4, in_dims=ngf, out_dims=ngf, name="HyperNet")
+        self.Hypernet = HyperNet(Nz=64, f=4, d=2, in_dims=ngf, out_dims=ngf, name="HyperNet")
 
         # Cache channels, strides and weights
         cache = {"channels": [], "strides": [], "kernels": []}
 
         cache["channels"].append(ngf)
-        cache["strides"].append([2, 2, 2])
-        cache["kernels"].append([4, 4, 2])
+        cache["strides"].append((2, 2, 2))
+        cache["kernels"].append((4, 4, 4))
 
         # First layer is standard non-HyperNet conv layer
         self.first_layer = GANDownBlock(
-            ngf, [4, 4, 2], [2, 2, 2],
-            initialiser=initialiser, batch_norm=True, name=f"down_0")
+            ngf, (4, 4, 4), (2, 2, 2),
+            initialiser=initialiser, batch_norm=True, name="down_0")
 
         for i in range(1, num_layers - 1):
             channels = np.min([ngf * 2 ** i, 512])
 
             if i >= max_z_downsample - 1:
                 strides = (2, 2, 1)
-                kernel = (4, 4, 1)
+                kernel = (4, 4, 2)
             else:
                 strides = (2, 2, 2)
-                kernel = (4, 4, 2)
+                kernel = (4, 4, 4)
 
             cache["channels"].append(channels)
             cache["strides"].append(strides)
@@ -268,12 +268,12 @@ class HyperGenerator(tf.keras.Model):
             self.encoder.append(HyperGANDownBlock(strides, batch_norm=True, name=f"down_{i}"))
             self.encoder_embedding.append(
                 LayerEmbedding(
-                    Nz=64, in_kernels=cache["channels"][-2] // ngf, out_kernels=cache["channels"][-1] // ngf, name=f"z_down_{i}"))
+                    Nz=64, depth_kernels=kernel[-1] // 2, in_kernels=cache["channels"][-2] // ngf, out_kernels=cache["channels"][-1] // ngf, name=f"z_down_{i}"))
 
-        self.bottom_strides = strides
+        self.bottom_strides = [1] + list(strides) + [1]
         self.bottom_layer = tf.nn.conv3d
         self.bottom_embedding = LayerEmbedding(
-            Nz=64, in_kernels=cache["channels"][-2], out_kernels=cache["channels"][-1], name="z_bottom")
+            Nz=64, depth_kernels=cache["kernels"][-1][-1] // 2, in_kernels=cache["channels"][-1] // ngf, out_kernels=cache["channels"][-1] // ngf, name="z_bottom")
 
         cache["strides"].append(strides)
         cache["kernels"].append(kernel)
@@ -286,7 +286,12 @@ class HyperGenerator(tf.keras.Model):
         self.decoder_embedding = []
         dropout = True
 
-        for i in range(0, num_layers - 1):
+        self.decoder.append(HyperGANUpBlock(strides, batch_norm=True, dropout=dropout, name="up_0"))
+        self.decoder_embedding.append(
+            LayerEmbedding(
+                Nz=64, depth_kernels=cache["kernels"][0][-1] // 2, in_kernels=cache["channels"][0] // ngf, out_kernels=cache["channels"][0] // ngf, name="z_up_0"))
+
+        for i in range(1, num_layers - 1):
             if i > 2: dropout = False
             channels = cache["channels"][i]
             strides = cache["strides"][i]
@@ -295,11 +300,11 @@ class HyperGenerator(tf.keras.Model):
             self.decoder.append(HyperGANUpBlock(strides, batch_norm=True, dropout=dropout, name=f"up_{i}"))
             self.decoder_embedding.append(
                 LayerEmbedding(
-                    Nz=64, in_kernels=channels // ngf * 2, out_kernels=channels // ngf, name=f"z_up_{i}"))
+                    Nz=64, depth_kernels=kernel[-1] // 2, in_kernels=channels // ngf * 4, out_kernels=channels // ngf, name=f"z_up_{i}"))
 
         self.final_layer = tf.keras.layers.Conv3DTranspose(
             1, (4, 4, 4), (2, 2, 2),
-            padding="SAME", activation="tanh",
+            padding="SAME", activation="linear",
             kernel_initializer=initialiser, name="output")
 
     def build_model(self, x):
@@ -311,6 +316,9 @@ class HyperGenerator(tf.keras.Model):
 
     def call(self, x):
         skip_layers = []
+
+        x = self.first_layer(x, training=True)
+        skip_layers.append(x)
 
         for conv, embedding in zip(self.encoder, self.encoder_embedding):
             w = embedding(self.Hypernet)
@@ -327,7 +335,6 @@ class HyperGenerator(tf.keras.Model):
             w = embedding(self.Hypernet)
             x = tconv(x, w, skip, training=True)
 
-        x = self.final_upsample(x)
-        x = self.final_layer(x, self.final_weights, (2, 2, 2), padding="SAME", name="final_conv")
+        x = self.final_layer(x)
 
         return x

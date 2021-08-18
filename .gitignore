@@ -7,3 +7,6 @@ __pycache__
 !example*.json
 !ignore.json
 Fixtures*
+test_expt/images
+test_expt/logs
+test_expt/models

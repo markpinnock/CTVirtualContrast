@@ -2,6 +2,7 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import datetime
 import tensorflow as tf
 import time
 
@@ -27,6 +28,10 @@ class BaseTrainingLoop(ABC):
         self.SAVE_EVERY = config["expt"]["save_every"]
 
         self.ds_train, self.ds_val = dataset
+
+        log_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.train_writer = tf.summary.create_file_writer(f"{self.LOG_SAVE_PATH}/{log_time}/train")
+        self.test_writer = tf.summary.create_file_writer(f"{self.LOG_SAVE_PATH}/{log_time}/test")
         
     @abstractmethod
     def training_loop(self):
@@ -107,18 +112,35 @@ class TrainingLoopGAN(BaseTrainingLoop):
             for data in self.ds_train:
                 self.Model.train_step(*data)
 
-            # for key, value in model.generator_metrics.items():
+            if self.config["expt"]["log_scalars"]:
+                with self.train_writer.as_default():
+                    tf.summary.scalar("g_loss", self.Model.g_metric.result(), step=epoch)
+                    tf.summary.scalar("d_loss", self.Model.d_metric.result(), step=epoch)
+
             self.results["g_metric"].append(float(self.Model.g_metric.result()))
 
             if self.config["expt"]["focal"]:
                 self.results["train_L1"].append([float(self.Model.train_L1_metric.result()[0]), float(self.Model.train_L1_metric.result()[1])])
+
+                if self.config["expt"]["log_scalars"]:
+                    with self.train_writer.as_default():
+                        tf.summary.scalar("train_focal_L1", self.Model.train_L1_metric.result()[0], step=epoch)
+                        tf.summary.scalar("train_global_L1", self.Model.train_L1_metric.result()[1], step=epoch)
+
             else:
                 self.results["train_L1"].append(float(self.Model.train_L1_metric.result()))
+
+                if self.config["expt"]["log_scalars"]:
+                    with self.train_writer.as_default():
+                        tf.summary.scalar("train_L1", self.Model.train_L1_metric.result(), step=epoch)
             
-            # for key, value in model.discriminator_metrics.items():
             self.results["d_metric"].append(float(self.Model.d_metric.result()))
 
-            # for key in model.discriminator_metrics.keys():
+            if self.config["expt"]["log_histograms"]:
+                with self.train_writer.as_default():
+                    for v in self.Model.Generator.trainable_variables:
+                        tf.summary.histogram(v.name, v, step=epoch)
+
             if verbose:
                 print(f"Train epoch {epoch + 1}, G: {self.Model.g_metric.result():.4f} D: {self.Model.d_metric.result():.4f}, L1: {self.Model.train_L1_metric.result()}")
 
@@ -130,8 +152,18 @@ class TrainingLoopGAN(BaseTrainingLoop):
                 
                 if self.config["expt"]["focal"]:
                     self.results["val_L1"].append([float(self.Model.val_L1_metric.result()[0]), float(self.Model.val_L1_metric.result()[1])])
+
+                    if self.config["expt"]["log_scalars"]:
+                        with self.test_writer.as_default():
+                            tf.summary.scalar("val_focal_L1", self.Model.val_L1_metric.result()[0], step=epoch)
+                            tf.summary.scalar("val_global_L1", self.Model.val_L1_metric.result()[1], step=epoch)
+
                 else:
                     self.results["val_L1"].append(float(self.Model.val_L1_metric.result()))
+
+                    if self.config["expt"]["log_scalars"]:
+                        with self.test_writer.as_default():
+                            tf.summary.scalar("val_L1", self.Model.val_L1_metric.result(), step=epoch)
 
                 if verbose:
                     print(f"Val epoch {epoch + 1}, L1: {self.Model.val_L1_metric.result()}")
