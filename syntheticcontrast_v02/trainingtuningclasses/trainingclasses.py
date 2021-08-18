@@ -1,21 +1,18 @@
+import datetime
 import json
 import matplotlib.pyplot as plt
 import numpy as np
-import time
-import datetime
+import os
 import tensorflow as tf
 import time
-
-from abc import ABC, abstractmethod
 
 np.set_printoptions(suppress=True)
 
 
 class TrainingGAN:
 
-    def __init__(self, Model: object, dataset: object, val_generator: object, config: dict):
+    def __init__(self, Model: object, dataset: object, train_generator: object, val_generator: object, config: dict):
         self.Model = Model
-        self.val_generator = val_generator
         self.config = config
         self.EPOCHS = config["expt"]["epochs"]
         self.IMAGE_SAVE_PATH = f"{config['paths']['expt_path']}/images"
@@ -23,6 +20,14 @@ class TrainingGAN:
         self.LOG_SAVE_PATH = f"{config['paths']['expt_path']}/logs"
         self.SAVE_EVERY = config["expt"]["save_every"]
 
+        if not os.path.exists(f"{self.IMAGE_SAVE_PATH}/train"):
+            os.makedirs(f"{self.IMAGE_SAVE_PATH}/train")
+
+        if not os.path.exists(f"{self.IMAGE_SAVE_PATH}/validation"):
+            os.makedirs(f"{self.IMAGE_SAVE_PATH}/validation")
+
+        self.train_generator = train_generator
+        self.val_generator = val_generator
         self.ds_train, self.ds_val = dataset
 
         log_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -121,7 +126,8 @@ class TrainingGAN:
 
             # Save example images
             if (epoch + 1) % self.SAVE_EVERY == 0:
-                self.save_images(epoch + 1)
+                self.save_images(epoch + 1, phase="train")
+                self.save_images(epoch + 1, phase="validation")
 
             # if self.Model.val_L1_metric.result() < best_L1 and not self.config["EXPT"]["VERBOSE"]:
             #     self.Model.save_weights(f"{self.MODEL_SAVE_PATH}{self.config['EXPT']['EXPT_NAME']}")
@@ -133,11 +139,17 @@ class TrainingGAN:
         if verbose:
             print(f"Time taken: {(time.time() - start_time) / 3600}")
     
-    def save_images(self, epoch=None, tuning_path=None):
+    def save_images(self, epoch, phase="validation", tuning_path=None):
 
         """ Saves sample of images """
 
-        data = self.val_generator.example_images()
+        if phase == "train":
+            data_generator = self.train_generator
+        
+        elif phase == "validation":
+            data_generator = self.val_generator
+
+        data = data_generator.example_images()
 
         if len(data) == 2:
             source, target = data
@@ -154,9 +166,9 @@ class TrainingGAN:
 
         pred = self.Model.Generator(source, training=False).numpy()
 
-        source = self.val_generator.un_normalise(source)
-        target = self.val_generator.un_normalise(target)
-        pred = self.val_generator.un_normalise(pred)
+        source = data_generator.un_normalise(source)
+        target = data_generator.un_normalise(target)
+        pred = data_generator.un_normalise(pred)
 
         fig, axs = plt.subplots(target.shape[0], 5)
 
@@ -177,7 +189,7 @@ class TrainingGAN:
         if tuning_path:
             plt.savefig(f"{tuning_path}.png", dpi=250)
         else:
-            plt.savefig(f"{self.IMAGE_SAVE_PATH}/{epoch}.png", dpi=250)
+            plt.savefig(f"{self.IMAGE_SAVE_PATH}/{phase}/{epoch}.png", dpi=250)
 
         plt.close()
 

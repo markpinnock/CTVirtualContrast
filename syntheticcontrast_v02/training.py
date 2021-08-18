@@ -81,7 +81,13 @@ def train(CONFIG):
         with writer.as_default():
             tf.summary.trace_export("graph", step=0)
 
-    TrainingLoop = TrainingGAN(Model=Model, dataset=(train_ds, val_ds), val_generator=ValGenerator, config=CONFIG)
+    TrainingLoop = TrainingGAN(
+        Model=Model,
+        dataset=(train_ds, val_ds),
+        train_generator=TrainGenerator,
+        val_generator=ValGenerator,
+        config=CONFIG
+        )
 
     # Run training loop
     TrainingLoop.train()
