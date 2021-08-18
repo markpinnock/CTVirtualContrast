@@ -1,7 +1,7 @@
 import json
 import matplotlib.pyplot as plt
 import numpy as np
-import os
+import time
 import datetime
 import tensorflow as tf
 import time
@@ -11,13 +11,9 @@ from abc import ABC, abstractmethod
 np.set_printoptions(suppress=True)
 
 
-#-------------------------------------------------------------------------
-""" Base training loop class """
-
-class BaseTrainingLoop(ABC):
+class TrainingGAN:
 
     def __init__(self, Model: object, dataset: object, val_generator: object, config: dict):
-
         self.Model = Model
         self.val_generator = val_generator
         self.config = config
@@ -32,59 +28,8 @@ class BaseTrainingLoop(ABC):
         log_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         self.train_writer = tf.summary.create_file_writer(f"{self.LOG_SAVE_PATH}/{log_time}/train")
         self.test_writer = tf.summary.create_file_writer(f"{self.LOG_SAVE_PATH}/{log_time}/test")
-        
-    @abstractmethod
-    def training_loop(self):
-        raise NotImplementedError
 
-    def save_images(self, source, target, pred, epoch=None, tuning_path=None):
-
-        """ Saves sample of images """
-
-        source = self.val_generator.un_normalise(source)
-        target = self.val_generator.un_normalise(target)
-        pred = self.val_generator.un_normalise(pred)
-
-        fig, axs = plt.subplots(target.shape[0], 5)
-
-        for i in range(target.shape[0]):
-            axs[i, 0].imshow(source[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
-            axs[i, 0].axis("off")
-            axs[i, 1].imshow(target[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
-            axs[i, 1].axis("off")
-            axs[i, 3].imshow(np.abs(target[i, :, :, 11, 0] - source[i, :, :, 11, 0]), cmap="hot")
-            axs[i, 3].axis("off")
-            axs[i, 2].imshow(pred[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
-            axs[i, 2].axis("off")
-            axs[i, 4].imshow(np.abs(target[i, :, :, 11, 0] - pred[i, :, :, 11, 0]), cmap="hot")
-            axs[i, 4].axis("off")
-
-        plt.tight_layout()
-
-        if tuning_path:
-            plt.savefig(f"{tuning_path}.png", dpi=250)
-        else:
-            plt.savefig(f"{self.IMAGE_SAVE_PATH}/{epoch}.png", dpi=250)
-
-        plt.close()
-
-    @abstractmethod
-    def save_results(self):
-
-        """ Saves json of results """
-
-        json.dump(self.results, open(f"{self.LOG_SAVE_PATH}/results.json", 'w'), indent=4)
-
-
-#-------------------------------------------------------------------------
-""" GAN training loop - inherits from BaseTrainingLoop """
-
-class TrainingLoopGAN(BaseTrainingLoop):
-
-    def __init__(self, Model, dataset, val_generator, config):
-        super().__init__(Model, dataset, val_generator, config)
-
-    def training_loop(self, verbose=1):
+    def train(self, verbose=1):
 
         """ Main training loop for GAN """
 
@@ -109,9 +54,11 @@ class TrainingLoopGAN(BaseTrainingLoop):
             # for value in model.discriminator_metrics.values():
             self.Model.d_metric.reset_states()
 
+            # Run training step for each batch in training data
             for data in self.ds_train:
                 self.Model.train_step(*data)
 
+            # Log losses
             if self.config["expt"]["log_scalars"]:
                 with self.train_writer.as_default():
                     tf.summary.scalar("g_loss", self.Model.g_metric.result(), step=epoch)
@@ -136,6 +83,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
             
             self.results["d_metric"].append(float(self.Model.d_metric.result()))
 
+            # Log parameter values
             if self.config["expt"]["log_histograms"]:
                 with self.train_writer.as_default():
                     for v in self.Model.Generator.trainable_variables:
@@ -144,12 +92,15 @@ class TrainingLoopGAN(BaseTrainingLoop):
             if verbose:
                 print(f"Train epoch {epoch + 1}, G: {self.Model.g_metric.result():.4f} D: {self.Model.d_metric.result():.4f}, L1: {self.Model.train_L1_metric.result()}")
 
+            # Validation step if appropriate
             if self.config["data"]["cv_folds"] > 1:
                 self.Model.val_L1_metric.reset_states()
 
+                # Run validation step for each batch in validation data
                 for data in self.ds_val:
                     self.Model.test_step(*data)
-                
+
+                # Log losses
                 if self.config["expt"]["focal"]:
                     self.results["val_L1"].append([float(self.Model.val_L1_metric.result()[0]), float(self.Model.val_L1_metric.result()[1])])
 
@@ -168,6 +119,7 @@ class TrainingLoopGAN(BaseTrainingLoop):
                 if verbose:
                     print(f"Val epoch {epoch + 1}, L1: {self.Model.val_L1_metric.result()}")
 
+            # Save example images
             if (epoch + 1) % self.SAVE_EVERY == 0:
                 self.save_images(epoch + 1)
 
@@ -201,7 +153,33 @@ class TrainingLoopGAN(BaseTrainingLoop):
             pass
 
         pred = self.Model.Generator(source, training=False).numpy()
-        super().save_images(source, target, pred, epoch, tuning_path)
+
+        source = self.val_generator.un_normalise(source)
+        target = self.val_generator.un_normalise(target)
+        pred = self.val_generator.un_normalise(pred)
+
+        fig, axs = plt.subplots(target.shape[0], 5)
+
+        for i in range(target.shape[0]):
+            axs[i, 0].imshow(source[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
+            axs[i, 0].axis("off")
+            axs[i, 1].imshow(target[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
+            axs[i, 1].axis("off")
+            axs[i, 3].imshow(np.abs(target[i, :, :, 11, 0] - source[i, :, :, 11, 0]), cmap="hot")
+            axs[i, 3].axis("off")
+            axs[i, 2].imshow(pred[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
+            axs[i, 2].axis("off")
+            axs[i, 4].imshow(np.abs(target[i, :, :, 11, 0] - pred[i, :, :, 11, 0]), cmap="hot")
+            axs[i, 4].axis("off")
+
+        plt.tight_layout()
+
+        if tuning_path:
+            plt.savefig(f"{tuning_path}.png", dpi=250)
+        else:
+            plt.savefig(f"{self.IMAGE_SAVE_PATH}/{epoch}.png", dpi=250)
+
+        plt.close()
 
     def save_results(self, tuning_path=None):
 
@@ -242,6 +220,6 @@ class TrainingLoopGAN(BaseTrainingLoop):
             plt.savefig(tuning_path)
         else:
             plt.savefig(f"{self.LOG_SAVE_PATH}/losses.png")
-            super().save_results()
+            json.dump(self.results, open(f"{self.LOG_SAVE_PATH}/results.json", 'w'), indent=4)
         
         plt.close()

@@ -4,10 +4,12 @@ import os
 import tensorflow as tf
 import yaml
 
-from trainingtuningclasses.trainingclasses import TrainingLoopGAN
+from trainingtuningclasses.trainingclasses import TrainingGAN
 from networks.model import GAN, HyperGAN
 from utils.dataloader import PairedLoader, UnpairedLoader
 
+
+#-------------------------------------------------------------------------
 
 def train(CONFIG):
 
@@ -79,12 +81,14 @@ def train(CONFIG):
         with writer.as_default():
             tf.summary.trace_export("graph", step=0)
 
-    TrainingLoop = TrainingLoopGAN(Model=Model, dataset=(train_ds, val_ds), val_generator=ValGenerator, config=CONFIG)
+    TrainingLoop = TrainingGAN(Model=Model, dataset=(train_ds, val_ds), val_generator=ValGenerator, config=CONFIG)
 
     # Run training loop
-    TrainingLoop.training_loop()
+    TrainingLoop.train()
     TrainingLoop.save_results()
 
+
+#-------------------------------------------------------------------------
 
 if __name__ == "__main__":
 
