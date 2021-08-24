@@ -76,15 +76,15 @@ class TrainingGAN:
 
                 if self.config["expt"]["log_scalars"]:
                     with self.train_writer.as_default():
-                        tf.summary.scalar("train_focal_L1", self.Model.train_L1_metric.result()[0], step=epoch)
-                        tf.summary.scalar("train_global_L1", self.Model.train_L1_metric.result()[1], step=epoch)
+                        tf.summary.scalar("focal_L1", self.Model.train_L1_metric.result()[0], step=epoch)
+                        tf.summary.scalar("global_L1", self.Model.train_L1_metric.result()[1], step=epoch)
 
             else:
                 self.results["train_L1"].append(float(self.Model.train_L1_metric.result()))
 
                 if self.config["expt"]["log_scalars"]:
                     with self.train_writer.as_default():
-                        tf.summary.scalar("train_L1", self.Model.train_L1_metric.result(), step=epoch)
+                        tf.summary.scalar("L1", self.Model.train_L1_metric.result(), step=epoch)
             
             self.results["d_metric"].append(float(self.Model.d_metric.result()))
 
@@ -111,15 +111,15 @@ class TrainingGAN:
 
                     if self.config["expt"]["log_scalars"]:
                         with self.test_writer.as_default():
-                            tf.summary.scalar("val_focal_L1", self.Model.val_L1_metric.result()[0], step=epoch)
-                            tf.summary.scalar("val_global_L1", self.Model.val_L1_metric.result()[1], step=epoch)
+                            tf.summary.scalar("focal_L1", self.Model.val_L1_metric.result()[0], step=epoch)
+                            tf.summary.scalar("global_L1", self.Model.val_L1_metric.result()[1], step=epoch)
 
                 else:
                     self.results["val_L1"].append(float(self.Model.val_L1_metric.result()))
 
                     if self.config["expt"]["log_scalars"]:
                         with self.test_writer.as_default():
-                            tf.summary.scalar("val_L1", self.Model.val_L1_metric.result(), step=epoch)
+                            tf.summary.scalar("L1", self.Model.val_L1_metric.result(), step=epoch)
 
                 if verbose:
                     print(f"Val epoch {epoch + 1}, L1: {self.Model.val_L1_metric.result()}")

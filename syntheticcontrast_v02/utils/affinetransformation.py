@@ -1,16 +1,14 @@
+import abc
+import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-from abc import ABC, abstractmethod
 
-
+#-------------------------------------------------------------------------
 """ Based on implementation of spatial transformer networks:
     https://github.com/daviddao/spatial-transformer-tensorflow/blob/master/spatial_transformer.py """
 
-#-------------------------------------------------------------------------
-""" Base class for affine transform, subclasses Keras Layer class """
-
-class AffineTransform(tf.keras.layers.Layer, ABC):
+class AffineTransform(tf.keras.layers.Layer, abc.ABC):
 
     def __init__(self, img_dims: list, name: str):
         super().__init__(name=name)
@@ -22,30 +20,30 @@ class AffineTransform(tf.keras.layers.Layer, ABC):
 
         if self.num_dims == 3:
             self.depth_i = 1
-            self.n_ch = img_dims[2]
+            # self.n_ch = img_dims[2]
         
         elif self.num_dims == 4:
             self.depth_i = img_dims[2]
-            self.n_ch = img_dims[3]
+            # self.n_ch = img_dims[3]
         
         else:
             raise ValueError(f"Invalid image dimensions: {img_dims}")
 
         self.flat_coords = None
 
-    @abstractmethod
+    @abc.abstractmethod
     def coord_gen(self):
         raise NotImplementedError
     
-    @abstractmethod
+    @abc.abstractmethod
     def transform_coords(self):
         raise NotImplementedError
     
-    @abstractmethod
+    @abc.abstractmethod
     def get_img_indices(self):
         raise NotImplementedError
     
-    @abstractmethod
+    @abc.abstractmethod
     def get_weights(self):
         raise NotImplementedError
     
@@ -53,15 +51,16 @@ class AffineTransform(tf.keras.layers.Layer, ABC):
         raise NotImplementedError
 
     def call(self, im: object, mb_size: int, thetas: object) -> object:
+        n_ch = im.shape[4]
         self.transform_coords(mb_size, thetas)
         base, indices = self.get_img_indices()
         weights = self.get_weights(*indices)
-        output = self.interpolate(im, base, weights, *indices)
+        output = self.interpolate(im, base, weights, n_ch, *indices)
 
         if self.num_dims == 3:
-            return tf.reshape(output, [mb_size, self.height_i, self.width_i, self.n_ch])
+            return tf.reshape(output, [mb_size, self.height_i, self.width_i, n_ch])
         else:
-            return tf.reshape(output, [mb_size, self.height_i, self.width_i, self.depth_i, self.n_ch])
+            return tf.reshape(output, [mb_size, self.height_i, self.width_i, self.depth_i, n_ch])
 
 #-------------------------------------------------------------------------
 """ 2D affine transform class, acts on 2D images and also depth-wise on 3D volumes """
@@ -148,7 +147,7 @@ class AffineTransform2D(AffineTransform):
 
         return [wa, wb, wc, wd]
 
-    def interpolate(self, im: object, base: object, weights: list, x0, x1, y0, y1) -> object:
+    def interpolate(self, im: object, base: object, weights: list, n_ch: int, x0, x1, y0, y1) -> object:
         """ Perform interpolation of minibatch of images """
 
         # Add base image indices to the integer indices bracketing the transformed coordinates
@@ -159,7 +158,7 @@ class AffineTransform2D(AffineTransform):
         indices.append(base + y1 * self.width_i + x1)
 
         # Get images using bracketed indices and take weighted average
-        im_flat = tf.reshape(im, [-1, self.depth_i * self.n_ch])
+        im_flat = tf.reshape(im, [-1, self.depth_i * n_ch])
         imgs = [tf.gather(im_flat, idx) for idx in indices]
 
         return tf.add_n([img * weight for img, weight in zip(imgs, weights)])
@@ -176,6 +175,7 @@ class AffineTransform3D(AffineTransform):
         self.mb_size = None
         self.X, self.Y, self.Z = None, None, None
         self.coord_gen()
+        raise NotImplementedError
     
     def coord_gen(self) -> None:
         """ Generate flattened coordinates [4, height * width * depth] """
@@ -250,56 +250,30 @@ class AffineTransform3D(AffineTransform):
         return super().interpolate()
 
 
-def interpolate(input_vol, X, Y, Z, mb_size):
-    """ Performs interpolation input_vol, using deformation fields X, Y, Z """
+#-------------------------------------------------------------------------
 
-    # Generate 8 vectors of indices corresponding to x0, y0, x1, y1 around base indices
-    base_y0 = base + y0 * depth * width
-    base_y1 = base + y1 * depth * width
-    base_y0_x0 = base_y0 + x0 * height
-    base_y1_x0 = base_y1 + x0 * height
-    base_y0_x1 = base_y0 + x1 * height
-    base_y1_x1 = base_y1 + x1 * height
-    idx_a = base_y0_x0 + z0
-    idx_b = base_y1_x0 + z0
-    idx_c = base_y0_x1 + z0
-    idx_d = base_y1_x1 + z0
-    idx_e = base_y0_x0 + z1
-    idx_f = base_y1_x0 + z1
-    idx_g = base_y0_x1 + z1
-    idx_h = base_y1_x1 + z1
+if __name__ == "__main__":
+    img_vol = np.zeros([4, 128, 128, 64, 1])
+    img_vol[:, 54:74, 54:74, :, :] = 1
 
-    # Flatten image vector and look up with indices
-    # Gather pixel values from flattened img based on 4 index vectors
-    input_vol_flat = tf.reshape(input_vol, [-1, nc])
-    input_vol_flat = tf.cast(input_vol_flat, tf.float32)
-    ImgA = tf.gather(input_vol_flat, idx_a)
-    ImgB = tf.gather(input_vol_flat, idx_b)
-    ImgC = tf.gather(input_vol_flat, idx_c)
-    ImgD = tf.gather(input_vol_flat, idx_d)
-    ImgE = tf.gather(input_vol_flat, idx_e)
-    ImgF = tf.gather(input_vol_flat, idx_f)
-    ImgG = tf.gather(input_vol_flat, idx_g)
-    ImgH = tf.gather(input_vol_flat, idx_h)
+    theta0 = np.array([0.5, 0, 0, 0, 0.5, 0], dtype="float32")
+    theta1 = np.array([2, 0, 0, 0, 2, 0], dtype="float32")
+    theta2 = np.array([1, 0, -0.5, 0, 1, 0.25], dtype="float32")
+    theta3 = np.array([0.707, -0.707, 0.5, 0.707, 0.707, 0.25], dtype="float32")
 
-    # Generate vectors of the fractional difference between original indices and rounded indices i.e. weights
-    x0_f = tf.cast(x0, 'float32')
-    x1_f = tf.cast(x1, 'float32')
-    y0_f = tf.cast(y0, 'float32')
-    y1_f = tf.cast(y1, 'float32')
-    z0_f = tf.cast(z0, 'float32')
-    z1_f = tf.cast(z1, 'float32')
-    wa = tf.expand_dims(((x1_f - X) * (y1_f - Y) * (z1_f - Z)), 1)
-    wb = tf.expand_dims(((x1_f - X) * (Y - y0_f) * (z1_f - Z)), 1)
-    wc = tf.expand_dims(((X - x0_f) * (y1_f - Y) * (z1_f - Z)), 1)
-    wd = tf.expand_dims(((X - x0_f) * (Y - y0_f) * (z1_f - Z)), 1)
-    we = tf.expand_dims(((x1_f - X) * (y1_f - Y) * (Z - z0_f)), 1)
-    wf = tf.expand_dims(((x1_f - X) * (Y - y0_f) * (Z - z0_f)), 1)
-    wg = tf.expand_dims(((X - x0_f) * (y1_f - Y) * (Z - z0_f)), 1)
-    wh = tf.expand_dims(((X - x0_f) * (Y - y0_f) * (Z - z0_f)), 1)
+    theta = tf.convert_to_tensor(np.stack([theta0, theta1, theta2, theta3], axis=0))
+    AT = AffineTransform2D([128, 128, 64, 1])
 
-    # Add weighted imgs from each of four indices and return img_vol
-    output_vol = tf.add_n(
-        [wa * ImgA, wb * ImgB, wc * ImgC, wd * ImgD, we * ImgE, wf * ImgF, wg * ImgG, wh * ImgH])
+    new_vol = AT(img_vol, 4, theta)
 
-    return output_vol
+    for i in range(0, 12, 2):
+        fig, axs = plt.subplots(2, 4)
+        axs[0, 0].imshow(img_vol[0, :, :, i, 0])
+        axs[0, 1].imshow(img_vol[1, :, :, i, 0])
+        axs[0, 2].imshow(img_vol[2, :, :, i, 0])
+        axs[0, 3].imshow(img_vol[3, :, :, i, 0])
+        axs[1, 0].imshow(new_vol[0, :, :, i, 0])
+        axs[1, 1].imshow(new_vol[1, :, :, i, 0])
+        axs[1, 2].imshow(new_vol[2, :, :, i, 0])
+        axs[1, 3].imshow(new_vol[3, :, :, i, 0])
+        plt.show()

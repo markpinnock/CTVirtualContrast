@@ -158,14 +158,17 @@ class BaseImgLoader(ABC):
         # Min -500, max = 22451
         self.norm_type = self.config["norm_type"]
 
+        # Override if custom parameters passed
         if param_1 is not None and param_2 is not None:
             self.param_1 = param_1
             self.param_2 = param_2
 
+        # Otherwise, use parameters provided in config yaml
         elif self.config["norm_param_1"] is not None and self.config["norm_param_1"] is not None:
             self.param_1 = self.config["norm_param_1"]
             self.param_2 = self.config["norm_param_2"]
 
+        # Otherwise, calculate parameters
         else:
             # If mean and std of data not available, we get rolling averages
             if self.norm_type == "meanstd" or self.norm_type == "std":
