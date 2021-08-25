@@ -10,7 +10,7 @@ from syntheticcontrast_v02.utils.affinetransformation import AffineTransform2D
 
 class DiffAug(tf.keras.layers.Layer):
     
-    def __init__(self, aug_config, name="diff_aug"):
+    def __init__(self, config, name="diff_aug"):
         super().__init__(name=name)
         self.aug_config = aug_config
 
@@ -102,9 +102,9 @@ class DiffAug(tf.keras.layers.Layer):
         return imgs, seg
 
     def call(self, imgs, seg=None):
-        if self.aug_config["colour"]: imgs = [self.contrast(self.saturation(self.brightness(img))) for img in imgs]
-        if self.aug_config["translation"]: imgs, seg = self.translation(imgs, seg)
-        if self.aug_config["cutout"]: imgs, seg = self.cutout(imgs, seg)
+        if self.aug_config["augmentation"]["colour"]: imgs = [self.contrast(self.saturation(self.brightness(img))) for img in imgs]
+        if self.aug_config["augmentation"]["translation"]: imgs, seg = self.translation(imgs, seg)
+        if self.aug_config["augmentation"]["cutout"]: imgs, seg = self.cutout(imgs, seg)
 
         return imgs, seg
 
@@ -228,7 +228,7 @@ if __name__ == "__main__":
     TestLoader.set_normalisation()
 
     if test_config["augmentation"]["type"] == "differentiable":
-        TestAug = DiffAug(test_config["augmentation"]["colour"], test_config["augmentation"]["translation"], test_config["augmentation"]["cutout"])
+        TestAug = DiffAug(test_config)
     else:
         TestAug = StdAug(test_config)
 
@@ -250,21 +250,21 @@ if __name__ == "__main__":
         imgs, segs = TestAug(imgs=[data[0], data[1]], seg=data[2])
 
         source, target = imgs
-        source = TestLoader.un_normalise(source)
-        target = TestLoader.un_normalise(target)
+        # source = TestLoader.un_normalise(source)
+        # target = TestLoader.un_normalise(target)
 
         plt.subplot(2, 3, 1)
-        plt.imshow(source[0, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
+        plt.imshow(source[0, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
         plt.axis("off")
         plt.subplot(2, 3, 4)
-        plt.imshow(source[1, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
+        plt.imshow(source[1, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
         plt.axis("off")
         
         plt.subplot(2, 3, 2)
-        plt.imshow(target[0, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
+        plt.imshow(target[0, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
         plt.axis("off")
         plt.subplot(2, 3, 5)
-        plt.imshow(target[1, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
+        plt.imshow(target[1, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
         plt.axis("off")
 
         if len(test_config["data"]["segs"]) > 0:

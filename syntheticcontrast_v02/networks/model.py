@@ -31,7 +31,7 @@ class GAN(tf.keras.Model):
         if config["augmentation"]["type"] == "standard":
             self.Aug = StdAug(config=config)
         elif config["augmentation"]["type"] == "differentiable":
-            self.Aug = DiffAug({"colour": True, "translation": True, "cutout": True})
+            self.Aug = DiffAug(config=config)
         else:
             self.Aug = None
 

@@ -18,7 +18,7 @@ hyperparameters:
     stn_output: 6 # 6 for 2D transforms
     stn_eta: 1.0e-4
 augmentation:
-    type: "standard" # "standard", "differentiable" or null
+    type: "differentiable" # "standard", "differentiable" or null
     flip_prob: 0.5 # Settings for standard augmentation
     rotation: 45.0
     scale: [0.8, 1.6]
