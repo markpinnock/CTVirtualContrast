@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import tensorflow as tf
 
 from syntheticcontrast_v02.utils.affinetransformation import AffineTransform2D
@@ -8,7 +7,6 @@ from syntheticcontrast_v02.utils.affinetransformation import AffineTransform2D
 """ DiffAug class for differentiable augmentation
     Paper: https://arxiv.org/abs/2006.10738
     Adapted from: https://github.com/mit-han-lab/data-efficient-gans """
-
 
 class DiffAug(tf.keras.layers.Layer):
     
@@ -158,14 +156,14 @@ class StdAug(tf.keras.layers.Layer):
         return rot_mat
 
     def scale_matrix(self, mb_size: int):
-        updates = tf.repeat(tf.random.uniform([mb_size], *self.scale_factor), 2)
+        updates = tf.repeat(tf.random.uniform([mb_size], * self.scale_factor), 2)
         indices = tf.concat([tf.repeat(tf.range(0, mb_size), 2)[:, tf.newaxis], tf.tile(tf.constant([[0, 0], [1, 1]]), [mb_size, 1])], axis=1)
         scale_mat = tf.scatter_nd(indices, updates, [mb_size, 2, 2])
 
         return scale_mat
 
     def shear_matrix(self, mb_size: int):
-        mask = tf.cast(tf.random.categorical(logits=[[0.5, 0.5]], num_samples=4), "float32")
+        mask = tf.cast(tf.random.categorical(logits=[[0.5, 0.5]], num_samples=mb_size), "float32")
         mask = tf.reshape(tf.transpose(tf.concat([mask, 1 - mask], axis=0), [1, 0]), [1, -1])
         updates = tf.repeat(tf.random.uniform([mb_size], -self.shear_angle, self.shear_angle), 2)
         updates = tf.reshape(updates * mask, [-1])
@@ -195,34 +193,38 @@ class StdAug(tf.keras.layers.Layer):
         return trans_mat
     
     def call(self, imgs, seg=None):
+        l = len(imgs)
         imgs = tf.concat(imgs, axis=4)
         mb_size = imgs.shape[0]
         thetas = tf.reshape(self.transformation(mb_size), [mb_size, -1])
 
         if seg is not None:
             img_seg = tf.concat([imgs, seg], axis=4)
-
             img_seg = self.transform(im=img_seg, mb_size=mb_size, thetas=thetas)
+            imgs = [img_seg[:, :, :, :, i][:, :, :, :, tf.newaxis] for i in range(l)]
+            seg = img_seg[:, :, :, :, -1][:, :, :, :, tf.newaxis]
 
-            return (img_seg[:, :, :, :, 0][:, :, :, :, tf.newaxis], img_seg[:, :, :, :, 1][:, :, :, :, tf.newaxis]), img_seg[:, :, :, :, 2][:, :, :, :, tf.newaxis]
+            return tuple(imgs), seg
         
         else:
             imgs = self.transform(im=imgs, mb_size=mb_size, thetas=thetas)
-
-            return (imgs[:, :, :, :, 0][:, :, :, :, tf.newaxis], imgs[:, :, :, :, 1][:, :, :, :, tf.newaxis])
+            imgs = [imgs[:, :, :, :, i][:, :, :, :, tf.newaxis] for i in range(l)]
+            return tuple(imgs), None
 
 
 #-------------------------------------------------------------------------
 """ Short routine for visually testing augmentations """
 
 if __name__ == "__main__":
+
+    import matplotlib.pyplot as plt
     import yaml
-    from syntheticcontrast_v02.utils.dataloader import UnpairedLoader
+    from syntheticcontrast_v02.utils.dataloader import PairedLoader
 
     test_config = yaml.load(open("syntheticcontrast_v02/utils/test_config.yml", 'r'), Loader=yaml.FullLoader)
 
     FILE_PATH = "D:/ProjectImages/SyntheticContrast"
-    TestLoader = UnpairedLoader(test_config["data"], dataset_type="training")
+    TestLoader = PairedLoader(test_config["data"], dataset_type="training")
     TestLoader.set_normalisation()
 
     if test_config["augmentation"]["type"] == "differentiable":
@@ -238,24 +240,39 @@ if __name__ == "__main__":
     train_ds = tf.data.Dataset.from_generator(TestLoader.data_generator, output_types=tuple(output_types))
 
     for data in train_ds.batch(4):
+        if len(test_config["data"]["segs"]) > 0:
+            source, target, seg = data
+            target, seg = TestAug([source, target], seg=seg)
+        else:
+            source, target = data
+            target, _ = TestAug([source, target], seg=None)
+
         imgs, segs = TestAug(imgs=[data[0], data[1]], seg=data[2])
+
         source, target = imgs
         source = TestLoader.un_normalise(source)
         target = TestLoader.un_normalise(target)
 
         plt.subplot(2, 3, 1)
         plt.imshow(source[0, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
+        plt.axis("off")
         plt.subplot(2, 3, 4)
         plt.imshow(source[1, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
+        plt.axis("off")
         
         plt.subplot(2, 3, 2)
         plt.imshow(target[0, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
+        plt.axis("off")
         plt.subplot(2, 3, 5)
         plt.imshow(target[1, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
+        plt.axis("off")
 
-        plt.subplot(2, 3, 3)
-        plt.imshow(segs[0, :, :, 0, 0])
-        plt.subplot(2, 3, 6)
-        plt.imshow(segs[1, :, :, 0, 0])
+        if len(test_config["data"]["segs"]) > 0:
+            plt.subplot(2, 3, 3)
+            plt.imshow(segs[0, :, :, 0, 0])
+            plt.axis("off")
+            plt.subplot(2, 3, 6)
+            plt.imshow(segs[1, :, :, 0, 0])
+            plt.axis("off")
 
         plt.show()

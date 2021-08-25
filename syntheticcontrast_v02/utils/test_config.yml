@@ -1,6 +1,6 @@
 data:
     data_path: "D:/ProjectImages/SyntheticContrast"
-    target: ["AC", "VC"]
+    target: ["AC"]
     source: ["HQ"]
     segs: ["AC"]
     times: null
@@ -14,6 +14,9 @@ data:
     fold: 5
 hyperparameters:
     img_dims: [512, 512, 12]
+    stn_layers: 0 # 0 for no spatial transformer
+    stn_output: 6 # 6 for 2D transforms
+    stn_eta: 1.0e-4
 augmentation:
     type: "standard" # "standard", "differentiable" or null
     flip_prob: 0.5 # Settings for standard augmentation

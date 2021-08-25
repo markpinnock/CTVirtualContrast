@@ -2,7 +2,7 @@ paths:
     cuda_path: "/usr/local/cuda/lib64"
 data:
     data_path: "D:/ProjectImages/SyntheticContrast"
-    target: ["AC", "VC"]
+    target: ["AC"]
     source: ["HQ"]
     segs: ["AC"]
     times: null
@@ -10,14 +10,14 @@ data:
     norm_type: "minmax"
     norm_param_1: -500
     norm_param_2: 2500
-    data_type: "unpaired"
+    data_type: "paired"
     num_examples: 4
     cv_folds: 6
     fold: 5
 expt:
     mb_size: 1
     save_every: 1
-    model: "HyperGAN" # "GAN" or "HyperGAN"
+    model: "GAN" # "GAN" or "HyperGAN"
     epochs: 50
     verbose: true # Output model summary
     graph: false # Save graph for visualisation in Tensorboard
@@ -34,7 +34,7 @@ hyperparameters:
     ngf: 64 # Generator starting channels
     d_layers: 2
     g_layers: 4
-    stn_layers: 0 # 0 for no spatial transformer
+    stn_layers: 4 # 0 for no spatial transformer
     stn_output: 6 # 6 for 2D transforms
     stn_eta: 1.0e-4
 augmentation:

@@ -1,12 +1,12 @@
 import tensorflow as tf
 
-from utils.affinetransformation import AffineTransform2D
+from syntheticcontrast_v02.utils.affinetransformation import AffineTransform2D
 
 
+#-------------------------------------------------------------------------
 """ Modified spatial transformer network:
     Jaderberg et al. Spatial transformer networks. NeurIPS 28 (2015)
     https://arxiv.org/abs/1506.02025 """
-
 
 class SpatialTransformer(tf.keras.layers.Layer):
     def __init__(self, config, name="spatial_transformer"):
@@ -58,76 +58,86 @@ class SpatialTransformer(tf.keras.layers.Layer):
             return target, None
 
 
+#-------------------------------------------------------------------------
+""" Short routine for visually testing STN """
+
 if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
-    from ..utils.dataloader import PairedLoader
+    import yaml
+    from syntheticcontrast_v02.utils.dataloader import PairedLoader
 
-    """ Routine for visually testing STN output """
+    test_config = yaml.load(open("syntheticcontrast_v02/utils/test_config.yml", 'r'), Loader=yaml.FullLoader)
 
     FILE_PATH = "D:/ProjectImages/SyntheticContrast"
-    segs = ["AC"]
-    TestLoader = PairedLoader({"data_path": FILE_PATH, "target": ["AC"], "source": ["HQ"], "segs": segs, "times": None, "down_sample": 4, "num_examples": 4, "cv_folds": 3, "fold": 2}, dataset_type="training")
-    TestLoader.set_normalisation(norm_type="std", param_1=-288, param_2=254)
-    STN = SpatialTransformer({"data": {"segs": segs}, "hyperparameters": {"img_dims": [128, 128, 12], "stn_layers" : 2, "stn_output": 6}})
+    TestLoader = PairedLoader(test_config["data"], dataset_type="training")
+    TestLoader.set_normalisation()
 
-    # Specify output types
+    STN = SpatialTransformer(test_config)
+
     output_types = ["float32", "float32"]
 
-    if len(segs) > 0:
-        output_types += ["float8"]
+    if len(test_config["data"]["segs"]) > 0:
+        output_types += ["float32"]
 
-    train_ds = tf.data.Dataset.from_generator(TestLoader.data_generator, output_types=output_types)
+    train_ds = tf.data.Dataset.from_generator(TestLoader.data_generator, output_types=tuple(output_types))
+
 
     for data in train_ds.batch(4).take(2):
-        if len(segs) > 0:
+        if len(test_config["data"]["segs"]) > 0:
             source, target, seg = data
-            target, seg = STN(source, target, seg=seg)
+            target, seg = STN(source, target, seg=seg, print_matrix=True)
         else:
             source, target = data
-            target, _ = STN(source, target, seg=None)
+            target, _ = STN(source, target, seg=None, print_matrix=True)
 
-        plt.subplot(3, 2, 1)
-        plt.imshow(source[0, :, :, 0, 0], cmap="gray")
-        plt.axis("off")
-        plt.subplot(3, 2, 2)
-        plt.imshow(source[1, :, :, 0, 0], cmap="gray")
-        plt.axis("off")
+        source = TestLoader.un_normalise(source)
+        target = TestLoader.un_normalise(target)
 
-        plt.subplot(3, 2, 3)
-        plt.imshow(target[0, :, :, 0, 0], cmap="gray")
+        plt.subplot(2, 3, 1)
+        plt.imshow(source[0, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
         plt.axis("off")
-        plt.subplot(3, 2, 4)
-        plt.imshow(target[1, :, :, 0, 0], cmap="gray")
+        plt.subplot(2, 3, 4)
+        plt.imshow(source[1, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
         plt.axis("off")
 
-        if len(segs) > 0:
-            plt.subplot(3, 2, 5)
+        plt.subplot(2, 3, 2)
+        plt.imshow(target[0, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
+        plt.axis("off")
+        plt.subplot(2, 3, 5)
+        plt.imshow(target[1, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
+        plt.axis("off")
+
+        if len(test_config["data"]["segs"]) > 0:
+            plt.subplot(2, 3, 3)
             plt.imshow(seg[0, :, :, 0, 0])
             plt.axis("off")
-            plt.subplot(3, 2, 6)
+            plt.subplot(2, 3, 6)
             plt.imshow(seg[1, :, :, 0, 0])
             plt.axis("off")
 
         plt.show()
 
-    if len(segs) > 0:
+    if len(test_config["data"]["segs"]) > 0:
         source, target, seg = TestLoader.example_images()
-        target, seg = STN(source, target, seg=seg)
+        target, seg = STN(source, target, seg=seg, print_matrix=True)
 
     else:
         source, target = TestLoader.example_images()
-        target, _ = STN(source, target, seg=None)
+        target, _ = STN(source, target, seg=None, print_matrix=True)
+
+    source = TestLoader.un_normalise(source)
+    target = TestLoader.un_normalise(target)
     
     fig, axs = plt.subplots(target.shape[0], 3)
 
     for i in range(target.shape[0]):
-        axs[i, 0].imshow(source[i, :, :, 11, 0], cmap="gray")
+        axs[i, 0].imshow(source[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
         axs[i, 0].axis("off")
-        axs[i, 1].imshow(target[i, :, :, 11, 0], cmap="gray")
+        axs[i, 1].imshow(target[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
         axs[i, 1].axis("off")
 
-        if len(segs) > 0:
+        if len(test_config["data"]["segs"]) > 0:
             axs[i, 2].imshow(seg[i, :, :, 11, 0])
             axs[i, 2].axis("off")
     

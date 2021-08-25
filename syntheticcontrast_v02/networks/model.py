@@ -3,8 +3,8 @@ import tensorflow as tf
 
 from .Pix2Pix import Discriminator, Generator, HyperGenerator
 from .STN import SpatialTransformer
-from utils.augmentation import DiffAug
-from utils.losses import (
+from syntheticcontrast_v02.utils.augmentation import DiffAug, StdAug
+from syntheticcontrast_v02.utils.losses import (
     minimax_D, minimax_G, L1, wasserstein_D, wasserstein_G, gradient_penalty, FocalLoss, FocalMetric)
 
 
@@ -28,7 +28,9 @@ class GAN(tf.keras.Model):
         self.img_dims = config["hyperparameters"]["img_dims"]
 
         # Set up augmentation
-        if config["hyperparameters"]["augmentation"]:
+        if config["augmentation"]["type"] == "standard":
+            self.Aug = StdAug(config=config)
+        elif config["augmentation"]["type"] == "differentiable":
             self.Aug = DiffAug({"colour": True, "translation": True, "cutout": True})
         else:
             self.Aug = None

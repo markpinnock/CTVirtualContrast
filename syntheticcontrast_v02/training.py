@@ -4,9 +4,9 @@ import os
 import tensorflow as tf
 import yaml
 
-from trainingtuningclasses.trainingclasses import TrainingGAN
-from networks.model import GAN, HyperGAN
-from utils.dataloader import PairedLoader, UnpairedLoader
+from syntheticcontrast_v02.trainingtuningclasses.trainingclasses import TrainingGAN
+from syntheticcontrast_v02.networks.model import GAN, HyperGAN
+from syntheticcontrast_v02.utils.dataloader import PairedLoader, UnpairedLoader
 
 
 #-------------------------------------------------------------------------
