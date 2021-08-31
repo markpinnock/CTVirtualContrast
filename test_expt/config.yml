@@ -17,8 +17,8 @@ data:
 expt:
     mb_size: 1
     save_every: 1
-    model: "GAN" # "GAN" or "HyperGAN"
-    epochs: 50
+    model: "HyperGAN" # "GAN" or "HyperGAN"
+    epochs: 100
     verbose: true # Output model summary
     graph: false # Save graph for visualisation in Tensorboard
     log_scalars: true # Log losses for visualisation in Tensorboard
@@ -33,8 +33,9 @@ hyperparameters:
     ndf: 64 # Discriminator starting channels
     ngf: 64 # Generator starting channels
     d_layers: 2
-    g_layers: 4
-    stn_layers: 4 # 0 for no spatial transformer
+    g_layers: 5
+    Nz: 128
+    stn_layers: 0 # 0 for no spatial transformer
     stn_output: 6 # 6 for 2D transforms
     stn_eta: 1.0e-4
 augmentation:

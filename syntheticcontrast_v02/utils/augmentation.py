@@ -12,7 +12,7 @@ class DiffAug(tf.keras.layers.Layer):
     
     def __init__(self, config, name="diff_aug"):
         super().__init__(name=name)
-        self.aug_config = aug_config
+        self.aug_config = config
 
     def brightness(self, x):
         """ Random brightness in range [-0.5, 0.5] """
