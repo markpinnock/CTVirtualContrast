@@ -210,11 +210,11 @@ class TrainingGAN:
         plt.subplot(2, 1, 2)
 
         if self.config["expt"]["focal"]:
-            plt.plot(self.results["epochs"], np.array(self.results["train_L1"])[:, 0], 'k-', label="Train global L1")
+            plt.plot(self.results["epochs"], np.array(self.results["train_L1"])[:, 0], 'k-', label="Train focal L1")
             plt.plot(self.results["epochs"], np.array(self.results["train_L1"])[:, 1], 'k--', label="Train global L1")
 
             if self.config["data"]["cv_folds"]:
-                plt.plot(self.results["epochs"], np.array(self.results["val_L1"])[:, 0], 'r-', label="Val global L1")
+                plt.plot(self.results["epochs"], np.array(self.results["val_L1"])[:, 0], 'r-', label="Val focal L1")
                 plt.plot(self.results["epochs"], np.array(self.results["val_L1"])[:, 1], 'r--', label="Val global L1")
         
         else:

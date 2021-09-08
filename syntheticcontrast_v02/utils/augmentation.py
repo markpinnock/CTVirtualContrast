@@ -71,7 +71,7 @@ class DiffAug(tf.keras.layers.Layer):
         num_imgs = len(imgs)
         batch_size = tf.shape(imgs[0])[0]
         image_size = tf.shape(imgs[0])[1:3]
-        image_depth = tf.shape(imgs[0])[3]
+        # image_depth = tf.shape(imgs[0])[3]
 
         if seg != None:
             x = tf.concat(imgs + [seg], axis=3)
@@ -102,7 +102,12 @@ class DiffAug(tf.keras.layers.Layer):
         return imgs, seg
 
     def call(self, imgs, seg=None):
-        if self.aug_config["augmentation"]["colour"]: imgs = [self.contrast(self.saturation(self.brightness(img))) for img in imgs]
+        num_imgs = len(imgs)
+
+        imgs = tf.concat(imgs, axis=4)
+        if self.aug_config["augmentation"]["colour"]: imgs = self.contrast(self.saturation(self.brightness(imgs)))
+        imgs = [tf.expand_dims(imgs[:, :, :, :, i], 4) for i in range(num_imgs)]
+
         if self.aug_config["augmentation"]["translation"]: imgs, seg = self.translation(imgs, seg)
         if self.aug_config["augmentation"]["cutout"]: imgs, seg = self.cutout(imgs, seg)
 
@@ -253,25 +258,32 @@ if __name__ == "__main__":
         # source = TestLoader.un_normalise(source)
         # target = TestLoader.un_normalise(target)
 
-        plt.subplot(2, 3, 1)
+        plt.subplot(2, 4, 1)
+        plt.imshow(data[0][0, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
+        plt.axis("off")
+        plt.subplot(2, 4, 5)
+        plt.imshow(data[0][1, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
+        plt.axis("off")
+
+        plt.subplot(2, 4, 2)
         plt.imshow(source[0, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
         plt.axis("off")
-        plt.subplot(2, 3, 4)
+        plt.subplot(2, 4, 6)
         plt.imshow(source[1, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
         plt.axis("off")
         
-        plt.subplot(2, 3, 2)
+        plt.subplot(2, 4, 3)
         plt.imshow(target[0, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
         plt.axis("off")
-        plt.subplot(2, 3, 5)
+        plt.subplot(2, 4, 7)
         plt.imshow(target[1, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
         plt.axis("off")
 
         if len(test_config["data"]["segs"]) > 0:
-            plt.subplot(2, 3, 3)
+            plt.subplot(2, 4, 4)
             plt.imshow(segs[0, :, :, 0, 0])
             plt.axis("off")
-            plt.subplot(2, 3, 6)
+            plt.subplot(2, 4, 8)
             plt.imshow(segs[1, :, :, 0, 0])
             plt.axis("off")
 
