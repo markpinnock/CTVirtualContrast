@@ -83,8 +83,9 @@ class GANDownBlock(tf.keras.layers.Layer):
     def __init__(self, nc, weights, strides, initialiser, batch_norm=True, name=None):
         super().__init__(name=name)
         self.batch_norm = batch_norm
+        bias = not batch_norm
 
-        self.conv = tf.keras.layers.Conv3D(nc, weights, strides=strides, padding="SAME", kernel_initializer=initialiser, name="conv")
+        self.conv = tf.keras.layers.Conv3D(nc, weights, strides=strides, padding="SAME", kernel_initializer=initialiser, use_bias=bias, name="conv")
         
         if batch_norm:
             self.bn = tf.keras.layers.BatchNormalization(name="batchnorm")
@@ -114,14 +115,18 @@ class GANUpBlock(tf.keras.layers.Layer):
     def __init__(self, nc, weights, strides, initialiser, batch_norm=True, dropout=False, name=None):
         super().__init__(name=name)
         self.batch_norm = batch_norm
+        bias = not batch_norm
         self.dropout = dropout
 
-        self.tconv = tf.keras.layers.Conv3DTranspose(nc, weights, strides=strides, padding="SAME", kernel_initializer=initialiser, name="tconv")
+        self.tconv = tf.keras.layers.Conv3DTranspose(nc, weights, strides=strides, padding="SAME", kernel_initializer=initialiser, use_bias=bias, name="tconv")
+        self.conv = tf.keras.layers.Conv3D(nc, weights, strides=(1, 1, 1), padding="SAME", kernel_initializer=initialiser, use_bias=bias, name="conv")
 
         if batch_norm:
-            self.bn = tf.keras.layers.BatchNormalization(name="batchnorm")
+            self.bn1 = tf.keras.layers.BatchNormalization(name="batchnorm1")
+            self.bn2 = tf.keras.layers.BatchNormalization(name="batchnorm2")
         if dropout:
-            self.dropout = tf.keras.layers.Dropout(0.5, name="dropout")
+            self.dropout1 = tf.keras.layers.Dropout(0.5, name="dropout1")
+            self.dropout2 = tf.keras.layers.Dropout(0.5, name="dropout2")
         
         self.concat = tf.keras.layers.Concatenate(name="concat")
     
@@ -129,11 +134,19 @@ class GANUpBlock(tf.keras.layers.Layer):
         x = self.tconv(x)
 
         if self.batch_norm:
-            x = self.bn(x, training=training)
+            x = self.bn1(x, training=training)
         
         if self.dropout:
-            x = self.dropout(x, training=training)
+            x = self.dropout1(x, training=training)
     
+        x = tf.nn.relu(x)
         x = self.concat([x, skip])
+        x = self.conv(x)
+
+        if self.batch_norm:
+            x = self.bn2(x, training=training)
+
+        if self.dropout:
+            x = self.dropout2(x, training=training)
 
         return tf.nn.relu(x)

@@ -65,12 +65,17 @@ if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
     import yaml
-    from syntheticcontrast_v02.utils.dataloader import PairedLoader
+    from syntheticcontrast_v02.utils.dataloader import PairedLoader, UnpairedLoader
 
     test_config = yaml.load(open("syntheticcontrast_v02/utils/test_config.yml", 'r'), Loader=yaml.FullLoader)
 
     FILE_PATH = "D:/ProjectImages/SyntheticContrast"
-    TestLoader = PairedLoader(test_config["data"], dataset_type="training")
+
+    if test_config["data"]["data_type"] == "paired":
+        TestLoader = PairedLoader(test_config["data"], dataset_type="training")
+    else:
+        TestLoader = UnpairedLoader(test_config["data"], dataset_type="training")
+
     TestLoader.set_normalisation()
 
     STN = SpatialTransformer(test_config)

@@ -10,14 +10,14 @@ data:
     norm_type: "minmax"
     norm_param_1: -500
     norm_param_2: 2500
-    data_type: "paired"
+    data_type: "unpaired"
     num_examples: 4
     cv_folds: 6
     fold: 5
 expt:
     mb_size: 1
     save_every: 1
-    model: "HyperGAN" # "GAN" or "HyperGAN"
+    model: "GAN" # "GAN" or "HyperGAN"
     epochs: 100
     verbose: true # Output model summary
     graph: false # Save graph for visualisation in Tensorboard
