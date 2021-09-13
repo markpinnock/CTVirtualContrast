@@ -6,7 +6,7 @@ data:
     source: ["HQ"]
     segs: ["AC"]
     times: null
-    down_sample: 4
+    down_sample: 1
     norm_type: "minmax"
     norm_param_1: -500
     norm_param_2: 2500
@@ -25,21 +25,21 @@ expt:
     log_histograms: true # Log weights for visualisation in Tensorboard
     focal: true # Use focal loss or not
 hyperparameters:
-    img_dims: [128, 128, 12]
+    img_dims: [512, 512, 12]
     d_opt: [2.0e-4, 0.5, 0.999]
     g_opt: [2.0e-4, 0.5, 0.999]
     lambda: 100
     mu: 0.0 # Focal loss weighting (0.0 == OFF)
     ndf: 64 # Discriminator starting channels
     ngf: 64 # Generator starting channels
-    d_layers: 2
-    g_layers: 5
+    d_layers: 4
+    g_layers: 7
     Nz: 128
     stn_layers: 0 # 0 for no spatial transformer
     stn_output: 6 # 6 for 2D transforms
     stn_eta: 1.0e-4
 augmentation:
-    type: "standard" # "standard", "differentiable" or null
+    type: "differentiable" # "standard", "differentiable" or null
     flip_prob: 0.5 # Settings for standard augmentation
     rotation: 45.0
     scale: [0.8, 1.6]
