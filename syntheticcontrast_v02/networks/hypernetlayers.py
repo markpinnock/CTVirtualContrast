@@ -63,7 +63,7 @@ class HyperGANUpBlock(tf.keras.layers.Layer):
 
         # As we are using batchnorm, there is no bias term
         if self.batch_norm:
-            x = self.bn(x, training=training)
+            x = self.bn1(x, training=training)
         
         if self.dropout:
             x = self.dropout(x, training=training)

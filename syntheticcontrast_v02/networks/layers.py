@@ -49,7 +49,7 @@ class UpBlock(tf.keras.layers.Layer):
 
         self.tconv = tf.keras.layers.Conv3DTranspose(nc, (2, 2, 2), strides=tconv_strides, padding='same', activation='linear')
         if bn: self.bn1 = tf.keras.layers.BatchNormalization()
-        self.conv1 = tf.keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
+        self.conv = tf.keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
         if bn: self.bn2 = tf.keras.layers.BatchNormalization()
         # self.conv2 = keras.layers.Conv3D(nc, (3, 3, 3), strides=(1, 1, 1), padding='same', activation='linear')
         # if bn: self.bn3 = keras.layers.BatchNormalization()
@@ -59,12 +59,12 @@ class UpBlock(tf.keras.layers.Layer):
         if self.bn:
             x = tf.nn.relu(self.bn1(self.tconv(x), training))
             x = tf.keras.layers.concatenate([x, skip], axis=4)
-            x = tf.nn.relu(self.bn2(self.conv1(x), training))
+            x = tf.nn.relu(self.bn2(self.conv(x), training))
         
         else:
             x = tf.nn.relu(self.tconv(x))
             x = tf.keras.layers.concatenate([x, skip], axis=4)
-            x = tf.nn.relu(self.conv1(x))
+            x = tf.nn.relu(self.conv(x))
 
         return x
 
