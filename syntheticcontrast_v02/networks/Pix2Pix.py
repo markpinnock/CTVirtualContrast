@@ -1,352 +1,271 @@
 import numpy as np
 import tensorflow as tf
 
-from .layers import GANDownBlock, GANUpBlock
-from .hypernet import HyperNet, LayerEmbedding
-from .hypernetlayers import HyperGANDownBlock, HyperGANUpBlock
+from .models import Discriminator, Generator, HyperGenerator
+from .stn import SpatialTransformer
+from syntheticcontrast_v02.utils.augmentation import DiffAug, StdAug
+from syntheticcontrast_v02.utils.losses import (
+    minimax_D, minimax_G, L1, wasserstein_D, wasserstein_G, gradient_penalty, FocalLoss, FocalMetric)
 
 
 #-------------------------------------------------------------------------
-""" PatchGAN discriminator for Pix2pix """
+""" Wrapper for standard Pix2pix GAN """
 
-class Discriminator(tf.keras.Model):
+class Pix2Pix(tf.keras.Model):
 
-    """ Input:
-        - initialiser: e.g. keras.initializers.RandomNormal
-        - config: configuration json
-        Returns:
-        - keras.Model """
-
-    def __init__(self, initialiser, config, name=None):
+    def __init__(self, config, name="Pix2Pix"):
         super().__init__(name=name)
-    
-        # Check network and image dimensions
-        img_dims = config["img_dims"]
-        assert len(img_dims) == 3, "3D input only"
-        max_num_layers = int(np.log2(np.min([img_dims[0], img_dims[1]]) / 4))
-        max_z_downsample = int(np.floor(np.log2(img_dims[2])))
+        self.initialiser = tf.keras.initializers.RandomNormal(0, 0.02)
+        self.config = config
+        self.lambda_ = config["hyperparameters"]["lambda"]
+        self.mb_size = config["expt"]["mb_size"]
 
-        ndf = config["ndf"]
-        num_layers = config["d_layers"]
-       
-        assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum numnber of discriminator layers: {max_num_layers}"
-        self.conv_list = []
-
-        # TODO: FIX
-        # PixelGAN i.e. 1x1 receptive field
-        if num_layers == 0:
-            self.conv_list.append(
-                GANDownBlock(
-                    ndf, (1, 1, 1),
-                    (1, 1, 1),
-                    initialiser=initialiser,
-                    batch_norm=False)) 
-            
-            self.conv_list.append(
-                GANDownBlock(
-                    ndf * 2,
-                    (1, 1, 1),
-                    (1, 1, 1),
-                    initialiser=initialiser,
-                    batch_norm=True))
-
-            self.conv_list.append(tf.keras.layers.Conv3D(
-                1, (1, 1, 1), (1, 1, 1),
-                padding='same',
-                kernel_initializer=initialiser))       
-
-        # PatchGAN i.e. NxN receptive field
+        if len(config["data"]["segs"]) > 0:
+            self.d_in_ch = 3
         else:
-            batch_norm = False
+            self.d_in_ch = 2
 
-            for i in range(0, num_layers):
-                if i > 0: batch_norm = True
-                channels = tf.minimum(ndf * 2 ** i, 512)
+        self.img_dims = config["hyperparameters"]["img_dims"]
 
-                if i > max_z_downsample:
-                    strides = (2, 2, 1)
-                    kernel = (4, 4, 2)
-                else:
-                    strides = (2, 2, 2)
-                    kernel = (4, 4, 4)
-                
-                self.conv_list.append(
-                    GANDownBlock(
-                        channels,
-                        kernel,
-                        strides,
-                        initialiser=initialiser,
-                        batch_norm=batch_norm, name=f"downblock_{i}"))
+        # Set up augmentation
+        if config["augmentation"]["type"] == "standard":
+            self.Aug = StdAug(config=config)
+        elif config["augmentation"]["type"] == "differentiable":
+            self.Aug = DiffAug(config=config)
+        else:
+            self.Aug = None
+
+        # Initialise generator and discriminators
+        self.generator_init(config["hyperparameters"])
+        self.discriminator_init(config["hyperparameters"])
+
+        # Spatial transformer if necessary
+        if config["hyperparameters"]["stn_layers"] > 0:
+            self.STN = SpatialTransformer(config=config)
+        else:
+            self.STN = None
+
+    def generator_init(self, config):
+        # Check generator output dims match input
+        G_input_size = [1] + self.img_dims + [1]
+        self.Generator = Generator(self.initialiser, config, name="generator")
+        assert self.Generator.build_model(tf.zeros(G_input_size)) == G_input_size
+
+    def discriminator_init(self, config):
+        # Get discriminator patch size
+        D_input_size = [1] + self.img_dims + [self.d_in_ch]
+        self.Discriminator = Discriminator(self.initialiser, config, name="discriminator")
+        self.patch_size = self.Discriminator.build_model(tf.zeros(D_input_size))
+
+    def compile(self, g_optimiser, d_optimiser):
+        self.g_optimiser = g_optimiser
+        self.d_optimiser = d_optimiser
+
+        self.d_loss = minimax_D
+        self.g_loss = minimax_G
+        
+        if self.config["expt"]["focal"]:
+            self.L1_loss = FocalLoss(self.config["hyperparameters"]["mu"], name="FocalLoss")
+        else:
+            self.L1_loss = L1
+
+        # Set up metrics
+        self.d_metric = tf.keras.metrics.Mean(name="d_metric")
+        self.g_metric = tf.keras.metrics.Mean(name="g_metric")
+
+        if len(self.config["data"]["segs"]) > 0:
+            self.train_L1_metric = FocalMetric(name="train_L1")
+            self.val_L1_metric = FocalMetric(name="val_L1")
+
+        else:
+            self.train_L1_metric = tf.keras.metrics.Mean(name="train_L1")
+            self.val_L1_metric = tf.keras.metrics.Mean(name="val_L1")
+
+        if self.STN:
+            self.s_optimiser = tf.keras.optimizers.Adam(self.config["hyperparameters"]["stn_eta"])
+    
+    def summary(self):
+        source = tf.keras.Input(shape=self.img_dims + [1])
+        outputs = self.Generator.call(source)
+        print("===========================================================")
+        print("Generator")
+        print("===========================================================")
+        tf.keras.Model(inputs=source, outputs=outputs).summary()
+        source = tf.keras.Input(shape=self.img_dims + [1])
+        if self.STN: target = self.STN.call(source, source)
+        outputs = self.Discriminator.call(tf.concat([source] * self.d_in_ch, axis=4))
+        print("===========================================================")
+        print("Discriminator")
+        print("===========================================================")
+        tf.keras.Model(inputs=source, outputs=outputs).summary()
+    
+    def generator_step(self, g_source, g_real_target, g_seg=None):
+
+        """ Generator training """
+
+        # Get gradients from discriminator predictions of generated fake images and update weights
+        with tf.GradientTape() as g_tape:
+            if self.STN:
+                g_real_target, g_seg = self.STN(source=g_source, target=g_real_target, seg=g_seg, training=True)
+
+            g_fake_target = self.Generator(g_source)
+
+            # Calculate L1 before augmentation
+            if g_seg is not None:
+                g_L1 = self.L1_loss(g_real_target, g_fake_target, g_seg)
+            else:
+                g_L1 = self.L1_loss(g_real_target, g_fake_target)
+
+            if g_seg is not None:
+                self.train_L1_metric.update_state(g_real_target, g_fake_target, g_seg)
+            else:
+                self.train_L1_metric.update_state(g_L1)
             
-            self.conv_list.append(tf.keras.layers.Conv3D(
-                1, (4, 4, 1), (1, 1, 1),
-                padding='valid',
-                kernel_initializer=initialiser, name="output"))
+            if self.Aug:
+                imgs, g_seg = self.Aug(imgs=[g_source, g_fake_target], seg=g_seg)
+                g_source, g_fake_target = imgs
 
-    def build_model(self, x):
+            if g_seg is not None:
+                g_fake_in = tf.concat([g_source, g_fake_target, g_seg], axis=4, name="g_fake_concat")
+            else:
+                g_fake_in = tf.concat([g_source, g_fake_target], axis=4, name="g_fake_concat")
 
-        """ Build method takes tf.zeros((input_dims)) and returns
-            shape of output - all layers implicitly built and weights set to trainable """
+            g_pred_fake = self.Discriminator(g_fake_in)
+            g_loss = self.g_loss(g_pred_fake)
+            g_total_loss = g_loss + self.lambda_ * g_L1
 
-        return self(x).shape
+        if self.STN:
+            gen_grads = len(self.STN.trainable_variables)
+            g_grads = g_tape.gradient(g_total_loss, self.STN.trainable_variables + self.Generator.trainable_variables)
+            self.s_optimiser.apply_gradients(zip(g_grads[0:gen_grads], self.STN.trainable_variables))
+            self.g_optimiser.apply_gradients(zip(g_grads[gen_grads:], self.Generator.trainable_variables))
+  
+        else:
+            g_grads = g_tape.gradient(g_total_loss, self.Generator.trainable_variables)
+            self.g_optimiser.apply_gradients(zip(g_grads, self.Generator.trainable_variables))
 
-    def call(self, x, training=True):
+        # Update metric
+        self.g_metric.update_state(g_loss)
 
-        for conv in self.conv_list:
-            x = conv(x, training=training)
+    def discriminator_step(self, d_source, d_real_target, d_fake_target, d_seg=None):
 
-        return x
+        """ Discriminator training """
+
+        # Spatial transformer if required
+        if self.STN:
+            d_real_target, d_seg = self.STN(source=d_source, target=d_real_target, seg=d_seg, training=True)
+
+        # DiffAug if required
+        if self.Aug:
+            imgs, d_seg = self.Aug(imgs=[d_source, d_real_target, d_fake_target], seg=d_seg)
+            d_source, d_real_target, d_fake_target = imgs
+
+        if d_seg is not None:
+            d_fake_in = tf.concat([d_source, d_fake_target, d_seg], axis=4, name="d_fake_concat")
+            d_real_in = tf.concat([d_source, d_real_target, d_seg], axis=4, name="d_real_concat")
+        else:
+            d_fake_in = tf.concat([d_source, d_fake_target], axis=4, name="d_fake_concat")
+            d_real_in = tf.concat([d_source, d_real_target], axis=4, name="d_real_concat")
+
+        # Get gradients from discriminator predictions and update weights
+        with tf.GradientTape() as d_tape:
+            d_pred_fake = self.Discriminator(d_fake_in)
+            d_pred_real = self.Discriminator(d_real_in)
+            d_loss = self.d_loss(d_pred_real, d_pred_fake)
+        
+        d_grads = d_tape.gradient(d_loss, self.Discriminator.trainable_variables)
+        self.d_optimiser.apply_gradients(zip(d_grads, self.Discriminator.trainable_variables))
+
+        # Update metrics
+        self.d_metric.update_state(d_loss)
+    
+    @tf.function
+    def train_step(self, source, target, seg=None, source_time=None, seg_time=None):
+
+        """ Expects data in order 'source, target' or 'source, target, segmentations'"""
+
+        # Select minibatch of images and masks for generator training
+        g_source = source[0:self.mb_size, :, :, :, :]
+        g_real_target = target[0:self.mb_size, :, :, :, :]
+
+        if seg is not None:
+            g_seg = seg[0:self.mb_size, :, :, :, :]
+        else:
+            g_seg = None
+
+        # Select minibatch of real images and generate fake images for discriminator run
+        # If not enough different images for both generator and discriminator, share minibatch
+        if self.mb_size == source.shape[0]:
+            d_source = source[0:self.mb_size, :, :, :, :]
+            d_fake_target = self.Generator(d_source)
+            d_real_target = target[0:self.mb_size, :, :, :, :]
+
+            if seg is not None:
+                d_seg = seg[0:self.mb_size, :, :, :, :]
+            else:
+                d_seg = None
+
+        else:
+            d_source = source[self.mb_size:, :, :, :, :]
+            d_real_target = target[self.mb_size:, :, :, :, :]
+            d_fake_target = self.Generator(d_source)
+
+            if seg is not None:
+                d_seg = seg[self.mb_size:, :, :, :, :]
+            else:
+                d_seg = None
+        
+        self.discriminator_step(d_source, d_real_target, d_fake_target, d_seg)
+        self.generator_step(g_source, g_real_target, g_seg)
+
+
+    @tf.function
+    def test_step(self, source, target, seg=None):
+        if self.STN:
+            target, seg = self.STN(source=source, target=target, seg=seg, training=False)
+
+        g_fake = self.Generator(source)
+        g_L1 = L1(target, g_fake)
+
+        if seg is not None:
+            self.val_L1_metric.update_state(target, g_fake, seg)
+        else:
+            self.val_L1_metric.update_state(g_L1)
+    
+    def reset_train_metrics(self):
+        self.d_metric.reset_states()
+        self.g_metric.reset_states()
+        self.train_L1_metric.reset_states()
+
 
 #-------------------------------------------------------------------------
-""" Generator for Pix2pix """
+""" Wrapper for Pix2pix GAN with HyperNetwork """
 
-class Generator(tf.keras.Model):
+class HyperPix2Pix(Pix2Pix):
 
-    """ Input:
-        - initialiser e.g. keras.initializers.RandomNormal
-        - nc: number of channels in first layer
-        - num_layers: number of layers
-        - img_dims: input image size
-        Returns:
-        - keras.Model """
+    """ GAN class using HyperNetwork for generator """
 
-    def __init__(self, initialiser, config, name=None):
-        super().__init__(name=name)
+    def __init__(self, config, name="HyperGAN"):
+        super().__init__(config, name=name)
 
-        # Check network and image dimensions
-        img_dims = config["img_dims"]
-        assert len(img_dims) == 3, "3D input only"
-        max_num_layers = int(np.log2(np.min([img_dims[0], img_dims[1]])))
-        max_z_downsample = int(np.floor(np.log2(img_dims[2])))
-        ngf = config["ngf"]
-        num_layers = config["g_layers"]
-        assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum number of generator layers: {max_num_layers}"
-        self.encoder = []
+    def generator_init(self, config):
+        # Check generator output dims match input
+        G_input_size = [1] + config["img_dims"] + [1]
+        self.Generator = HyperGenerator(self.initialiser, config, name="generator")
+        assert self.Generator.build_model(tf.zeros(G_input_size)) == G_input_size
 
-        # Cache channels, strides and weights
-        cache = {"channels": [], "strides": [], "kernels": []}
-
-        for i in range(0, num_layers - 1):
-            channels = np.min([ngf * 2 ** i, 512])
-
-            if i >= max_z_downsample - 1:
-                strides = (2, 2, 1)
-                kernel = (4, 4, 2)
-            else:
-                strides = (2, 2, 2)
-                kernel = (4, 4, 4)
-
-            cache["channels"].append(channels)
-            cache["strides"].append(strides)
-            cache["kernels"].append(kernel)
-
-            self.encoder.append(
-                GANDownBlock(
-                    channels,
-                    kernel,
-                    strides,
-                    initialiser=initialiser,
-                    batch_norm=True, name=f"down_{i}"))
-
-        self.bottom_layer = GANDownBlock(
-            channels,
-            kernel,
-            strides,
-            initialiser=initialiser,
-            batch_norm=True, name="bottom")
-
-        cache["strides"].append(strides)
-        cache["kernels"].append(kernel)
-
-        cache["channels"].reverse()
-        cache["kernels"].reverse()
-        cache["strides"].reverse()
-
-        self.decoder = []
-        dropout = True
-
-        for i in range(0, num_layers - 1):
-            if i > 2: dropout = False
-            channels = cache["channels"][i]
-            strides = cache["strides"][i]
-            kernel = cache["kernels"][i]
-
-            self.decoder.append(
-                GANUpBlock(
-                    channels,
-                    kernel,
-                    strides,
-                    initialiser=initialiser,
-                    batch_norm=True,
-                    dropout=dropout, name=f"up_{i}"))
-
-        self.final_layer = tf.keras.layers.Conv3DTranspose(
-            1, (4, 4, 4), (2, 2, 2),
-            padding="SAME", activation="linear",
-            kernel_initializer=initialiser, name="output")
-
-    def build_model(self, x):
-
-        """ Build method takes tf.zeros((input_dims)) and returns
-            shape of output - all layers implicitly built and weights set to trainable """
-        
-        return self(x).shape
-
-    def call(self, x):
-        skip_layers = []
-
-        for conv in self.encoder:
-            x = conv(x, training=True)
-            skip_layers.append(x)
-        
-        x = self.bottom_layer(x, training=True)
-        x = tf.nn.relu(x)
-        skip_layers.reverse()
-
-        for skip, tconv in zip(skip_layers, self.decoder):
-            x = tconv(x, skip, training=True)
-        
-        x = self.final_layer(x, training=True)
-        
-        return x
-
-
-#-------------------------------------------------------------------------
-""" Generator for Pix2pix with HyperNetwork """
-
-class HyperGenerator(tf.keras.Model):
-
-    """ Input:
-        - initialiser e.g. keras.initializers.RandomNormal
-        - nc: number of channels in first layer
-        - num_layers: number of layers
-        - img_dims: input image size
-        Returns:
-        - keras.Model """
-
-    def __init__(self, initialiser, config, name=None):
-        super().__init__(name=name)
-
-        # Check network and image dimensions
-        img_dims = config["img_dims"]
-        assert len(img_dims) == 3, "3D input only"
-        max_num_layers = int(np.log2(np.min([img_dims[0], img_dims[1]])))
-        max_z_downsample = int(np.floor(np.log2(img_dims[2])))
-        ngf = config["ngf"]
-        num_layers = config["g_layers"]
-        assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum number of generator layers: {max_num_layers}"
-        
-        self.encoder = []
-        self.encoder_embedding = []
-
-        # Initialise HyperNet
-        self.Hypernet = HyperNet(Nz=config["Nz"], f=4, d=2, in_dims=ngf, out_dims=ngf, name="HyperNet")
-
-        # Cache channels, strides and weights
-        cache = {"channels": [], "strides": [], "kernels": []}
-
-        cache["channels"].append(ngf)
-        cache["strides"].append((2, 2, 2))
-        cache["kernels"].append((4, 4, 4))
-
-        # First layer is standard non-HyperNet conv layer
-        self.first_layer = GANDownBlock(
-            ngf, (4, 4, 4), (2, 2, 2),
-            initialiser=initialiser, batch_norm=True, name="down_0")
-
-        for i in range(1, num_layers - 1):
-            channels = np.min([ngf * 2 ** i, 512])
-
-            if i >= max_z_downsample - 1:
-                strides = (2, 2, 1)
-                kernel = (4, 4, 2)
-            else:
-                strides = (2, 2, 2)
-                kernel = (4, 4, 4)
-
-            cache["channels"].append(channels)
-            cache["strides"].append(strides)
-            cache["kernels"].append(kernel)
-
-            self.encoder.append(HyperGANDownBlock(strides, batch_norm=True, name=f"down_{i}"))
-            self.encoder_embedding.append(
-                LayerEmbedding(
-                    Nz=config["Nz"], depth_kernels=kernel[-1] // 2, in_kernels=cache["channels"][-2] // ngf, out_kernels=cache["channels"][-1] // ngf, name=f"z_down_{i}"))
-
-        self.bottom_layer = HyperGANDownBlock(strides, batch_norm=True, name="bottom")
-        self.bottom_embedding = LayerEmbedding(
-            Nz=config["Nz"], depth_kernels=cache["kernels"][-1][-1] // 2, in_kernels=cache["channels"][-1] // ngf, out_kernels=cache["channels"][-1] // ngf, name="z_bottom")
-
-        cache["strides"].append(strides)
-        cache["kernels"].append(kernel)
-
-        cache["channels"].reverse()
-        cache["kernels"].reverse()
-        cache["strides"].reverse()
-
-        self.decoder = []
-        self.decoder_embedding_1 = []
-        self.decoder_embedding_2 = []
-        dropout = True
-
-        self.decoder.append(HyperGANUpBlock(strides, batch_norm=True, dropout=dropout, name="up_0"))
-        self.decoder_embedding_1.append(
-            LayerEmbedding(
-                Nz=config["Nz"], depth_kernels=cache["kernels"][0][-1] // 2, in_kernels=cache["channels"][0] // ngf, out_kernels=cache["channels"][0] // ngf, name="z_up_0"))
-
-        self.decoder_embedding_2.append(
-            LayerEmbedding(
-                Nz=config["Nz"], depth_kernels=cache["kernels"][0][-1] // 2, in_kernels=cache["channels"][0] // ngf * 2, out_kernels=cache["channels"][0] // ngf, name="z_up_0"))
-
-        for i in range(1, num_layers - 1):
-            if i > 2: dropout = False
-            strides = cache["strides"][i]
-            kernel = cache["kernels"][i]
-            
-            self.decoder.append(HyperGANUpBlock(strides, batch_norm=True, dropout=dropout, name=f"up_{i}"))
-            self.decoder_embedding_1.append(
-                LayerEmbedding(
-                    Nz=config["Nz"], depth_kernels=kernel[-1] // 2, in_kernels=cache["channels"][i - 1] // ngf, out_kernels=cache["channels"][i] // ngf, name=f"z_up_{i}"))
-
-            self.decoder_embedding_2.append(
-                LayerEmbedding(
-                    Nz=config["Nz"], depth_kernels=kernel[-1] // 2, in_kernels=cache["channels"][i] // ngf * 2, out_kernels=cache["channels"][i] // ngf, name=f"z_up_{i}"))
-
-        # Last layer is standard non-HyperNet conv layer
-        self.final_layer = tf.keras.layers.Conv3DTranspose(
-            1, (4, 4, 4), (2, 2, 2),
-            padding="SAME", activation="linear",
-            kernel_initializer=initialiser, name="output")
-
-    def build_model(self, x):
-
-        """ Build method takes tf.zeros((input_dims)) and returns
-            shape of output - all layers implicitly built and weights set to trainable """
-        
-        return self(x).shape
-
-    def call(self, x):
-        skip_layers = []
-
-        x = self.first_layer(x, training=True)
-        skip_layers.append(x)
-
-        for conv, embedding in zip(self.encoder, self.encoder_embedding):
-            w = embedding(self.Hypernet)
-            x = conv(x, w, training=True)
-            skip_layers.append(x)
-        
-        w = self.bottom_embedding(self.Hypernet)
-        x = self.bottom_layer(x, w, training=True)
-        x = tf.nn.relu(x)
-
-        skip_layers.reverse()
-
-        for skip, conv, embedding_1, embedding_2 in zip(skip_layers, self.decoder, self.decoder_embedding_1, self.decoder_embedding_2):
-            w1 = embedding_1(self.Hypernet)
-            w2 = embedding_2(self.Hypernet)
-            x = conv(x, w1, w2, skip, training=True)
-
-        x = self.final_layer(x)
-
-        return x
+    def summary(self):
+        source = tf.keras.Input(shape=self.img_dims + [1])
+        outputs = self.Generator.call(source)
+        print("===========================================================")
+        print(f"Generator: {np.sum([np.prod(v.shape) for v in self.Generator.trainable_variables])}")
+        print("===========================================================")
+        tf.keras.Model(inputs=source, outputs=outputs).summary()
+        source = tf.keras.Input(shape=self.img_dims + [1])
+        if self.STN: target = self.STN.call(source, source)
+        outputs = self.Discriminator.call(tf.concat([source] * self.d_in_ch, axis=4))
+        print("===========================================================")
+        vs = 0
+        print(f"Discriminator: {np.sum([np.prod(v.shape) for v in self.Discriminator.trainable_variables])}")
+        print("===========================================================")
+        tf.keras.Model(inputs=source, outputs=outputs).summary()

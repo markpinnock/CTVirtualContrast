@@ -4,8 +4,9 @@ import os
 import tensorflow as tf
 import yaml
 
-from syntheticcontrast_v02.trainingtuningclasses.trainingclasses import TrainingGAN
-from syntheticcontrast_v02.networks.model import GAN, HyperGAN
+from syntheticcontrast_v02.trainingtuningclasses.trainingclasses import TrainingPix2Pix, TrainingCycleGAN
+from syntheticcontrast_v02.networks.pix2pix import Pix2Pix, HyperPix2Pix
+from syntheticcontrast_v02.networks.cyclegan import CycleGAN
 from syntheticcontrast_v02.utils.dataloader import PairedLoader, UnpairedLoader
 
 
@@ -50,17 +51,31 @@ def train(CONFIG):
         ).batch(CONFIG["expt"]["mb_size"] * 2)
 
     # Compile model
-    if CONFIG["expt"]["model"] == "GAN":
-        Model = GAN(config=CONFIG)
-    elif CONFIG["expt"]["model"] == "HyperGAN":
-        Model = HyperGAN(config=CONFIG)
+    if CONFIG["expt"]["model"] == "Pix2Pix":
+        Model = Pix2Pix(config=CONFIG)
+        Model.compile(
+            g_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt"),
+            d_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt")
+            )
+
+    elif CONFIG["expt"]["model"] == "HyperPix2Pix":
+        Model = HyperPix2Pix(config=CONFIG)
+        Model.compile(
+            g_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt"),
+            d_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt")
+            )
+
+    elif CONFIG["expt"]["model"] == "CycleGAN":
+        Model = CycleGAN(config=CONFIG)
+        Model.compile(
+            g_forward_opt=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_foward_opt"),
+            g_backward_opt=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_backward_opt"),
+            d_forward_opt=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["d_opt"], name="d_forward_opt"),
+            d_backward_opt=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["d_opt"], name="d_backward_opt")
+            )
+
     else:
         raise ValueError
-
-    d_opt = tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["d_opt"], name="d_opt")
-    g_opt = tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt")
-
-    Model.compile(g_optimiser=g_opt, d_optimiser=d_opt)
 
     if CONFIG["expt"]["verbose"]:
         Model.summary()
@@ -81,13 +96,23 @@ def train(CONFIG):
         with writer.as_default():
             tf.summary.trace_export("graph", step=0)
 
-    TrainingLoop = TrainingGAN(
-        Model=Model,
-        dataset=(train_ds, val_ds),
-        train_generator=TrainGenerator,
-        val_generator=ValGenerator,
-        config=CONFIG
-        )
+    if CONFIG["expt"]["model"] == "Pix2Pix" or CONFIG["expt"]["model"] == "HyperPix2Pix":
+        TrainingLoop = TrainingPix2Pix(
+            Model=Model,
+            dataset=(train_ds, val_ds),
+            train_generator=TrainGenerator,
+            val_generator=ValGenerator,
+            config=CONFIG
+            )
+
+    else:
+        TrainingLoop = TrainingCycleGAN(
+            Model=Model,
+            dataset=(train_ds, val_ds),
+            train_generator=TrainGenerator,
+            val_generator=ValGenerator,
+            config=CONFIG
+            )
 
     # Run training loop
     TrainingLoop.train()
