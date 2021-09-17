@@ -182,7 +182,7 @@ class Generator(tf.keras.Model):
 
         self.final_layer = tf.keras.layers.Conv3DTranspose(
             1, (4, 4, 4), (2, 2, 2),
-            padding="SAME", activation="linear",
+            padding="same", activation="linear",
             kernel_initializer=initialiser, name="output")
 
     def build_model(self, x):

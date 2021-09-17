@@ -10,7 +10,7 @@ data:
     norm_type: "minmax"
     norm_param_1: -500
     norm_param_2: 2500
-    data_type: "unpaired"
+    data_type: "paired"
     num_examples: 4
     cv_folds: 6
     fold: 5
@@ -18,24 +18,24 @@ expt:
     mb_size: 1
     save_every: 1
     model: "CycleGAN" # "Pix2Pix", "HyperPix2Pix" or "CycleGAN"
-    epochs: 5
+    epochs: 50
     verbose: true # Output model summary
     graph: false # Save graph for visualisation in Tensorboard
     log_scalars: true # Log losses for visualisation in Tensorboard
-    log_histograms: false # Log weights for visualisation in Tensorboard
+    log_histograms: true # Log weights for visualisation in Tensorboard
     focal: false # Use focal loss or not
 hyperparameters:
     img_dims: [128, 128, 12]
     d_opt: [2.0e-4, 0.5, 0.999]
     g_opt: [2.0e-4, 0.5, 0.999]
-    lambda: 100
+    lambda: 10
     mu: 0.0 # Focal loss weighting (0.0 == OFF)
     ndf: 64 # Discriminator starting channels
     ngf: 64 # Generator starting channels
     d_layers: 3
     g_layers: 5
 augmentation:
-    type: "differentiable" # "standard", "differentiable" or null
+    type: differentiable # "standard", "differentiable" or null
     flip_prob: 0.5 # Settings for standard augmentation
     rotation: 45.0
     scale: [0.8, 1.6]

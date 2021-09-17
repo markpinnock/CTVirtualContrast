@@ -9,7 +9,6 @@ class HyperGANDownBlock(tf.keras.layers.Layer):
     """ Input:
         - nc: number of feature maps
         - strides: tuple of strides e.g. (2, 2, 1)
-        - initialiser: e.g. keras.initializers.RandomNormal
         - batch_norm: True/False """
 
     def __init__(self, strides, batch_norm=True, name=None):
@@ -38,7 +37,6 @@ class HyperGANUpBlock(tf.keras.layers.Layer):
     """ Input:
         - nc: number of feature maps
         - strides: tuple of strides e.g. (2, 2, 1)
-        - initialiser: e.g. keras.initializers.RandomNormal
         - batch_norm: True/False
         - dropout: True/False """
 
@@ -51,6 +49,7 @@ class HyperGANUpBlock(tf.keras.layers.Layer):
         if batch_norm:
             self.bn1 = tf.keras.layers.BatchNormalization(name="batchnorm1")
             self.bn2 = tf.keras.layers.BatchNormalization(name="batchnorm2")
+
         if dropout:
             self.dropout = tf.keras.layers.Dropout(0.5, name="dropout")
         

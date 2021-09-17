@@ -14,7 +14,7 @@ class CycleGAN(tf.keras.Model):
 
     def __init__(self, config, name="CycleGAN"):
         super().__init__(name=name)
-        self.initialiser = tf.keras.initializers.RandomNormal(0, 0.02)
+        self.initialiser = tf.keras.initializers.HeNormal()
         self.config = config
         self.lambda_ = config["hyperparameters"]["lambda"]
         self.mb_size = config["expt"]["mb_size"]
@@ -91,12 +91,12 @@ class CycleGAN(tf.keras.Model):
             cycled_source = self.G_backward(fake_target)
             fake_source = self.G_backward(real_target)
             cycled_target = self.G_forward(fake_source)
-
-            # TODO: DO WE NEED IDENTITY LOSS?
-            # TODO: DO WE NEED COND DISC?
+            same_target = self.G_forward(real_target)
+            same_source = self.G_backward(real_source)
 
             # Calculate L1 cycle consistency loss before augmentation
             cycle_loss = self.L1_loss(real_source, cycled_source) + self.L1_loss(real_target, cycled_target)
+            identity_loss = self.L1_loss(real_source, same_source) + self.L1_loss(real_target, same_target)
             self.train_L1_metric.update_state(cycle_loss)
             
             if self.Aug:
@@ -105,11 +105,14 @@ class CycleGAN(tf.keras.Model):
 
             fake_target_pred = self.D_forward(fake_target)
             fake_source_pred = self.D_backward(fake_source)
-            g_forward_loss = self.g_loss(fake_target_pred) + self.lambda_* cycle_loss
-            g_backward_loss = self.g_loss(fake_source_pred) + self.lambda_ * cycle_loss
 
-        g_forward_grads = g_tape.gradient(g_forward_loss, self.G_forward.trainable_variables)
-        g_backward_grads = g_tape.gradient(g_backward_loss, self.G_backward.trainable_variables)
+            g_forward_loss = self.g_loss(fake_target_pred)
+            g_backward_loss = self.g_loss(fake_source_pred)
+            g_forward_total_loss = g_forward_loss + self.lambda_ * cycle_loss + self.lambda_ / 2 * identity_loss
+            g_backward_total_loss = g_backward_loss + self.lambda_ * cycle_loss + self.lambda_ / 2 * identity_loss
+
+        g_forward_grads = g_tape.gradient(g_forward_total_loss, self.G_forward.trainable_variables)
+        g_backward_grads = g_tape.gradient(g_backward_total_loss, self.G_backward.trainable_variables)
         self.g_forward_opt.apply_gradients(zip(g_forward_grads, self.G_forward.trainable_variables))
         self.g_backward_opt.apply_gradients(zip(g_backward_grads, self.G_backward.trainable_variables))
 
@@ -123,8 +126,10 @@ class CycleGAN(tf.keras.Model):
 
         # DiffAug if required
         if self.Aug:
-            (real_source, fake_source), _ = self.Aug(imgs=[real_source, fake_source], seg=None)
-            (real_target, fake_target), _ = self.Aug(imgs=[real_target, fake_target], seg=None)
+            imgs, _ = self.Aug(imgs=[real_source, fake_source], seg=None)
+            real_source, fake_source = imgs
+            imgs, _ = self.Aug(imgs=[real_target, fake_target], seg=None)
+            real_target, fake_target = imgs
 
         D_forward_in = tf.concat([real_target, fake_target], axis=0, name="d_forward_concat")
         D_backward_in = tf.concat([real_source, fake_source], axis=0, name="d_backward_concat")
@@ -133,8 +138,8 @@ class CycleGAN(tf.keras.Model):
         with tf.GradientTape(persistent=True) as d_tape:
             d_forward_pred = self.D_forward(D_forward_in)
             d_backward_pred = self.D_backward(D_backward_in)
-            d_forward_loss = self.d_loss(d_forward_pred[0, ...], d_forward_pred[0, ...])
-            d_backward_loss = self.d_loss(d_backward_pred[0, ...], d_backward_pred[0, ...])
+            d_forward_loss = self.d_loss(d_forward_pred[0, ...], d_forward_pred[1, ...])
+            d_backward_loss = self.d_loss(d_backward_pred[0, ...], d_backward_pred[1, ...])
         
         d_forward_grads = d_tape.gradient(d_forward_loss, self.D_forward.trainable_variables)
         d_backward_grads = d_tape.gradient(d_backward_loss, self.D_backward.trainable_variables)
@@ -170,7 +175,6 @@ class CycleGAN(tf.keras.Model):
         
         self.discriminator_step(d_real_source, d_real_target, d_fake_source, d_fake_target)
         self.generator_step(g_real_source, g_real_target)
-
 
     @tf.function
     def test_step(self, source, target, seg=None):

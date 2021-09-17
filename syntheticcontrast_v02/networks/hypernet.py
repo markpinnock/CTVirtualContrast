@@ -24,8 +24,9 @@ class HyperNet(tf.keras.layers.Layer):
         self.d = d
         self.in_dims = in_dims
         self.out_dims = out_dims
-        self.init = tf.keras.initializers.TruncatedNormal(0, 1) # Different to modulo 2 technique used in github repo
-    
+        # self.init = tf.keras.initializers.TruncatedNormal(0, 1) # Different to modulo 2 technique used in github repo
+        self.init = tf.keras.initializers.GlorotNormal()
+
     def build(self, input_shape=None):
         # Instead of outputting i matrices using W and b for each i as in paper, combine into one op
         self.Wi = self.add_weight(name='Wi', shape=[self.Nz, self.Nz * self.in_dims], initializer=self.init, trainable=True)
@@ -63,7 +64,7 @@ class LayerEmbedding(tf.keras.layers.Layer):
         self.depth_kernels = depth_kernels
         self.in_kernels = in_kernels
         self.out_kernels = out_kernels
-        self.init = tf.keras.initializers.TruncatedNormal(0, 1) # Different to modulo 2 technique used in github repo
+        self.init = tf.keras.initializers.TruncatedNormal(0, 0.01) # Different to modulo 2 technique used in github repo
 
     def build(self, input_shape):
         self.z = []

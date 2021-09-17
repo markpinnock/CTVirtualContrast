@@ -124,6 +124,7 @@ class GANUpBlock(tf.keras.layers.Layer):
         if batch_norm:
             self.bn1 = tf.keras.layers.BatchNormalization(name="batchnorm1")
             self.bn2 = tf.keras.layers.BatchNormalization(name="batchnorm2")
+
         if dropout:
             self.dropout1 = tf.keras.layers.Dropout(0.5, name="dropout1")
             self.dropout2 = tf.keras.layers.Dropout(0.5, name="dropout2")

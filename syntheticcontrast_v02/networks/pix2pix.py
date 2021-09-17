@@ -15,7 +15,7 @@ class Pix2Pix(tf.keras.Model):
 
     def __init__(self, config, name="Pix2Pix"):
         super().__init__(name=name)
-        self.initialiser = tf.keras.initializers.RandomNormal(0, 0.02)
+        self.initialiser = tf.keras.initializers.HeNormal()
         self.config = config
         self.lambda_ = config["hyperparameters"]["lambda"]
         self.mb_size = config["expt"]["mb_size"]
@@ -99,39 +99,39 @@ class Pix2Pix(tf.keras.Model):
         print("===========================================================")
         tf.keras.Model(inputs=source, outputs=outputs).summary()
     
-    def generator_step(self, g_source, g_real_target, g_seg=None):
+    def generator_step(self, real_source, real_target, seg=None):
 
         """ Generator training """
 
         # Get gradients from discriminator predictions of generated fake images and update weights
         with tf.GradientTape() as g_tape:
             if self.STN:
-                g_real_target, g_seg = self.STN(source=g_source, target=g_real_target, seg=g_seg, training=True)
+                real_target, seg = self.STN(source=real_source, target=real_target, seg=seg, training=True)
 
-            g_fake_target = self.Generator(g_source)
+            fake_target = self.Generator(real_source)
 
             # Calculate L1 before augmentation
-            if g_seg is not None:
-                g_L1 = self.L1_loss(g_real_target, g_fake_target, g_seg)
+            if seg is not None:
+                g_L1 = self.L1_loss(real_target, fake_target, seg)
             else:
-                g_L1 = self.L1_loss(g_real_target, g_fake_target)
+                g_L1 = self.L1_loss(real_target, fake_target)
 
-            if g_seg is not None:
-                self.train_L1_metric.update_state(g_real_target, g_fake_target, g_seg)
+            if seg is not None:
+                self.train_L1_metric.update_state(real_target, fake_target, seg)
             else:
                 self.train_L1_metric.update_state(g_L1)
             
             if self.Aug:
-                imgs, g_seg = self.Aug(imgs=[g_source, g_fake_target], seg=g_seg)
-                g_source, g_fake_target = imgs
+                imgs, seg = self.Aug(imgs=[real_source, fake_target], seg=seg)
+                real_source, fake_target = imgs
 
-            if g_seg is not None:
-                g_fake_in = tf.concat([g_source, g_fake_target, g_seg], axis=4, name="g_fake_concat")
+            if seg is not None:
+                fake_in = tf.concat([real_source, fake_target, seg], axis=4, name="g_fake_concat")
             else:
-                g_fake_in = tf.concat([g_source, g_fake_target], axis=4, name="g_fake_concat")
+                fake_in = tf.concat([real_source, fake_target], axis=4, name="g_fake_concat")
 
-            g_pred_fake = self.Discriminator(g_fake_in)
-            g_loss = self.g_loss(g_pred_fake)
+            fake_pred = self.Discriminator(fake_in)
+            g_loss = self.g_loss(fake_pred)
             g_total_loss = g_loss + self.lambda_ * g_L1
 
         if self.STN:
@@ -147,31 +147,31 @@ class Pix2Pix(tf.keras.Model):
         # Update metric
         self.g_metric.update_state(g_loss)
 
-    def discriminator_step(self, d_source, d_real_target, d_fake_target, d_seg=None):
+    def discriminator_step(self, real_source, real_target, fake_target, seg=None):
 
         """ Discriminator training """
 
         # Spatial transformer if required
         if self.STN:
-            d_real_target, d_seg = self.STN(source=d_source, target=d_real_target, seg=d_seg, training=True)
+            real_target, seg = self.STN(source=real_source, target=real_target, seg=seg, training=True)
 
         # DiffAug if required
         if self.Aug:
-            imgs, d_seg = self.Aug(imgs=[d_source, d_real_target, d_fake_target], seg=d_seg)
-            d_source, d_real_target, d_fake_target = imgs
+            imgs, seg = self.Aug(imgs=[real_source, real_target, fake_target], seg=seg)
+            real_source, real_target, fake_target = imgs
 
-        if d_seg is not None:
-            d_fake_in = tf.concat([d_source, d_fake_target, d_seg], axis=4, name="d_fake_concat")
-            d_real_in = tf.concat([d_source, d_real_target, d_seg], axis=4, name="d_real_concat")
+        if seg is not None:
+            fake_in = tf.concat([real_source, fake_target, seg], axis=4, name="d_fake_concat")
+            real_in = tf.concat([real_source, real_target, seg], axis=4, name="d_real_concat")
         else:
-            d_fake_in = tf.concat([d_source, d_fake_target], axis=4, name="d_fake_concat")
-            d_real_in = tf.concat([d_source, d_real_target], axis=4, name="d_real_concat")
+            fake_in = tf.concat([real_source, fake_target], axis=4, name="d_fake_concat")
+            real_in = tf.concat([real_source, real_target], axis=4, name="d_real_concat")
 
         # Get gradients from discriminator predictions and update weights
         with tf.GradientTape() as d_tape:
-            d_pred_fake = self.Discriminator(d_fake_in)
-            d_pred_real = self.Discriminator(d_real_in)
-            d_loss = self.d_loss(d_pred_real, d_pred_fake)
+            fake_pred = self.Discriminator(fake_in)
+            real_pred = self.Discriminator(real_in)
+            d_loss = self.d_loss(real_pred, fake_pred)
         
         d_grads = d_tape.gradient(d_loss, self.Discriminator.trainable_variables)
         self.d_optimiser.apply_gradients(zip(d_grads, self.Discriminator.trainable_variables))
