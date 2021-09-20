@@ -147,10 +147,26 @@ class TrainingPix2Pix:
 
         data = data_generator.example_images()
 
-        if len(data) == 2:
-            source, target = data
+        if len(self.config["data"]["segs"]) > 0:
+            if "source_times" in self.config["hyperparameters"]["g_input"] or "target_times" in self.config["hyperparameters"]["g_input"]:
+                # TODO: MOVE SOMEWHERE ELSE
+                source, target, seg, source_time, target_time = data
+                source_times_ch = np.tile(np.reshape(source_time, [-1, 1, 1, 1, 1]), [1] + self.config["hyperparameters"]["img_dims"] + [1])
+                target_times_ch = np.tile(np.reshape(target_time, [-1, 1, 1, 1, 1]), [1] + self.config["hyperparameters"]["img_dims"] + [1])
+                g_in = np.concatenate([source, source_times_ch, target_times_ch], axis=4)
+
+            else:
+                g_in, target, seg = data
+
         else:
-            source, target, seg = data
+            if "source_times" in self.config["hyperparameters"]["g_input"] or "target_times" in self.config["hyperparameters"]["g_input"]:
+                source, target, source_time, target_time = data
+                source_times_ch = np.tile(np.reshape(source_time, [-1, 1, 1, 1, 1]), [1] + self.config["hyperparameters"]["img_dims"] + [1])
+                target_times_ch = np.tile(np.reshape(target_time, [-1, 1, 1, 1, 1]), [1] + self.config["hyperparameters"]["img_dims"] + [1])
+                g_in = np.concatenate([source, source_times_ch, target_times_ch], axis=4)
+
+            else:
+                g_in, target = data
 
         # Spatial transformer if necessary
         if self.Model.STN is not None and len(data) == 2:
@@ -160,7 +176,10 @@ class TrainingPix2Pix:
         else:
             pass
 
-        pred = self.Model.Generator(source, training=False).numpy()
+        if "source_times" in self.config["hyperparameters"]["g_input"] or "target_times" in self.config["hyperparameters"]["g_input"]:
+            pred = self.Model.Generator(g_in).numpy()
+        else:
+            pred = self.Model.Generator(g_in).numpy()
 
         source = data_generator.un_normalise(source)
         target = data_generator.un_normalise(target)

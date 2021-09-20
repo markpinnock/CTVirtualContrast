@@ -13,12 +13,12 @@ import tensorflow.keras as keras
 def minimax_D(real_output, fake_output):
     real_loss = keras.losses.binary_crossentropy(tf.ones_like(real_output), real_output, from_logits=True)
     fake_loss = keras.losses.binary_crossentropy(tf.zeros_like(fake_output), fake_output, from_logits=True)
-    return 0.5 * (real_loss + fake_loss)
+    return 0.5 * tf.reduce_mean(real_loss + fake_loss)
 
 @tf.function
 def minimax_G(fake_output):
     fake_loss = keras.losses.binary_crossentropy(tf.ones_like(fake_output), fake_output, from_logits=True)
-    return fake_loss
+    return tf.reduce_mean(fake_loss)
 
 
 #-------------------------------------------------------------------------

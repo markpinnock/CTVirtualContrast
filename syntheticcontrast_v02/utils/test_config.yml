@@ -1,17 +1,17 @@
 data:
     data_path: "D:/ProjectImages/SyntheticContrast"
-    target: ["AC"]
+    target: ["AC", "VC"]
     source: ["HQ"]
     segs: ["AC"]
-    times: null
-    down_sample: 1
+    times: "times_norm.json"
+    down_sample: 4
     norm_type: "minmax"
     norm_param_1: -500
     norm_param_2: 2500
     data_type: "unpaired"
     num_examples: 4
-    cv_folds: 6
-    fold: 5
+    cv_folds: 3
+    fold: 2
 hyperparameters:
     img_dims: [512, 512, 12]
     stn_layers: 0 # 0 for no spatial transformer

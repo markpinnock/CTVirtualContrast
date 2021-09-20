@@ -38,17 +38,20 @@ def train(CONFIG):
 
     if len(CONFIG["data"]["segs"]) > 0:
         output_types += ["float32"]
+    
+    if CONFIG["data"]["times"] is not None:
+        output_types += ["float32", "float32"]
 
     # Create dataloader (one mb for generator, one for discriminator)
     train_ds = tf.data.Dataset.from_generator(
         generator=TrainGenerator.data_generator,
         output_types=tuple(output_types)
-        ).batch(CONFIG["expt"]["mb_size"] * 2)
+        ).batch(CONFIG["expt"]["mb_size"])
 
     val_ds = tf.data.Dataset.from_generator(
         generator=ValGenerator.data_generator,
         output_types=tuple(output_types)
-        ).batch(CONFIG["expt"]["mb_size"] * 2)
+        ).batch(CONFIG["expt"]["mb_size"])
 
     # Compile model
     if CONFIG["expt"]["model"] == "Pix2Pix":
@@ -75,7 +78,7 @@ def train(CONFIG):
             )
 
     else:
-        raise ValueError
+        raise ValueError(f"Invalid model type: {CONFIG['expt']['model']}")
 
     if CONFIG["expt"]["verbose"]:
         Model.summary()

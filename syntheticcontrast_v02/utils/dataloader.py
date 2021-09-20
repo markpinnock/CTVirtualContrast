@@ -41,10 +41,16 @@ class BaseImgLoader(ABC):
 
     def example_images(self):
         if len(self._ex_segs) > 0:
-            return self._normalise(self._ex_sources), self._normalise(self._ex_targets), self._ex_segs
+            if self._json is not None:
+                return self._normalise(self._ex_sources), self._normalise(self._ex_targets), self._ex_segs, self._ex_source_times, self._ex_target_times
+            else:
+                return self._normalise(self._ex_sources), self._normalise(self._ex_targets), self._ex_segs
 
         else:
-            return self._normalise(self._ex_sources), self._normalise(self._ex_targets)
+            if self._json is not None:
+                return self._normalise(self._ex_sources), self._normalise(self._ex_targets), self._ex_source_times, self._ex_target_times
+            else:
+                return self._normalise(self._ex_sources), self._normalise(self._ex_targets)
     
     def train_val_split(self, seed: int = 5) -> None:
         # Get unique subject IDs for subject-level train/val split
@@ -116,20 +122,28 @@ class BaseImgLoader(ABC):
             self._ex_sources = np.stack([np.load(f"{self._img_paths[img[6:8]]}/{img}") for img in ex_sources_list], axis=0)
             self._ex_targets = np.stack([np.load(f"{self._img_paths[img[6:8]]}/{img}") for img in ex_targets_list], axis=0)
 
-        self._ex_sources = self._ex_sources[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
-        self._ex_targets = self._ex_targets[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
+        self._ex_sources = self._ex_sources[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
+        self._ex_targets = self._ex_targets[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
 
         if len(self.config["segs"]) > 0 and len(self.sub_folders) == 0:
             candidate_segs = [glob.glob(f"{self._seg_paths}/{img[0:6]}AC*{img[-8:]}")[0] for img in ex_targets_list]
             self._ex_segs = np.stack([np.load(seg) for seg in candidate_segs], axis=0)
-            self._ex_segs = self._ex_segs[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
+            self._ex_segs = self._ex_segs[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
 
         elif len(self.config["segs"]) > 0 and len(self.sub_folders) > 0:
             self._ex_segs = np.stack([np.load(f"{self._seg_paths[img[6:8]]}/{img}") for img in ex_targets_list], axis=0)
-            self._ex_segs = self._ex_segs[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype(np.float32)
+            self._ex_segs = self._ex_segs[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
 
         else:
             self._ex_segs = []
+
+        if self._json is not None:
+            self._ex_source_times = np.stack([self._json[name[:-8] + ".nrrd"] for name in ex_sources_list], axis=0).astype("float32")
+            self._ex_target_times = np.stack([self._json[name[:-8] + ".nrrd"] for name in ex_targets_list], axis=0).astype("float32")
+
+        else:
+            self._ex_source_times = []
+            self._ex_target_times = []
 
         np.random.seed()
         
@@ -413,49 +427,63 @@ class UnpairedLoader(BaseImgLoader):
 #----------------------------------------------------------------------------------------------------------------------------------------------------
  
 if __name__ == "__main__":
+    import yaml
 
     """ Routine for visually testing dataloader """
 
-    FILE_PATH = "D:/ProjectImages/SyntheticContrast"
-    segs = ["AC"]
-    TestLoader = UnpairedLoader({"data_path": FILE_PATH, "target": ["AC", "VC"], "source": ["HQ"], "segs": segs, "times": "times.json", "down_samp": 4, "num_examples": 4, "cv_folds": 3, "fold": 2}, dataset_type="training")
-    TestLoader.set_normalisation(norm_type="minmax", param_1=-500, param_2=2500)
+    test_config = yaml.load(open("syntheticcontrast_v02/utils/test_config.yml", 'r'), Loader=yaml.FullLoader)
+
+    TestLoader = UnpairedLoader(config=test_config["data"], dataset_type="training")
+    _, _ = TestLoader.set_normalisation()
 
     output_types = ["float32", "float32"]
 
-    if len(segs) > 0:
-        output_types += ["float8"]
+    if len(test_config["data"]["segs"]) > 0:
+        output_types += ["float32"]
     
-    train_ds = tf.data.Dataset.from_generator(TestLoader.data_generator, output_types=output_types)
+    if test_config["data"]["times"] is not None:
+        output_types += ["float32", "float32"]
+    
+    train_ds = tf.data.Dataset.from_generator(TestLoader.data_generator, output_types=tuple(output_types))
 
-    for data in train_ds.batch(4).take(2):
-        if len(segs) > 0:
-            source, source_time, target, target_time, seg = data
+    for data in train_ds.batch(2).take(2):
+        if len(test_config["data"]["segs"]) > 0:
+            source, target, seg, source_time, target_time = data
         else:
-            source, source_time, target, target_time = data
-        
+            source, target, source_time, target_time = data
+        print(source_time.numpy(), target_time.numpy())
         source = TestLoader.un_normalise(source)
         target = TestLoader.un_normalise(target)
 
         plt.subplot(3, 2, 1)
         plt.imshow(source[0, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
         plt.axis("off")
-        plt.title(source_time[0].numpy())
+
+        if test_config["data"]["times"] is not None:
+            plt.title(source_time[0].numpy())
+
         plt.subplot(3, 2, 2)
         plt.imshow(source[1, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
         plt.axis("off")
-        plt.title(source_time[1].numpy())
+
+        if test_config["data"]["times"] is not None:
+            plt.title(source_time[1].numpy())
 
         plt.subplot(3, 2, 3)
         plt.imshow(target[0, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
         plt.axis("off")
-        plt.title(target_time[0].numpy())
+
+        if test_config["data"]["times"] is not None:
+            plt.title(target_time[0].numpy())
+
         plt.subplot(3, 2, 4)
         plt.imshow(target[1, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
         plt.axis("off")
-        plt.title(target_time[1].numpy())
 
-        if len(segs) > 0:
+        if test_config["data"]["times"] is not None:
+            plt.title(target_time[1].numpy())
+
+        if len(test_config["data"]["segs"]) > 0:
             plt.subplot(3, 2, 5)
             plt.imshow(seg[0, :, :, 0, 0])
             plt.axis("off")
@@ -465,11 +493,16 @@ if __name__ == "__main__":
 
         plt.show()
 
-    if len(segs) > 0:
-        source, target, seg = TestLoader.example_images()
-
+    if len(test_config["data"]["segs"]) > 0:
+        if test_config["data"]["times"] is not None:
+            source, target, seg, source_time, target_time = TestLoader.example_images()
+        else:
+            source, target, seg = TestLoader.example_images()
     else:
-        source, target = TestLoader.example_images()
+        if test_config["data"]["times"] is not None:
+            source, target, source_time, target_time = TestLoader.example_images()
+        else:
+            source, target = TestLoader.example_images()
 
     source = TestLoader.un_normalise(source)
     target = TestLoader.un_normalise(target)
@@ -479,10 +512,17 @@ if __name__ == "__main__":
     for i in range(target.shape[0]):
         axs[i, 0].imshow(source[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
         axs[i, 0].axis("off")
+
+        if test_config["data"]["times"] is not None:
+            axs[i, 0].set_title(source_time[i])
+
         axs[i, 1].imshow(target[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
         axs[i, 1].axis("off")
 
-        if len(segs) > 0:
+        if test_config["data"]["times"] is not None:
+            axs[i, 1].set_title(target_time[i])
+
+        if len(test_config["data"]["segs"]) > 0:
             axs[i, 2].imshow(seg[i, :, :, 11, 0])
             axs[i, 2].axis("off")
     
