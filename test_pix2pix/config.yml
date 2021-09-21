@@ -1,12 +1,13 @@
 paths:
     cuda_path: "/usr/local/cuda/lib64"
 data:
-    data_path: "D:/ProjectImages/SyntheticContrast"
+    data_path: "D:/ProjectImages/SyntheticContrastTest"
     target: ["AC", "VC"]
     source: ["HQ"]
     segs: ["AC"]
     times: "times_norm.json"
     down_sample: 4
+    depth: 12
     norm_type: "minmax"
     norm_param_1: -500
     norm_param_2: 2500
@@ -42,6 +43,7 @@ hyperparameters:
     stn_eta: 1.0e-4
 augmentation:
     type: "differentiable" # "standard", "differentiable" or null
+    depth: 12
     flip_prob: 0.5 # Settings for standard augmentation
     rotation: 45.0
     scale: [0.8, 1.6]

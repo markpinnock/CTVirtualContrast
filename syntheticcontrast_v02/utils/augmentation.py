@@ -13,6 +13,7 @@ class DiffAug(tf.keras.layers.Layer):
     def __init__(self, config, name="diff_aug"):
         super().__init__(name=name)
         self.aug_config = config
+        self.depth = config["depth"]
 
     def brightness(self, x):
         """ Random brightness in range [-0.5, 0.5] """
@@ -57,10 +58,10 @@ class DiffAug(tf.keras.layers.Layer):
         x = tf.gather_nd(tf.pad(x, [[0, 0], [1, 1], [0, 0], [0, 0], [0, 0]]), tf.expand_dims(grid_x, -1), batch_dims=1)
         x = tf.transpose(tf.gather_nd(tf.pad(tf.transpose(x, [0, 2, 1, 3, 4]), [[0, 0], [1, 1], [0, 0], [0, 0], [0, 0]]), tf.expand_dims(grid_y, -1), batch_dims=1), [0, 2, 1, 3, 4])
         
-        imgs = [x[:, :, :, i * 12:(i + 1) * 12, :] for i in range(num_imgs)]
+        imgs = [x[:, :, :, i * self.depth:(i + 1) * self.depth, :] for i in range(num_imgs)]
 
         if seg != None:
-            seg = x[:, :, :, -12:, :]
+            seg = x[:, :, :, -self.depth:, :]
 
         return imgs, seg
 
@@ -94,10 +95,10 @@ class DiffAug(tf.keras.layers.Layer):
         mask = tf.maximum(1 - tf.scatter_nd(cutout_grid, tf.ones([batch_size, cutout_size[0], cutout_size[1]], dtype=tf.float32), mask_shape), 0)
         x = x * tf.expand_dims(tf.expand_dims(mask, axis=3), axis=4)
        
-        imgs = [x[:, :, :, i * 12:(i + 1) * 12, :] for i in range(num_imgs)]
+        imgs = [x[:, :, :, i * self.depth:(i + 1) * self.depth, :] for i in range(num_imgs)]
 
         if seg != None:
-            seg = x[:, :, :, -12:, :]
+            seg = x[:, :, :, -self.depth:, :]
 
         return imgs, seg
 
@@ -105,11 +106,11 @@ class DiffAug(tf.keras.layers.Layer):
         num_imgs = len(imgs)
 
         imgs = tf.concat(imgs, axis=4)
-        if self.aug_config["augmentation"]["colour"]: imgs = self.contrast(self.saturation(self.brightness(imgs)))
+        if self.aug_config["colour"]: imgs = self.contrast(self.saturation(self.brightness(imgs)))
         imgs = [tf.expand_dims(imgs[:, :, :, :, i], 4) for i in range(num_imgs)]
 
-        if self.aug_config["augmentation"]["translation"]: imgs, seg = self.translation(imgs, seg)
-        if self.aug_config["augmentation"]["cutout"]: imgs, seg = self.cutout(imgs, seg)
+        if self.aug_config["translation"]: imgs, seg = self.translation(imgs, seg)
+        if self.aug_config["cutout"]: imgs, seg = self.cutout(imgs, seg)
 
         return imgs, seg
 

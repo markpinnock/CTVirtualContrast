@@ -479,7 +479,7 @@ class Unpaired(ImgConvBase):
     def __init__(self, image_path=None, segmentation_path=None, save_path=None, output_dims=None, ignore=[], NCC_tol=None):      
         super().__init__(image_path, segmentation_path, save_path, output_dims, ignore, NCC_tol)
     
-    def save_data(self, subject_ID: list = None, HU_min=None, HU_max=None) -> int:
+    def save_data(self, subject_ID: list = None, HU_min: int = None, HU_max: int = None, subvol_depth: int = 0) -> int:
         if subject_ID:
             subjects = subject_ID
         else:
@@ -523,14 +523,18 @@ class Unpaired(ImgConvBase):
                 if not os.path.exists(f"{self.save_path}/Images"):
                     os.makedirs(f"{self.save_path}/Images")
 
-                for i in range(0, vol_thick, self.output_dims[2]):
-                    if i + self.output_dims[2] > vol_thick:
-                        break
+                if subvol_depth > 0:
+                    for i in range(0, vol_thick, self.output_dims[2]):
+                        if i + self.output_dims[2] > vol_thick:
+                            break
 
-                    sub_vol = img[:, :, i:i + self.output_dims[2]]
-                    np.save(f"{self.save_path}/Images/{stem}_{idx:03d}.npy", sub_vol)
-                    idx += 1
-                    count += 1
+                        sub_vol = img[:, :, i:i + self.output_dims[2]]
+                        np.save(f"{self.save_path}/Images/{stem}_{idx:03d}.npy", sub_vol)
+                        idx += 1
+                        count += 1
+
+                else:
+                    np.save(f"{self.save_path}/Images/{stem}.npy", img)
 
             for name, seg in zip(seg_names, seg_arrays):
                 idx = 0  
@@ -539,14 +543,18 @@ class Unpaired(ImgConvBase):
                 if not os.path.exists(f"{self.save_path}/Segmentations"):
                     os.makedirs(f"{self.save_path}/Segmentations")
 
-                for i in range(0, vol_thick, self.output_dims[2]):
-                    if i + self.output_dims[2] > vol_thick:
-                        break
+                if subvol_depth > 0:
+                    for i in range(0, vol_thick, self.output_dims[2]):
+                        if i + self.output_dims[2] > vol_thick:
+                            break
 
-                    sub_vol = seg[:, :, i:i + self.output_dims[2]]
-                    np.save(f"{self.save_path}/Segmentations/{stem}_{idx:03d}.npy", sub_vol)
-                    idx += 1
-                    count += 1
+                        sub_vol = seg[:, :, i:i + self.output_dims[2]]
+                        np.save(f"{self.save_path}/Segmentations/{stem}_{idx:03d}.npy", sub_vol)
+                        idx += 1
+                        count += 1
+
+                else:
+                    np.save(f"{self.save_path}/Segmentations/{stem}.npy", seg)
 
         return count
 
@@ -606,17 +614,17 @@ class Unpaired(ImgConvBase):
 if __name__ == "__main__":
 
     FILE_PATH = "D:/ProjectImages"
-    SAVE_PATH = "D:/ProjectImages/SyntheticContrast"
+    SAVE_PATH = "D:/ProjectImages/SyntheticContrastTest"
 
-    with open("syntheticcontrast/preproc/ignore.json", 'r') as fp:
+    with open("syntheticcontrast_v02/preproc/ignore.json", 'r') as fp:
         ignore = json.load(fp)
 
     subject_ignore = list(ignore["subject_ignore"].keys())
     image_ignore = ignore["image_ignore"]
 
-    Unpaired.check_saved(SAVE_PATH)
-    exit()
+    # Unpaired.check_saved(SAVE_PATH)
+    # exit()
     Test = Unpaired(image_path=FILE_PATH + "/Images", segmentation_path=FILE_PATH + "/Segmentations", save_path=SAVE_PATH, output_dims=(512, 512, 12), ignore=subject_ignore, NCC_tol=0.0)
     # Test.list_images(ignore=image_ignore, num_AC=1, num_VC=1, num_HQ=2).display(display=True, HU_min=-500, HU_max=2500)
-    print(Test.list_images(ignore=image_ignore).save_data(HU_min=-500, HU_max=2500))
+    print(Test.list_images(ignore=image_ignore, num_AC=1, num_VC=1, num_HQ=1).save_data(HU_min=-500, HU_max=2500))
     Unpaired.check_processed_imgs(SAVE_PATH)
