@@ -44,15 +44,33 @@ class BaseImgLoader(ABC):
     def example_images(self):
         if len(self._ex_segs) > 0:
             if self._json is not None:
-                return self._normalise(self._ex_sources), self._normalise(self._ex_targets), self._ex_segs, self._ex_source_times, self._ex_target_times
+                return {
+                    "real_source": self._normalise(self._ex_sources),
+                    "real_target": self._normalise(self._ex_targets),
+                    "seg": self._ex_segs,
+                    "source_times": self._ex_source_times,
+                    "target_times": self._ex_target_times
+                    }
             else:
-                return self._normalise(self._ex_sources), self._normalise(self._ex_targets), self._ex_segs
+                return {
+                    "real_source": self._normalise(self._ex_sources),
+                    "real_target": self._normalise(self._ex_targets),
+                    "seg": self._ex_segs
+                    }
 
         else:
             if self._json is not None:
-                return self._normalise(self._ex_sources), self._normalise(self._ex_targets), self._ex_source_times, self._ex_target_times
+                return {
+                    "real_source": self._normalise(self._ex_sources),
+                    "real_target": self._normalise(self._ex_targets),
+                    "source_times": self._ex_source_times,
+                    "target_times": self._ex_target_times
+                    }
             else:
-                return self._normalise(self._ex_sources), self._normalise(self._ex_targets)
+                return {
+                    "real_source": self._normalise(self._ex_sources),
+                    "real_target": self._normalise(self._ex_targets)
+                    }
     
     def train_val_split(self, seed: int = 5) -> None:
         # Get unique subject IDs for subject-level train/val split
@@ -72,7 +90,8 @@ class BaseImgLoader(ABC):
             if img_id[0:6] not in self._subject_imgs.keys():
                 self._subject_imgs[img_id[0:6]] = []
 
-            self._subject_imgs[img_id[0:6]].append(img_id[:-4])
+            if img_id[:-4] not in self._subject_imgs[img_id[0:6]]:
+                self._subject_imgs[img_id[0:6]].append(img_id[:-4])
 
         for key in self._subject_imgs.keys():
             self._subject_imgs[key] = sorted(self._subject_imgs[key], key=lambda x: int(x[-3:]))
@@ -116,31 +135,57 @@ class BaseImgLoader(ABC):
         ex_sources_list = list(np.array([self._fold_sources]).squeeze()[example_idx])
 
         if len(self.sub_folders) == 0:
-            ex_targets_list = [np.random.choice([t for t in self._fold_targets if s[0:6] in t and t not in s]) for s in ex_sources_list]
-            self._ex_sources = [np.load(f"{self._img_paths}/{img}") for img in ex_sources_list]
-            self._ex_targets = [np.load(f"{self._img_paths}/{img}") for img in ex_targets_list]
-            self._ex_sources = np.stack([im[:, :, (im.shape[2] // 3):(im.shape[2] // 3 + self.depth)] for im in self._ex_sources], axis=0)
-            self._ex_targets = np.stack([im[:, :, (im.shape[2] // 3):(im.shape[2] // 3 + self.depth)] for im in self._ex_targets], axis=0)
+            try:
+                ex_targets_list = [np.random.choice([t for t in self._fold_targets if s[0:6] in t and 'AC' in t and t not in s]) for s in ex_sources_list[0:len(ex_sources_list) // 2]]
+                ex_targets_list += [np.random.choice([t for t in self._fold_targets if s[0:6] in t and 'VC' in t and t not in s]) for s in ex_sources_list[len(ex_sources_list) // 2:]]
+            except ValueError:
+                ex_targets_list = [np.random.choice([t for t in self._fold_targets if s[0:6] in t and 'AC' in t and t not in s]) for s in ex_sources_list[0:len(ex_sources_list)]]
+
+            ex_sources = [np.load(f"{self._img_paths}/{img}") for img in ex_sources_list]
+            ex_targets = [np.load(f"{self._img_paths}/{img}") for img in ex_targets_list]
 
         else:
             ex_targets_list = list(np.array([self._fold_targets]).squeeze()[example_idx])
-            self._ex_sources = [np.load(f"{self._img_paths[img[6:8]]}/{img}") for img in ex_sources_list]
-            self._ex_targets = [np.load(f"{self._img_paths[img[6:8]]}/{img}") for img in ex_targets_list]
-            self._ex_sources = np.stack([im[:, :, (im.shape[2] // 3):(im.shape[2] // 3 + self.depth)] for im in self._ex_sources], axis=0)
-            self._ex_targets = np.stack([im[:, :, (im.shape[2] // 3):(im.shape[2] // 3 + self.depth)] for im in self._ex_targets], axis=0)
+            ex_sources = [np.load(f"{self._img_paths[img[6:8]]}/{img}") for img in ex_sources_list]
+            ex_targets = [np.load(f"{self._img_paths[img[6:8]]}/{img}") for img in ex_targets_list]
+          
+        ex_sources_stack = []
+        ex_targets_stack = []
+        
+        for source, target in zip(ex_sources, ex_targets):
+            sub_source = source[:, :, (source.shape[2] // 3):(source.shape[2] // 3 + self.depth)]
+            sub_target = target[:, :, (target.shape[2] // 3):(target.shape[2] // 3 + self.depth)]
 
+            if sub_source.shape[2] < self.depth:
+                sub_source = source[:, :, -self.depth:]
+                sub_target = target[:, :, -self.depth:]
+
+            ex_sources_stack.append(sub_source)
+            ex_targets_stack.append(sub_target)
+
+        self._ex_sources = np.stack(ex_sources_stack, axis=0)
+        self._ex_targets = np.stack(ex_targets_stack, axis=0)
         self._ex_sources = self._ex_sources[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
         self._ex_targets = self._ex_targets[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
 
-        if len(self.config["segs"]) > 0 and len(self.sub_folders) == 0:
-            candidate_segs = [glob.glob(f"{self._seg_paths}/{img[0:6]}AC*{img[-4:]}")[0] for img in ex_targets_list]
-            self._ex_segs = [np.load(seg) for seg in candidate_segs]
-            self._ex_segs = np.stack([im[:, :, (im.shape[2] // 3):(im.shape[2] // 3 + self.depth)] for im in self._ex_segs], axis=0)
-            self._ex_segs = self._ex_segs[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
+        ex_segs_stack = []
 
-        elif len(self.config["segs"]) > 0 and len(self.sub_folders) > 0:
-            self._ex_segs = [np.load(f"{self._seg_paths[img[6:8]]}/{img}") for img in ex_targets_list]
-            self._ex_segs = np.stack([im[:, :, (im.shape[2] // 3):(im.shape[2] // 3 + self.depth)] for im in self._ex_segs], axis=0)
+        if len(self.config["segs"]) > 0:
+            if len(self.sub_folders) == 0:
+                ex_segs = [glob.glob(f"{self._seg_paths}/{img[0:6]}AC*")[0] for img in ex_targets_list]
+                ex_segs = [np.load(seg) for seg in ex_segs]
+            else:
+                ex_segs = [np.load(f"{self._seg_paths[img[6:8]]}/{img}") for img in ex_targets_list]
+
+            for seg in ex_segs:
+                sub_seg = seg[:, :, (seg.shape[2] // 3):(seg.shape[2] // 3 + self.depth)]
+
+                if sub_seg.shape[2] < self.depth:
+                    sub_seg = seg[:, :, -self.depth:]
+
+                ex_segs_stack.append(sub_seg)
+
+            self._ex_segs = np.stack(ex_segs_stack, axis=0)
             self._ex_segs = self._ex_segs[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
 
         else:
@@ -261,58 +306,79 @@ class BaseImgLoader(ABC):
         while i < N:
             source_name = self._fold_sources[i]
             names = self.img_pairer(source_name)
-            target_name = names["target"]
             source_name = names["source"]
 
             if len(self.sub_folders) == 0:
-                target = np.load(f"{self._img_paths}/{target_name}")
                 source = np.load(f"{self._img_paths}/{source_name}")
             else:
-                target = np.load(f"{self._img_paths[target_name[6:8]]}/{target_name}")
                 source = np.load(f"{self._img_paths[source_name[6:8]]}/{source_name}")
 
-            total_depth = target.shape[2]
-            num_iter = total_depth // self.depth
-
-            for _ in range(num_iter * self.num_targets):
-                lb = np.random.randint(0, total_depth - self.depth + 1)
-
-                sub_target = target[::self.down_sample, ::self.down_sample, lb:(lb + self.depth), np.newaxis]
-                sub_source = source[::self.down_sample, ::self.down_sample, lb:(lb + self.depth), np.newaxis]
-                sub_target = self._normalise(sub_target)
-                sub_source = self._normalise(sub_source)
-
-                if self._json is not None:
-                    source_time = self._json[names["source"][:-4] + ".nrrd"]
-                    target_time = self._json[names["target"][:-4] + ".nrrd"]
-
-                # TODO: allow using different seg channels
-                if len(self._fold_segs) > 0:
-                    if len(self.sub_folders) == 0:
-                        candidate_segs = glob.glob(f"{self._seg_paths}/{target_name[0:6]}AC*{target_name[-4:]}")
-                        assert len(candidate_segs) == 1, candidate_segs
-                        seg = np.load(candidate_segs[0]).astype("float32")
-                        seg = seg[::self.down_sample, ::self.down_sample, lb:(lb + self.depth), np.newaxis]
-                        seg[seg > 1] = 1
-                        # TODO: return index
-
-                    else:
-                        seg = np.load(f"{self._seg_paths[target_name[6:8]]}/{target_name}").astype("float32")
-                        seg = seg[::self.down_sample, ::self.down_sample, lb:(lb + self.depth), np.newaxis]
-                        seg[seg > 1] = 1
-
-                    if self._json is not None:
-                        yield (sub_source, sub_target, seg, source_time, target_time)
-                    else:
-                        yield (sub_source, sub_target, seg)
-
+            for target_name in names["target"]:
+                if len(self.sub_folders) == 0:
+                    target = np.load(f"{self._img_paths}/{target_name}")
                 else:
-                    if self._json is not None:
-                        yield (sub_source, sub_target, source_time, target_time)
-                    else:
-                        yield (sub_source, sub_target)
+                    target = np.load(f"{self._img_paths[target_name[6:8]]}/{target_name}")
 
-                i += 1
+                total_depth = target.shape[2]
+                num_iter = total_depth // self.depth
+
+                for _ in range(num_iter):
+                    lb = np.random.randint(0, total_depth - self.depth + 1)
+
+                    sub_target = target[::self.down_sample, ::self.down_sample, lb:(lb + self.depth), np.newaxis]
+                    sub_source = source[::self.down_sample, ::self.down_sample, lb:(lb + self.depth), np.newaxis]
+                    sub_target = self._normalise(sub_target)
+                    sub_source = self._normalise(sub_source)
+
+                    if self._json is not None:
+                        source_time = self._json[names["source"][:-4] + ".nrrd"]
+                        target_time = self._json[target_name[:-4] + ".nrrd"]
+
+                    # TODO: allow using different seg channels
+                    if len(self._fold_segs) > 0:
+                        if len(self.sub_folders) == 0:
+                            candidate_segs = glob.glob(f"{self._seg_paths}/{target_name[0:6]}AC*{target_name[-4:]}")
+                            assert len(candidate_segs) == 1, candidate_segs
+                            seg = np.load(candidate_segs[0]).astype("float32")
+                            seg = seg[::self.down_sample, ::self.down_sample, lb:(lb + self.depth), np.newaxis]
+                            seg[seg > 1] = 1
+                            # TODO: return index
+
+                        else:
+                            seg = np.load(f"{self._seg_paths[target_name[6:8]]}/{target_name}").astype("float32")
+                            seg = seg[::self.down_sample, ::self.down_sample, lb:(lb + self.depth), np.newaxis]
+                            seg[seg > 1] = 1
+
+                        if self._json is not None:
+                            yield {
+                                "real_source": sub_source,
+                                "real_target": sub_target,
+                                "seg": seg,
+                                "source_times": source_time,
+                                "target_times": target_time
+                                }
+                        else:
+                            yield {
+                                "real_source": sub_source,
+                                "real_target": sub_target,
+                                "seg": seg
+                                }
+
+                    else:
+                        if self._json is not None:
+                            yield {
+                                "real_source": sub_source,
+                                "real_target": sub_target,
+                                "source_times": source_time,
+                                "target_times": target_time
+                                }
+                        else:
+                            yield {
+                                "real_source": sub_source,
+                                "real_target": sub_target
+                                }
+
+            i += 1
 
 #-------------------------------------------------------------------------
 """ Data loader for one to one source-target pairings """
@@ -367,7 +433,7 @@ class PairedLoader(BaseImgLoader):
         # TODO: return idx
         # Get potential target candidates matching source (where target and source specified)
         target_candidates = self._subject_targets[source[0:6]]
-        target_stem = target_candidates[np.random.randint(len(target_candidates))]
+        # target_stem = target_candidates[np.random.randint(len(target_candidates))]
         target = f"{target_stem}.npy"
 
         return {"target": target, "source": source}
@@ -425,12 +491,12 @@ class UnpairedLoader(BaseImgLoader):
             target_candidates = list(self._subject_targets[source[0:6]])
 
         try:
-            target_candidates.remove(source[0:-8])
+            target_candidates.remove(source[0:-4])
         except ValueError:
             pass
 
-        target_stem = target_candidates[np.random.randint(len(target_candidates))]
-        target = f"{target_stem}.npy"
+        # target_stem = target_candidates[np.random.randint(len(target_candidates))]
+        target = [f"{t}.npy" for t in target_candidates]
 
         return {"target": target, "source": source}
 

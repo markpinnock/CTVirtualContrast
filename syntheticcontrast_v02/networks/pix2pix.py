@@ -35,18 +35,16 @@ class Pix2Pix(tf.keras.Model):
         self.generator_init(config["hyperparameters"])
         self.discriminator_init(config["hyperparameters"])
 
-        # Spatial transformer if necessary
-        if config["hyperparameters"]["stn_layers"] > 0:
-            self.STN = SpatialTransformer(config=config)
-        else:
-            self.STN = None
-
     def generator_init(self, config):
         # Check generator output dims match input
-        G_input_size = [1] + self.img_dims + [len(self.g_in_ch)]
+        G_input_size = [1] + self.img_dims + [1]
         G_output_size = [1] + self.img_dims + [1]
         self.Generator = Generator(self.initialiser, config, name="generator")
-        assert self.Generator.build_model(tf.zeros(G_input_size)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size))} vs {G_input_size}"
+
+        if "source_times" or "target_times" in self.g_in_ch:
+            assert self.Generator.build_model(tf.zeros(G_input_size), tf.zeros(1), tf.zeros(1)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size))} vs {G_input_size}"
+        else:
+            assert self.Generator.build_model(tf.zeros(G_input_size)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size))} vs {G_input_size}"
 
     def discriminator_init(self, config):
         # Get discriminator patch size
@@ -78,18 +76,19 @@ class Pix2Pix(tf.keras.Model):
             self.train_L1_metric = tf.keras.metrics.Mean(name="train_L1")
             self.val_L1_metric = tf.keras.metrics.Mean(name="val_L1")
 
-        if self.STN:
-            self.s_optimiser = tf.keras.optimizers.Adam(self.config["hyperparameters"]["stn_eta"])
-    
     def summary(self):
-        source = tf.keras.Input(shape=self.img_dims + [len(self.g_in_ch)])
-        outputs = self.Generator.call(source)
+        source = tf.keras.Input(shape=self.img_dims + [1])
+
+        if "source_times" or "target_times" in self.g_in_ch:
+            outputs = self.Generator.call(source, tf.zeros(1), tf.zeros(1))
+        else:
+            outputs = self.Generator.call(source)
+
         print("===========================================================")
         print("Generator")
         print("===========================================================")
         tf.keras.Model(inputs=source, outputs=outputs).summary()
         source = tf.keras.Input(shape=self.img_dims + [len(self.d_in_ch)])
-        if self.STN: target = self.STN.call(source, source)
         outputs = self.Discriminator.call(source)
         print("===========================================================")
         print("Discriminator")
@@ -97,32 +96,22 @@ class Pix2Pix(tf.keras.Model):
         tf.keras.Model(inputs=source, outputs=outputs).summary()
 
     @tf.function
-    def train_step(self, source, real_target, seg=None, source_times=None, target_times=None):
+    def train_step(self, real_source, real_target, seg=None, source_times=None, target_times=None):
 
         """ Expects data in order 'source, target' or 'source, target, segmentations'"""
 
-        source_times_ch = tf.tile(tf.reshape(source_times, [-1, 1, 1, 1, 1]), [1] + self.img_dims + [1])
-        target_times_ch = tf.tile(tf.reshape(target_times, [-1, 1, 1, 1, 1]), [1] + self.img_dims + [1])
+        if source_times is not None:
+            source_times_ch = tf.tile(tf.reshape(source_times, [-1, 1, 1, 1, 1]), [1] + self.img_dims + [1])
+        if target_times is not None:
+            target_times_ch = tf.tile(tf.reshape(target_times, [-1, 1, 1, 1, 1]), [1] + self.img_dims + [1])
 
         with tf.GradientTape(persistent=True) as tape:
 
-            # Spatial transformer if required
-            if self.STN:
-                real_target, seg = self.STN(source=source, target=real_target, seg=seg, training=True)
-
-            # Concatenate extra channels for times to generator
-            g_in_list = []
-            if "source_times" in self.g_in_ch: g_in_list += [source_times_ch]
-            if "target_times" in self.g_in_ch: g_in_list += [target_times_ch]
-
-            if len(g_in_list) > 0:
-                g_in = tf.concat([source] + g_in_list, axis=4, name="g_concat")
-
-            else:
-                g_in = source
-
             # Generate fake target
-            fake_target = self.Generator(g_in)
+            if source_times is not None:
+                fake_target = self.Generator(real_source, source_times, target_times)
+            else:
+                fake_target = self.Generator(real_source)
             
             # Calculate generator L1 before augmentation
             if seg is not None:
@@ -137,7 +126,7 @@ class Pix2Pix(tf.keras.Model):
 
             # Augmentation if required
             if self.Aug:
-                imgs, seg = self.Aug(imgs=[source, real_target, fake_target], seg=seg)
+                imgs, seg = self.Aug(imgs=[real_source, real_target, fake_target], seg=seg)
                 source, real_target, fake_target = imgs
 
             # Concatenate extra channels for source, seg, times to discriminator
@@ -164,41 +153,22 @@ class Pix2Pix(tf.keras.Model):
         # Get gradients and update weights
         d_grads = tape.gradient(d_loss, self.Discriminator.trainable_variables)
         self.d_optimiser.apply_gradients(zip(d_grads, self.Discriminator.trainable_variables))
-
-        if self.STN:
-            gen_grads = len(self.STN.trainable_variables)
-            g_grads = tape.gradient(g_total_loss, self.STN.trainable_variables + self.Generator.trainable_variables)
-            self.s_optimiser.apply_gradients(zip(g_grads[0:gen_grads], self.STN.trainable_variables))
-            self.g_optimiser.apply_gradients(zip(g_grads[gen_grads:], self.Generator.trainable_variables))
-  
-        else:
-            g_grads = tape.gradient(g_total_loss, self.Generator.trainable_variables)
-            self.g_optimiser.apply_gradients(zip(g_grads, self.Generator.trainable_variables))
+        g_grads = tape.gradient(g_total_loss, self.Generator.trainable_variables)
+        self.g_optimiser.apply_gradients(zip(g_grads, self.Generator.trainable_variables))
 
         # Update metrics
         self.d_metric.update_state(d_loss)
         self.g_metric.update_state(g_loss)
 
     @tf.function
-    def test_step(self, source, real_target, seg=None, source_times=None, target_times=None):
-        if self.STN:
-            real_target, seg = self.STN(source=source, target=real_target, seg=seg, training=False)
+    def test_step(self, real_source, real_target, seg=None, source_times=None, target_times=None):
 
-        source_times_ch = tf.tile(tf.reshape(source_times, [-1, 1, 1, 1, 1]), [1] + self.img_dims + [1])
-        target_times_ch = tf.tile(tf.reshape(target_times, [-1, 1, 1, 1, 1]), [1] + self.img_dims + [1])
-
-        # Concatenate extra channels for times to generator
-        g_in_list = []
-        if "source_times" in self.g_in_ch: g_in_list += [source_times_ch]
-        if "target_times" in self.g_in_ch: g_in_list += [target_times_ch]
-
-        if len(g_in_list) > 0:
-            g_in = tf.concat([source] + g_in_list, axis=4, name="g_concat")
-
+        # Generate fake target
+        if source_times is not None:
+            fake_target = self.Generator(real_source, source_times, target_times)
         else:
-            g_in = source
+            fake_target = self.Generator(real_source)
 
-        fake_target = self.Generator(g_in)
         g_L1 = L1(real_target, fake_target)
 
         if seg is not None:
@@ -236,7 +206,6 @@ class HyperPix2Pix(Pix2Pix):
         print("===========================================================")
         tf.keras.Model(inputs=source, outputs=outputs).summary()
         source = tf.keras.Input(shape=self.img_dims + [1])
-        if self.STN: target = self.STN.call(source, source)
         outputs = self.Discriminator.call(tf.concat([source] * self.d_in_ch, axis=4))
         print("===========================================================")
         vs = 0

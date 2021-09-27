@@ -57,7 +57,7 @@ class TrainingPix2Pix:
 
             # Run training step for each batch in training data
             for data in self.ds_train:
-                self.Model.train_step(*data)
+                self.Model.train_step(**data)
 
             # Log losses
             if self.config["expt"]["log_scalars"]:
@@ -99,7 +99,7 @@ class TrainingPix2Pix:
 
                 # Run validation step for each batch in validation data
                 for data in self.ds_val:
-                    self.Model.test_step(*data)
+                    self.Model.test_step(**data)
 
                 # Log losses
                 if self.config["expt"]["focal"]:
@@ -146,43 +146,10 @@ class TrainingPix2Pix:
             data_generator = self.val_generator
 
         data = data_generator.example_images()
+        pred = self.Model.Generator(data["real_source"], data["source_times"], data["target_times"]).numpy()
 
-        if len(self.config["data"]["segs"]) > 0:
-            if "source_times" in self.config["hyperparameters"]["g_input"] or "target_times" in self.config["hyperparameters"]["g_input"]:
-                # TODO: MOVE SOMEWHERE ELSE
-                source, target, seg, source_time, target_time = data
-                source_times_ch = np.tile(np.reshape(source_time, [-1, 1, 1, 1, 1]), [1] + self.config["hyperparameters"]["img_dims"] + [1])
-                target_times_ch = np.tile(np.reshape(target_time, [-1, 1, 1, 1, 1]), [1] + self.config["hyperparameters"]["img_dims"] + [1])
-                g_in = np.concatenate([source, source_times_ch, target_times_ch], axis=4)
-
-            else:
-                g_in, target, seg = data
-
-        else:
-            if "source_times" in self.config["hyperparameters"]["g_input"] or "target_times" in self.config["hyperparameters"]["g_input"]:
-                source, target, source_time, target_time = data
-                source_times_ch = np.tile(np.reshape(source_time, [-1, 1, 1, 1, 1]), [1] + self.config["hyperparameters"]["img_dims"] + [1])
-                target_times_ch = np.tile(np.reshape(target_time, [-1, 1, 1, 1, 1]), [1] + self.config["hyperparameters"]["img_dims"] + [1])
-                g_in = np.concatenate([source, source_times_ch, target_times_ch], axis=4)
-
-            else:
-                g_in, target = data
-
-        # Spatial transformer if necessary
-        if self.Model.STN is not None and len(data) == 2:
-            target, _ = self.Model.STN(source=source, target=target, print_matrix=False)
-        elif self.Model.STN is not None and len(data) == 3:
-            target, _ = self.Model.STN(source=source, target=target, seg=seg, print_matrix=False)
-        else:
-            pass
-
-        if "source_times" in self.config["hyperparameters"]["g_input"] or "target_times" in self.config["hyperparameters"]["g_input"]:
-            pred = self.Model.Generator(g_in).numpy()
-        else:
-            pred = self.Model.Generator(g_in).numpy()
-
-        source = data_generator.un_normalise(source)
-        target = data_generator.un_normalise(target)
+        source = data_generator.un_normalise(data["real_source"])
+        target = data_generator.un_normalise(data["real_target"])
         pred = data_generator.un_normalise(pred)
 
         fig, axs = plt.subplots(target.shape[0], 5)

@@ -120,6 +120,13 @@ class Generator(tf.keras.Model):
         max_z_downsample = int(np.floor(np.log2(img_dims[2])))
         ngf = config["ngf"]
         num_layers = config["g_layers"]
+        
+        if config["g_time_layer"] is not None:
+            self.time_layer = config["g_time_layer"]
+            assert int(self.time_layer[1]) <= num_layers, f"time layer {self.time_layer} vs number of layers {num_layers}"
+        else:
+            self.time_layer = None
+
         assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum number of generator layers: {max_num_layers}"
         self.encoder = []
 
@@ -185,28 +192,41 @@ class Generator(tf.keras.Model):
             padding="same", activation="linear",
             kernel_initializer=initialiser, name="output")
 
-    def build_model(self, x):
+    def build_model(self, x, st=None, tt=None):
 
         """ Build method takes tf.zeros((input_dims)) and returns
             shape of output - all layers implicitly built and weights set to trainable """
         
-        return self(x).shape
+        return self(x, st, tt).shape
 
-    def call(self, x):
+    def call(self, x, st=None, tt=None):
         skip_layers = []
 
-        for conv in self.encoder:
-            x = conv(x, training=True)
+        for i, conv in enumerate(self.encoder):
+            if self.time_layer == f"d{i}":
+                x = conv(x, st, tt, training=True)
+            else:
+                x = conv(x, training=True)
             skip_layers.append(x)
-        
-        x = self.bottom_layer(x, training=True)
+
+        if self.time_layer == f"d{i + 1}":
+            x = self.bottom_layer(x, st, tt, training=True)
+        else:
+            x = self.bottom_layer(x, training=True)
+
         x = tf.nn.relu(x)
         skip_layers.reverse()
 
-        for skip, tconv in zip(skip_layers, self.decoder):
-            x = tconv(x, skip, training=True)
-        
-        x = self.final_layer(x, training=True)
+        for i, (skip, tconv) in enumerate(zip(skip_layers, self.decoder)):
+            if self.time_layer == f"u{i}":
+                x = tconv(x, skip, st, tt, training=True)
+            else:
+                x = tconv(x, skip, training=True)
+
+        if self.time_layer == f"d{i + 1}":
+            x = self.final_layer(x, st, tt, training=True)
+        else:
+            x = self.final_layer(x, training=True)
         
         return x
 
@@ -315,7 +335,7 @@ class HyperGenerator(tf.keras.Model):
         # Last layer is standard non-HyperNet conv layer
         self.final_layer = tf.keras.layers.Conv3DTranspose(
             1, (4, 4, 4), (2, 2, 2),
-            padding="SAME", activation="linear",
+            padding="same", activation="linear",
             kernel_initializer=initialiser, name="output")
 
     def build_model(self, x):
@@ -326,25 +346,28 @@ class HyperGenerator(tf.keras.Model):
         return self(x).shape
 
     def call(self, x):
+        source_time = x[:, 0, 0, 0, 1]
+        target_time = x[:, 0, 0, 0, 2]
+
         skip_layers = []
 
         x = self.first_layer(x, training=True)
         skip_layers.append(x)
 
         for conv, embedding in zip(self.encoder, self.encoder_embedding):
-            w = embedding(self.Hypernet)
+            w = embedding(self.Hypernet, source_time, target_time)
             x = conv(x, w, training=True)
             skip_layers.append(x)
         
-        w = self.bottom_embedding(self.Hypernet)
+        w = self.bottom_embedding(self.Hypernet, source_time, target_time)
         x = self.bottom_layer(x, w, training=True)
         x = tf.nn.relu(x)
 
         skip_layers.reverse()
 
         for skip, conv, embedding_1, embedding_2 in zip(skip_layers, self.decoder, self.decoder_embedding_1, self.decoder_embedding_2):
-            w1 = embedding_1(self.Hypernet)
-            w2 = embedding_2(self.Hypernet)
+            w1 = embedding_1(self.Hypernet, source_time, target_time)
+            w2 = embedding_2(self.Hypernet, source_time, target_time)
             x = conv(x, w1, w2, skip, training=True)
 
         x = self.final_layer(x)

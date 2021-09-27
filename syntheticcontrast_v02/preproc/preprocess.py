@@ -1,5 +1,6 @@
 import abc
 import json
+import glob
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -28,9 +29,10 @@ import SimpleITK as itk
 
 class ImgConvBase(abc.ABC):
 
-    def __init__(self, image_path, segmentation_path, save_path, output_dims, ignore, NCC_tol):
+    def __init__(self, image_path, segmentation_path, transformation_path, save_path, output_dims, ignore, NCC_tol):
         self.img_path = image_path
         self.seg_path = segmentation_path
+        self.trans_path = transformation_path
         self.save_path = save_path
 
         if not os.path.exists(self.save_path):
@@ -54,7 +56,6 @@ class ImgConvBase(abc.ABC):
         self.HQ_names = {}
         self.AC_names = {}
         self.VC_names = {}
-        self.seg_names = {}
 
         for name in self.subjects:
             img_path = f"{self.img_path}/{name}/"
@@ -93,7 +94,20 @@ class ImgConvBase(abc.ABC):
         segs = []
 
         for i in range(len(image_names)):
-            img = itk.ReadImage(image_names[i], itk.sitkInt32)
+            transform_candidates = glob.glob(f"{self.trans_path}/{subject_ID}/{image_names[i][-8:-5]}_to_*")
+
+            if len(transform_candidates) == 1:
+                transform = itk.ReadTransform(transform_candidates[0])
+            elif len(transform_candidates) == 0:
+                transform = None
+            else:
+                raise ValueError(transform_candidates)
+
+            img = itk.ReadImage(image_names[i])
+
+            if transform is not None:
+                img = itk.Resample(img, transform, defaultPixelValue=self.HU_min)
+
             image_dir = np.around(img.GetDirection())
             assert img.GetSpacing()[2] == 1.0, f"{image_names[i]}: {img.GetSpacing()}"
 
@@ -102,6 +116,9 @@ class ImgConvBase(abc.ABC):
 
                 try:
                     seg = itk.ReadImage(seg_name)
+
+                    if transform is not None:
+                        seg = itk.Resample(seg, transform, defaultPixelValue=0)
 
                 except RuntimeError:
                     print(f"Segmentation not found for {image_names[i][-16:-5]}")
@@ -341,8 +358,8 @@ class ImgConvBase(abc.ABC):
 
 class Paired(ImgConvBase):
 
-    def __init__(self, image_path=None, segmentation_path=None, save_path=None, output_dims=None, ignore=[], NCC_tol=None):
-        super().__init__(image_path, segmentation_path, save_path, output_dims, ignore, NCC_tol)
+    def __init__(self, image_path=None, segmentation_path=None, transformation_path=None, save_path=None, output_dims=None, ignore=[], NCC_tol=None):
+        super().__init__(image_path, segmentation_path, transformation_path, save_path, output_dims, ignore, NCC_tol)
     
     def save_data(self, subject_ID: list = None, HU_min=None, HU_max=None) -> int:
         if subject_ID:
@@ -418,7 +435,6 @@ class Paired(ImgConvBase):
     @staticmethod
     def check_saved(self):
         subjects = []
-        # coord_json = json.load(open(f"{self.save_path}rcoords.json", 'r'))
         phases = os.listdir(self.save_path)
 
         for img in os.listdir(f"{self.save_path}/Images/{phases[0]}"):
@@ -435,10 +451,6 @@ class Paired(ImgConvBase):
                 segs = os.listdir(path)
                 subject_imgs += [np.load(f"{path}/{im}") for im in segs if img_name in im]
 
-            # cx = np.array([int(c[0]) for c in coord_json[imgs[-1][:-4]]])
-            # cy = np.array([int(c[1]) for c in coord_json[imgs[-1][:-4]]])
-            # coord_list.append((cx, cy))
-
             if len(imgs) % 2 == 0:
                 rows = 2
                 cols = len(imgs) // rows
@@ -449,9 +461,7 @@ class Paired(ImgConvBase):
             fig, axs = plt.subplot(rows, cols, figsize=(18, 8))
 
             for i, img in enumerate(subject_imgs):
-                # coord_x, coord_y = coord
                 fig.axes[i].imshow(img[:, :, 11], cmap="gray")
-                # plt.plot(coord_y, coord_x, 'r+', markersize=15)
                 fig.axes[i].axis("off")
 
             plt.pause(5)
@@ -476,10 +486,19 @@ class Paired(ImgConvBase):
 
 class Unpaired(ImgConvBase):
 
-    def __init__(self, image_path=None, segmentation_path=None, save_path=None, output_dims=None, ignore=[], NCC_tol=None):      
-        super().__init__(image_path, segmentation_path, save_path, output_dims, ignore, NCC_tol)
+    def __init__(self, **kwargs):  
+        super().__init__(**kwargs)
     
-    def save_data(self, subject_ID: list = None, HU_min: int = None, HU_max: int = None, subvol_depth: int = 0) -> int:
+    def save_data(
+        self,
+        subject_ID: list = None,
+        HU_min: int = None,
+        HU_max: int = None,
+        subvol_depth: int = 0,
+        down_sample: int = 1,
+        file_type: str = "npy"
+        ) -> int:
+
         if subject_ID:
             subjects = subject_ID
         else:
@@ -506,14 +525,23 @@ class Unpaired(ImgConvBase):
             else:
                 raise ValueError(type(proc))
 
-            img_arrays = [itk.GetArrayFromImage(i).transpose([1, 2, 0]).astype("float32") for i in imgs.values()]
+            if file_type == "npy":
+                img_arrays = [itk.GetArrayFromImage(i).transpose([1, 2, 0]).astype("float16") for i in imgs.values()]
+                vol_thick = img_arrays[0].shape[2]  
+
+            else:
+                img_arrays = imgs.values()
+            
             img_names = list(imgs.keys())
 
             if segs is not None:
-                seg_arrays = [itk.GetArrayFromImage(s).transpose([1, 2, 0]).astype("int8") for s in segs.values()]
-                seg_names = list(segs.keys())
+                if file_type == "npy":
+                    seg_arrays = [itk.GetArrayFromImage(s).transpose([1, 2, 0]).astype("int8") for s in segs.values()]
+                
+                else:
+                    seg_arrays = segs.values()
 
-            vol_thick = img_arrays[0].shape[2]      
+                seg_names = list(segs.keys())    
 
             # Partition into sub-volumes
             for name, img in zip(img_names, img_arrays):
@@ -524,17 +552,24 @@ class Unpaired(ImgConvBase):
                     os.makedirs(f"{self.save_path}/Images")
 
                 if subvol_depth > 0:
+                    assert file_type != "npy", "Only works with npy"
+
                     for i in range(0, vol_thick, self.output_dims[2]):
                         if i + self.output_dims[2] > vol_thick:
                             break
 
-                        sub_vol = img[:, :, i:i + self.output_dims[2]]
+                        sub_vol = img[::down_sample, ::down_sample, i:i + self.output_dims[2]]
                         np.save(f"{self.save_path}/Images/{stem}_{idx:03d}.npy", sub_vol)
                         idx += 1
                         count += 1
 
                 else:
-                    np.save(f"{self.save_path}/Images/{stem}.npy", img)
+                    if file_type == "npy":
+                        np.save(f"{self.save_path}/Images/{stem}.npy", img[::down_sample, ::down_sample, :])
+                    
+                    else:
+                        assert down_sample == 1, "Down-sample > 1 only with npy"
+                        itk.WriteImage(img, f"{self.save_path}/Images/{stem}.nii")
 
             for name, seg in zip(seg_names, seg_arrays):
                 idx = 0  
@@ -544,17 +579,24 @@ class Unpaired(ImgConvBase):
                     os.makedirs(f"{self.save_path}/Segmentations")
 
                 if subvol_depth > 0:
+                    assert file_type != "npy", "Only works with npy"
+
                     for i in range(0, vol_thick, self.output_dims[2]):
                         if i + self.output_dims[2] > vol_thick:
                             break
 
-                        sub_vol = seg[:, :, i:i + self.output_dims[2]]
+                        sub_vol = seg[::down_sample, ::down_sample, i:i + self.output_dims[2]]
                         np.save(f"{self.save_path}/Segmentations/{stem}_{idx:03d}.npy", sub_vol)
                         idx += 1
                         count += 1
 
                 else:
-                    np.save(f"{self.save_path}/Segmentations/{stem}.npy", seg)
+                    if file_type == "npy":
+                        np.save(f"{self.save_path}/Segmentations/{stem}.npy", seg[::down_sample, ::down_sample, :])
+
+                    else:
+                        assert down_sample == 1, "Down-sample > 1 only with npy"
+                        itk.WriteImage(seg, f"{self.save_path}/Segmentations/{stem}.nii")
 
         return count
 
@@ -571,49 +613,43 @@ class Unpaired(ImgConvBase):
     @staticmethod
     def check_saved(save_path):
         subjects = []
-        # coord_json = json.load(open(f"{self.save_path}rcoords.json", 'r'))
 
         for img in os.listdir(f"{save_path}/Images"):
             if img[:6] not in subjects: subjects.append(img[:6])
 
-        # fig, axs = plt.subplots(4, 4, figsize=(18, 8))
-        
+        fig, axs = plt.subplots(4, 4, figsize=(18, 8))
+
         for img_name in subjects:
             subject_imgs = []
             path = f"{save_path}/Images"
             imgs = os.listdir(path)
             subject_img_names = [im for im in imgs if img_name in im]
-            subject_imgs += [np.load(f"{path}/{im}") for im in subject_img_names]
+            subject_imgs += [np.load(f"{path}/{im}").astype("float32") for im in subject_img_names]
             path = f"{save_path}/Segmentations"
             segs = os.listdir(path)
             subject_seg_names = [seg for seg in segs if img_name in seg]
-            subject_imgs += [np.load(f"{path}/{seg}") for seg in subject_seg_names]
+            subject_imgs += [np.load(f"{path}/{seg}").astype("float32") for seg in subject_seg_names]
             subject_img_names += subject_seg_names
 
-            # cx = np.array([int(c[0]) for c in coord_json[imgs[-1][:-4]]])
-            # cy = np.array([int(c[1]) for c in coord_json[imgs[-1][:-4]]])
-            # coord_list.append((cx, cy))
             for i in range(len(subject_imgs)):
                 if np.mean(np.square(subject_imgs[i][:, :, 0] - subject_imgs[i][:, :, 1])) > 50000:
                     print(subject_img_names[i])
-            # for i in range(len(subject_imgs) // 16 + 1):
-            #     name_subset = subject_img_names[(i * 16):((i + 1) * 16)]
-            #     img_subset = subject_imgs[(i * 16):((i + 1) * 16)]
+            for i in range(len(subject_imgs) // 16 + 1):
+                name_subset = subject_img_names[(i * 16):((i + 1) * 16)]
+                img_subset = subject_imgs[(i * 16):((i + 1) * 16)]
 
-            #     for j, img in enumerate(img_subset):
-            #         # coord_x, coord_y = coord
-            #         axs.ravel()[j].imshow(img[:, :, 11], cmap="gray")
-            #         # plt.plot(coord_y, coord_x, 'r+', markersize=15)
-            #         axs.ravel()[j].set_title(name_subset[j])
-            #         axs.ravel()[j].axis("off")
+                for j, img in enumerate(img_subset):
+                    axs.ravel()[j].imshow(img[:, :, 11], cmap="gray")
+                    axs.ravel()[j].set_title(name_subset[j])
+                    axs.ravel()[j].axis("off")
 
-            #     plt.pause(2)
-            #     plt.cla()
+                plt.pause(2)
+                plt.cla()
 
 
 if __name__ == "__main__":
 
-    FILE_PATH = "D:/ProjectImages"
+    FILE_PATH = "Z:/Clean_CT_Data/Toshiba/"
     SAVE_PATH = "D:/ProjectImages/SyntheticContrastTest"
 
     with open("syntheticcontrast_v02/preproc/ignore.json", 'r') as fp:
@@ -624,7 +660,8 @@ if __name__ == "__main__":
 
     # Unpaired.check_saved(SAVE_PATH)
     # exit()
-    Test = Unpaired(image_path=FILE_PATH + "/Images", segmentation_path=FILE_PATH + "/Segmentations", save_path=SAVE_PATH, output_dims=(512, 512, 12), ignore=subject_ignore, NCC_tol=0.0)
+    Test = Unpaired(image_path=FILE_PATH + "/Images", segmentation_path=FILE_PATH + "/Segmentations", transformation_path=FILE_PATH + "/Transforms", save_path=SAVE_PATH, output_dims=(512, 512, 12), ignore=subject_ignore, NCC_tol=0.0)
     # Test.list_images(ignore=image_ignore, num_AC=1, num_VC=1, num_HQ=2).display(display=True, HU_min=-500, HU_max=2500)
-    print(Test.list_images(ignore=image_ignore, num_AC=1, num_VC=1, num_HQ=1).save_data(HU_min=-500, HU_max=2500))
-    Unpaired.check_processed_imgs(SAVE_PATH)
+    # print(Test.list_images(ignore=image_ignore, num_AC=1, num_VC=1, num_HQ=1).save_data(HU_min=-500, HU_max=2500, file_type="npy", down_sample=2))
+    # Unpaired.check_processed_imgs(SAVE_PATH)
+    Test.check_saved(SAVE_PATH)
