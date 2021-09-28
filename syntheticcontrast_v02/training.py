@@ -34,23 +34,23 @@ def train(CONFIG):
     CONFIG["data"]["norm_param_2"] = param_2
 
     # Specify output types
-    output_types = ["float32", "float32"]
+    output_types = ["real_source", "real_target"]
 
     if len(CONFIG["data"]["segs"]) > 0:
-        output_types += ["float32"]
+        output_types += ["seg"]
     
     if CONFIG["data"]["times"] is not None:
-        output_types += ["float32", "float32"]
+        output_types += ["source_times", "target_times"]
 
     # Create dataloader (one mb for generator, one for discriminator)
     train_ds = tf.data.Dataset.from_generator(
         generator=TrainGenerator.data_generator,
-        output_types=tuple(output_types)
+        output_types={k: "float32" for k in output_types}
         ).batch(CONFIG["expt"]["mb_size"])
 
     val_ds = tf.data.Dataset.from_generator(
         generator=ValGenerator.data_generator,
-        output_types=tuple(output_types)
+        output_types={k: "float32" for k in output_types}
         ).batch(CONFIG["expt"]["mb_size"])
 
     # Compile model

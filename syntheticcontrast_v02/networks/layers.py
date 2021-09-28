@@ -85,12 +85,16 @@ class GANDownBlock(tf.keras.layers.Layer):
         self.batch_norm = batch_norm
         bias = not batch_norm
 
-        self.conv = tf.keras.layers.Conv3D(nc, weights, strides=strides, padding="SAME", kernel_initializer=initialiser, use_bias=bias, name="conv")
+        self.conv = tf.keras.layers.Conv3D(nc, weights, strides=strides, padding="same", kernel_initializer=initialiser, use_bias=bias, name="conv")
         
         if batch_norm:
             self.bn = tf.keras.layers.BatchNormalization(name="batchnorm")
 
-    def call(self, x, training):
+    def call(self, x, s=None, t=None, training=True):
+        if s is not None:
+            source_time = tf.tile(tf.reshape(s, [-1, 1, 1, 1, 1]), [1] + x.shape[1:4] + [1], "s_tile")
+            target_time = tf.tile(tf.reshape(t, [-1, 1, 1, 1, 1]), [1] + x.shape[1:4] + [1], "t_tile")
+            x = tf.concat([x, source_time, target_time], axis=4, name="time_concat")
 
         x = self.conv(x)
 
@@ -118,8 +122,8 @@ class GANUpBlock(tf.keras.layers.Layer):
         bias = not batch_norm
         self.dropout = dropout
 
-        self.tconv = tf.keras.layers.Conv3DTranspose(nc, weights, strides=strides, padding="SAME", kernel_initializer=initialiser, use_bias=bias, name="tconv")
-        self.conv = tf.keras.layers.Conv3D(nc, weights, strides=(1, 1, 1), padding="SAME", kernel_initializer=initialiser, use_bias=bias, name="conv")
+        self.tconv = tf.keras.layers.Conv3DTranspose(nc, weights, strides=strides, padding="same", kernel_initializer=initialiser, use_bias=bias, name="tconv")
+        self.conv = tf.keras.layers.Conv3D(nc, weights, strides=(1, 1, 1), padding="same", kernel_initializer=initialiser, use_bias=bias, name="conv")
 
         if batch_norm:
             self.bn1 = tf.keras.layers.BatchNormalization(name="batchnorm1")
@@ -131,7 +135,12 @@ class GANUpBlock(tf.keras.layers.Layer):
         
         self.concat = tf.keras.layers.Concatenate(name="concat")
     
-    def call(self, x, skip, training):
+    def call(self, x, skip, s=None, t=None, training=True):
+        if s is not None:
+            source_time = tf.tile(tf.reshape(s, [-1, 1, 1, 1, 1]), [1] + x.shape[1:4] + [1], "s_tile")
+            target_time = tf.tile(tf.reshape(t, [-1, 1, 1, 1, 1]), [1] + x.shape[1:4] + [1], "t_tile")
+            x = tf.concat([x, source_time, target_time], axis=4, name="time_concat")
+
         x = self.tconv(x)
 
         if self.batch_norm:
