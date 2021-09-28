@@ -4,7 +4,9 @@
         "T020A0": "No AC",
         "T025A1": "No AC or VC",
         "T033A0": "No NC, AC (1.8s), VC (57.4s)",
-        "T037A0": "No AC"
+        "T037A0": "No AC",
+		"T047A0": "No AC or VC"
+		"T047A2": "No AC or VC"
     },
     "image_ignore": [
         "T002A1HQ002",
@@ -27,6 +29,8 @@
         "T031A0HQ006",
         "T032A0HQ002",
         "T038A0HQ016",
-        "T041A0HQ093"
+        "T041A0HQ093",
+		"T042A0HQ004",
+		"T048A0HQ002"
     ]
 }
