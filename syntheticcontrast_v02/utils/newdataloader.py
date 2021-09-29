@@ -298,7 +298,9 @@ class BaseImgLoader(ABC):
             return img * (self.param_2 - self.param_1) + self.param_1
 
     def data_generator(self):
-        # TODO: ALLOW BATCHES > 1 USING BUFFER
+        if self._dataset_type == "training":
+            np.random.shuffle(self._fold_sources)
+
         N = len(self._fold_sources)
         i = 0
 
@@ -339,13 +341,13 @@ class BaseImgLoader(ABC):
                         if len(self.sub_folders) == 0:
                             candidate_segs = glob.glob(f"{self._seg_paths}/{target_name[0:6]}AC*{target_name[-4:]}")
                             assert len(candidate_segs) == 1, candidate_segs
-                            seg = np.load(candidate_segs[0]).astype("float32")
+                            seg = np.load(candidate_segs[0])#.astype("float32")
                             seg = seg[::self.down_sample, ::self.down_sample, lb:(lb + self.depth), np.newaxis]
                             seg[seg > 1] = 1
                             # TODO: return index
 
                         else:
-                            seg = np.load(f"{self._seg_paths[target_name[6:8]]}/{target_name}").astype("float32")
+                            seg = np.load(f"{self._seg_paths[target_name[6:8]]}/{target_name}")#.astype("float32")
                             seg = seg[::self.down_sample, ::self.down_sample, lb:(lb + self.depth), np.newaxis]
                             seg[seg > 1] = 1
 
@@ -513,76 +515,62 @@ if __name__ == "__main__":
     TestLoader = UnpairedLoader(config=test_config["data"], dataset_type="training")
     _, _ = TestLoader.set_normalisation()
 
-    output_types = ["float32", "float32"]
+    output_types = ["real_source", "real_target"]
 
     if len(test_config["data"]["segs"]) > 0:
-        output_types += ["float32"]
+        output_types += ["seg"]
     
     if test_config["data"]["times"] is not None:
-        output_types += ["float32", "float32"]
+        output_types += ["source_times", "target_times"]
     
-    train_ds = tf.data.Dataset.from_generator(TestLoader.data_generator, output_types=tuple(output_types))
+    train_ds = tf.data.Dataset.from_generator(TestLoader.data_generator, output_types={k: "float32" for k in output_types})
 
-    for data in train_ds.batch(2).take(8):
-        if len(test_config["data"]["segs"]) > 0:
-            source, target, seg, source_time, target_time = data
-        else:
-            source, target, source_time, target_time = data
-
-        source = TestLoader.un_normalise(source)
-        target = TestLoader.un_normalise(target)
+    for data in train_ds.batch(2).take(16):
+        source = TestLoader.un_normalise(data["real_source"])
+        target = TestLoader.un_normalise(data["real_target"])
 
         plt.subplot(3, 2, 1)
-        plt.imshow(source[0, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
+        plt.imshow(source[0, 128, :, :, 0].numpy().T, cmap="gray", origin="lower", vmin=-150, vmax=250)
         plt.axis("off")
 
         if test_config["data"]["times"] is not None:
-            plt.title(source_time[0].numpy())
+            plt.title(data["source_times"][0].numpy())
 
         plt.subplot(3, 2, 2)
-        plt.imshow(source[1, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
+        plt.imshow(source[1, 128, :, :, 0].numpy().T, cmap="gray", origin="lower", vmin=-150, vmax=250)
         plt.axis("off")
 
         if test_config["data"]["times"] is not None:
-            plt.title(source_time[1].numpy())
+            plt.title(data["source_times"][1].numpy())
 
         plt.subplot(3, 2, 3)
-        plt.imshow(target[0, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
+        plt.imshow(target[0, 128, :, :, 0].numpy().T, cmap="gray", origin="lower", vmin=-150, vmax=250)
         plt.axis("off")
 
         if test_config["data"]["times"] is not None:
-            plt.title(target_time[0].numpy())
+            plt.title(data["target_times"][0].numpy())
 
         plt.subplot(3, 2, 4)
-        plt.imshow(target[1, :, :, 0, 0], cmap="gray", vmin=-150, vmax=250)
+        plt.imshow(target[1, 128, :, :, 0].numpy().T, cmap="gray", origin="lower", vmin=-150, vmax=250)
         plt.axis("off")
 
         if test_config["data"]["times"] is not None:
-            plt.title(target_time[1].numpy())
+            plt.title(data["target_times"][1].numpy())
 
-        if len(test_config["data"]["segs"]) > 0:
+        if "seg" in data.keys():
             plt.subplot(3, 2, 5)
-            plt.imshow(seg[0, :, :, 0, 0])
+            plt.imshow(data["seg"][0, 128, :, :, 0].numpy().T, origin="lower", )
             plt.axis("off")
             plt.subplot(3, 2, 6)
-            plt.imshow(seg[1, :, :, 0, 0])
+            plt.imshow(data["seg"][1, 128, :, :, 0].numpy().T, origin="lower", )
             plt.axis("off")
 
         plt.show()
 
-    if len(test_config["data"]["segs"]) > 0:
-        if test_config["data"]["times"] is not None:
-            source, target, seg, source_time, target_time = TestLoader.example_images()
-        else:
-            source, target, seg = TestLoader.example_images()
-    else:
-        if test_config["data"]["times"] is not None:
-            source, target, source_time, target_time = TestLoader.example_images()
-        else:
-            source, target = TestLoader.example_images()
+    data = TestLoader.example_images()
 
-    source = TestLoader.un_normalise(source)
-    target = TestLoader.un_normalise(target)
+    source = TestLoader.un_normalise(data["real_source"])
+    target = TestLoader.un_normalise(data["real_target"])
     
     fig, axs = plt.subplots(target.shape[0], 3)
 
@@ -590,17 +578,17 @@ if __name__ == "__main__":
         axs[i, 0].imshow(source[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
         axs[i, 0].axis("off")
 
-        if test_config["data"]["times"] is not None:
-            axs[i, 0].set_title(source_time[i])
+        if "source_times" in data.keys():
+            axs[i, 0].set_title(data["source_times"][i])
 
         axs[i, 1].imshow(target[i, :, :, 11, 0], cmap="gray", vmin=-150, vmax=250)
         axs[i, 1].axis("off")
 
-        if test_config["data"]["times"] is not None:
-            axs[i, 1].set_title(target_time[i])
+        if "source_times" in data.keys():
+            axs[i, 1].set_title(data["target_times"][i])
 
-        if len(test_config["data"]["segs"]) > 0:
-            axs[i, 2].imshow(seg[i, :, :, 11, 0])
+        if "seg" in data.keys():
+            axs[i, 2].imshow(data["seg"][i, :, :, 11, 0])
             axs[i, 2].axis("off")
     
     plt.show()

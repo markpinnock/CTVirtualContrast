@@ -66,92 +66,46 @@ def load_series(file_path):
     return img_details
 
 
-def load_subjects(id_pairs):
-    subjects = {}
+def load_subject(subject_dict):
+    batch = subject_dict["batch"]
+    subject_id = subject_dict["id"]
+    study = subject_dict["study"]
 
-    for subject in id_pairs.keys():
-        print(subject)
+    file_path = f"Z:/Raw_CT_Data/Renal_Project_Images/_Batch{batch}_Anon/{subject_id}/{study}"
+    study_details = load_series(file_path)
 
-        if subject == "T025A1":
-            file_path = f"Z:/Raw_CT_Data/Renal_Project_Images/_Batch2_Anon/{id_pairs[subject][0]}"
-        else:
-            file_path = f"Z:/Raw_CT_Data/Renal_Project_Images/_Batch1_Anon/{id_pairs[subject][0]}"
-
-        studies = os.listdir(file_path)
-        subjects[subject] = load_series(f"{file_path}/{studies[id_pairs[subject][1]]}")
-
-    return subjects
+    return study_details
 
 
 def save_times(subjects):
     times = {}
 
     for key, val in subjects.items():
-        file_path = f"Z:/Clean_CT_Data/Toshiba/Images/{key}"
+        details = load_subject(val)
+        file_path = f"{file_path}/{key}"
         volumes = os.listdir(file_path)
 
         for vol in volumes:
-            series_number = str(int(vol[-8:-5]))
+           series_number = str(int(vol[-8:-5]))
 
-            try:
-                times[vol] = np.around(val[series_number]["time"] - val["contrast_time"], 1)
-            except KeyError:
-                continue
-
-    return times
+           try:
+               times[vol] = np.around(details[series_number]["time"] - details["contrast_time"], 1)
+           except KeyError:
+               continue
+        
+        if not os.path.exists(f"{SAVE_PATH}/{key}"):
+            os.makedirs(f"{SAVE_PATH}/{key}")
+        
+        with open(f"{SAVE_PATH}/{key}/time.json", 'w'):
+            json.dump(times, fp, indent=4)
 
 
 if __name__ == "__main__":
-    # FILE_PATH = "D:/ProjectImages/DICOM1/UCLH_12227856/CT-20151218"
-    FILE_PATH = "C:/ProjectDICOM/DICOM1/CT-20161210/"
-    subject = "T033A0"
-    images = ["T033A0AC011", "T033A0VC012", "T033A0HQ027", "T033A0HQ028", "T033A0HQ054", "T033A0HQ078"]
 
-    id_pairs = {
-        "T002A1": ["UCLH_01177351", 1],
-        "T004A0": ["UCLH_01493856", 0],
-        "T005A0": ["UCLH_01568304", 0],
-        "T006A0": ["UCLH_01800867", 0],
-        "T006A1": ["UCLH_01800867", 1],
-        "T007A0": ["UCLH_01856974", 0],
-        "T009A0": ["UCLH_02173725", 0],
-        "T011A0": ["UCLH_03666794", 0],
-        "T013A0": ["UCLH_04136428", 0],
-        "T014A0": ["UCLH_04228827", 0],
-        "T016A0": ["UCLH_05450311", 0],
-        "T017A0": ["UCLH_05667514", 0],
-        "T018A0": ["UCLH_05815905", 0],
-        "T019A0": ["UCLH_07039934", 0],
-        "T020A0": ["UCLH_08288605", 0],
-        "T021A0": ["UCLH_08440465", 0],
-        "T022A0": ["UCLH_08470270", 0],
-        "T023A0": ["UCLH_08933783", 0],
-        "T024A0": ["UCLH_09099884", 0],
-        "T025A1": ["UCLH_10453550", 0],
-        "T026A0": ["UCLH_11107604", 0],
-        "T027A0": ["UCLH_11192578", 0],
-        "T028A0": ["UCLH_11349911", 0],
-        "T029A0": ["UCLH_11461915", 0],
-        "T030A0": ["UCLH_11647475", 0],
-        "T031A0": ["UCLH_11700946", 0],
-        "T032A0": ["UCLH_11815331", 0],
-        "T033A0": ["UCLH_12227856", 0],
-        "T035A0": ["UCLH_12293559", 0],
-        "T036A0": ["UCLH_12564192", 0],
-        "T037A0": ["UCLH_12577934", 0],
-        "T038A0": ["UCLH_12647573", 0],
-        "T040A0": ["UCLH_13821133", 0],
-        "T041A0": ["UCLH_14057035", 0]
-    }
+    with open("Z:/Clean_CT_Data/id_pairs.json", 'r') as fp:
+        id_pairs = json.load(fp)
 
-    # subjects = load_subjects(id_pairs)
-    # print(subjects)
+    FILE_PATH = "Z:/Clean_CT_Data/Toshiba/Images"
+    SAVE_PATH = "Z:/Clean_CT_Data/Toshiba/Times"
     
-    with open("syntheticcontrast/contrastmodelling/recovery.json", 'r') as fp:
-        subjects = json.load(fp)
-
-    times = save_times(subjects)
-    print(times)
-    
-    with open("syntheticcontrast/contrastmodelling/times.json", 'w') as fp:
-        json.dump(times, fp, indent=4)
+    save_times(id_pairs)

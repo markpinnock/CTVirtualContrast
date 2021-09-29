@@ -345,29 +345,26 @@ class HyperGenerator(tf.keras.Model):
         
         return self(x).shape
 
-    def call(self, x):
-        source_time = x[:, 0, 0, 0, 1]
-        target_time = x[:, 0, 0, 0, 2]
-
+    def call(self, x, st=None, tt=None):
         skip_layers = []
 
         x = self.first_layer(x, training=True)
         skip_layers.append(x)
 
         for conv, embedding in zip(self.encoder, self.encoder_embedding):
-            w = embedding(self.Hypernet, source_time, target_time)
+            w = embedding(self.Hypernet, st, tt)
             x = conv(x, w, training=True)
             skip_layers.append(x)
         
-        w = self.bottom_embedding(self.Hypernet, source_time, target_time)
+        w = self.bottom_embedding(self.Hypernet, st, tt)
         x = self.bottom_layer(x, w, training=True)
         x = tf.nn.relu(x)
 
         skip_layers.reverse()
 
         for skip, conv, embedding_1, embedding_2 in zip(skip_layers, self.decoder, self.decoder_embedding_1, self.decoder_embedding_2):
-            w1 = embedding_1(self.Hypernet, source_time, target_time)
-            w2 = embedding_2(self.Hypernet, source_time, target_time)
+            w1 = embedding_1(self.Hypernet, st, tt)
+            w2 = embedding_2(self.Hypernet, st, tt)
             x = conv(x, w1, w2, skip, training=True)
 
         x = self.final_layer(x)

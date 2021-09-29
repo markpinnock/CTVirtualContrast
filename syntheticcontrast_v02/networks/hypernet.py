@@ -85,7 +85,7 @@ class LayerEmbedding(tf.keras.layers.Layer):
 
             self.z.append(t)
 
-    def call(self, h, st, tt):
+    def call(self, h, st=None, tt=None):
 
         """ Takes HyperNetwork as input and converts embedding to kernel """
 

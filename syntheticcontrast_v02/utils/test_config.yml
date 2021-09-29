@@ -1,10 +1,10 @@
 data:
     data_path: "D:/ProjectImages/SyntheticContrastTest"
-    target: ["AC", "VC", "HQ"]
+    target: ["AC", "VC"]
     source: ["HQ"]
     segs: ["AC"]
     times: "times_norm.json"
-    down_sample: 4
+    down_sample: 1
     depth: 64
     norm_type: "minmax"
     norm_param_1: -500
@@ -14,7 +14,7 @@ data:
     cv_folds: 3
     fold: 2
 hyperparameters:
-    img_dims: [512, 512, 64]
+    img_dims: [256, 256, 64]
     stn_layers: 0 # 0 for no spatial transformer
     stn_output: 6 # 6 for 2D transforms
     stn_eta: 1.0e-4

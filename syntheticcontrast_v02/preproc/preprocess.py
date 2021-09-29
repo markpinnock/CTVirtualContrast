@@ -112,7 +112,7 @@ class ImgConvBase(abc.ABC):
             assert img.GetSpacing()[2] == 1.0, f"{image_names[i]}: {img.GetSpacing()}"
 
             if self.seg_path is not None:
-                seg_name = f"{self.seg_path}/{subject_ID}S/{image_names[i][-16:-5]}.seg.nrrd"
+                seg_name = f"{self.seg_path}/{subject_ID}/{image_names[i][-16:-5]}-label.nrrd"
 
                 try:
                     seg = itk.ReadImage(seg_name)
@@ -340,7 +340,7 @@ class ImgConvBase(abc.ABC):
                 img = itk.ReadImage(f"{img_path}/{f}/{im}")
 
                 try:
-                    seg = itk.ReadImage(f"{seg_path}/{f}S/{im[:-5]}.seg.nrrd")
+                    seg = itk.ReadImage(f"{seg_path}/{f}/{im[:-5]}-label.nrrd")
                 except FileNotFoundError:
                     print(f"No segmentation matching {im}")
                 else:
@@ -388,7 +388,7 @@ class Paired(ImgConvBase):
             else:
                 raise ValueError(type(proc))
 
-            img_arrays = [itk.GetArrayFromImage(i).transpose([1, 2, 0]).astype("float32") for i in imgs.values()]
+            img_arrays = [itk.GetArrayFromImage(i).transpose([1, 2, 0]).astype("float16") for i in imgs.values()]
             img_names = list(imgs.keys())
 
             if segs is not None:
@@ -506,6 +506,12 @@ class Unpaired(ImgConvBase):
         
         count = 1
         total = len(subjects)
+    
+        if not os.path.exists(f"{self.save_path}/Images"):
+            os.makedirs(f"{self.save_path}/Images")
+
+        if not os.path.exists(f"{self.save_path}/Segmentations"):
+            os.makedirs(f"{self.save_path}/Segmentations")
         
         for subject in subjects:
             proc = self.load_subject(subject, HU_min=HU_min, HU_max=HU_max)
@@ -548,9 +554,6 @@ class Unpaired(ImgConvBase):
                 idx = 0  
                 stem = name[-16:-5]
 
-                if not os.path.exists(f"{self.save_path}/Images"):
-                    os.makedirs(f"{self.save_path}/Images")
-
                 if subvol_depth > 0:
                     assert file_type != "npy", "Only works with npy"
 
@@ -573,10 +576,7 @@ class Unpaired(ImgConvBase):
 
             for name, seg in zip(seg_names, seg_arrays):
                 idx = 0  
-                stem = name[-20:-9]
-
-                if not os.path.exists(f"{self.save_path}/Segmentations"):
-                    os.makedirs(f"{self.save_path}/Segmentations")
+                stem = name[-22:-11]
 
                 if subvol_depth > 0:
                     assert file_type != "npy", "Only works with npy"
@@ -649,7 +649,8 @@ class Unpaired(ImgConvBase):
 
 if __name__ == "__main__":
 
-    FILE_PATH = "Z:/Clean_CT_Data/Toshiba/"
+    # FILE_PATH = "Z:/Clean_CT_Data/Toshiba/"
+    FILE_PATH = "D:/ProjectImages/"
     SAVE_PATH = "D:/ProjectImages/SyntheticContrastTest"
 
     with open("syntheticcontrast_v02/preproc/ignore.json", 'r') as fp:
@@ -658,10 +659,24 @@ if __name__ == "__main__":
     subject_ignore = list(ignore["subject_ignore"].keys())
     image_ignore = ignore["image_ignore"]
 
-    # Unpaired.check_saved(SAVE_PATH)
-    # exit()
-    Test = Unpaired(image_path=FILE_PATH + "/Images", segmentation_path=FILE_PATH + "/Segmentations", transformation_path=FILE_PATH + "/Transforms", save_path=SAVE_PATH, output_dims=(512, 512, 12), ignore=subject_ignore, NCC_tol=0.0)
-    # Test.list_images(ignore=image_ignore, num_AC=1, num_VC=1, num_HQ=2).display(display=True, HU_min=-500, HU_max=2500)
-    # print(Test.list_images(ignore=image_ignore, num_AC=1, num_VC=1, num_HQ=1).save_data(HU_min=-500, HU_max=2500, file_type="npy", down_sample=2))
-    # Unpaired.check_processed_imgs(SAVE_PATH)
-    Test.check_saved(SAVE_PATH)
+    Test = Unpaired(
+        image_path=FILE_PATH + "/Images",
+        segmentation_path=FILE_PATH + "/Segmentations",
+        transformation_path=FILE_PATH + "/Transforms",
+        save_path=SAVE_PATH,
+        output_dims=(256, 256, 64),
+        ignore=subject_ignore, NCC_tol=0.0
+        )
+
+    # Test.list_images(
+    #     ignore=image_ignore,
+    #     num_AC=1, num_VC=1, num_HQ=2
+    #     ).display(display=True, HU_min=-150, HU_max=250)
+
+    Test.list_images(
+        ignore=image_ignore,
+        num_AC=1, num_VC=1, num_HQ=1
+        ).save_data(HU_min=-500, HU_max=2500, file_type="npy", down_sample=2)
+
+    Unpaired.check_processed_imgs(SAVE_PATH)
+    Unpaired.check_saved(SAVE_PATH)
