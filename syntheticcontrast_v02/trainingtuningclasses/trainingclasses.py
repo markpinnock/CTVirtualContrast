@@ -146,7 +146,15 @@ class TrainingPix2Pix:
             data_generator = self.val_generator
 
         data = data_generator.example_images()
-        pred = self.Model.Generator(data["real_source"], data["source_times"], data["target_times"]).numpy()
+
+        if self.config["expt"]["model"] == "HyperPix2Pix":
+            pred = np.zeros_like(data["real_source"])
+
+            for i in range(data["real_source"].shape[0]):
+                pred[i, ...] = self.Model.Generator(data["real_source"][i, ...][tf.newaxis, :, :, :, :], data["source_times"][i][tf.newaxis], data["target_times"][i][tf.newaxis]).numpy()
+
+        else:
+            pred = self.Model.Generator(data["real_source"], data["source_times"], data["target_times"]).numpy()
 
         source = data_generator.un_normalise(data["real_source"])
         target = data_generator.un_normalise(data["real_target"])

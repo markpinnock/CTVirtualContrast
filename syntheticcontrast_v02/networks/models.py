@@ -338,12 +338,12 @@ class HyperGenerator(tf.keras.Model):
             padding="same", activation="linear",
             kernel_initializer=initialiser, name="output")
 
-    def build_model(self, x):
+    def build_model(self, x, st=None, tt=None):
 
         """ Build method takes tf.zeros((input_dims)) and returns
             shape of output - all layers implicitly built and weights set to trainable """
         
-        return self(x).shape
+        return self(x, st, tt).shape
 
     def call(self, x, st=None, tt=None):
         skip_layers = []

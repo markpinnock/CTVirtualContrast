@@ -649,9 +649,9 @@ class Unpaired(ImgConvBase):
 
 if __name__ == "__main__":
 
-    # FILE_PATH = "Z:/Clean_CT_Data/Toshiba/"
-    FILE_PATH = "D:/ProjectImages/"
-    SAVE_PATH = "D:/ProjectImages/SyntheticContrastTest"
+    FILE_PATH = "Z:/Clean_CT_Data/Toshiba/"
+    # FILE_PATH = "D:/ProjectImages/"
+    SAVE_PATH = "D:/ProjectImages/SyntheticContrast"
 
     with open("syntheticcontrast_v02/preproc/ignore.json", 'r') as fp:
         ignore = json.load(fp)

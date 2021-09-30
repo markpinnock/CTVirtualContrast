@@ -29,9 +29,13 @@ def load_series(file_path):
     for i in range(0, len(slices)):
         img = itk.ReadImage(f"{file_path}/{slices[i]}")
         series_number = int(img.GetMetaData(dicom_tags["series_number"]))
+        desc = img.GetMetaData(dicom_tags["series_description"]) 
 
-        if "2.0" in img.GetMetaData(dicom_tags["series_description"]) or "4.0" in img.GetMetaData(dicom_tags["series_description"]) or "0.5" in img.GetMetaData(dicom_tags["series_description"]) or "Body CT" in img.GetMetaData(dicom_tags["series_description"]) or "Thin Body" in img.GetMetaData(dicom_tags["series_description"]) or "Thick Body" in img.GetMetaData(dicom_tags["series_description"]):
-            continue
+        if "2.0" in desc or "4.0" in desc or "0.5" in desc or "Body CT" in desc or "Thin Body" in desc or "Thick Body" in desc:
+            if "Pre Biopsy" in desc:
+                pass
+            else:
+                continue
 
         if series_number not in img_details.keys():
             if series_number > max_series_number:
@@ -77,27 +81,40 @@ def load_subject(subject_dict):
     return study_details
 
 
-def save_times(subjects):
-    times = {}
+def save_times(pairs, file_path, save_path, overwrite, subjects):
+    if len(subjects) == 0:
+        keyvals = pairs
+    else:
+        keyvals = dict(zip(subjects, [pairs[sub] for sub in subjects]))
 
-    for key, val in subjects.items():
+    for key, val in keyvals.items():
+        times = {}
+        print(key)
+
+        if os.path.exists(f"{save_path}/{key}/time.json") and overwrite is not True:
+            continue
+
         details = load_subject(val)
-        file_path = f"{file_path}/{key}"
-        volumes = os.listdir(file_path)
+        img_path = f"{file_path}/{key}"
+        volumes = os.listdir(img_path)
 
         for vol in volumes:
-           series_number = str(int(vol[-8:-5]))
+            series_number = int(vol[-8:-5])
 
-           try:
-               times[vol] = np.around(details[series_number]["time"] - details["contrast_time"], 1)
-           except KeyError:
-               continue
+            try:
+                times[vol] = np.around(details[series_number]["time"] - details["contrast_time"], 1)
+            except KeyError as e:
+                print(f"KeyError: {e}")
+                continue
+            except TypeError as e:
+                print(f"TypeError: {e}")
+                continue
+      
+        if not os.path.exists(f"{save_path}/{key}"):
+            os.makedirs(f"{save_path}/{key}")
         
-        if not os.path.exists(f"{SAVE_PATH}/{key}"):
-            os.makedirs(f"{SAVE_PATH}/{key}")
-        
-        with open(f"{SAVE_PATH}/{key}/time.json", 'w'):
-            json.dump(times, fp, indent=4)
+        with open(f"{save_path}/{key}/time.json", 'w') as fp:
+            json.dump(times, fp, indent=4, sort_keys=True)
 
 
 if __name__ == "__main__":
@@ -105,7 +122,10 @@ if __name__ == "__main__":
     with open("Z:/Clean_CT_Data/id_pairs.json", 'r') as fp:
         id_pairs = json.load(fp)
 
+    overwrite = False
+    subjects = []
+
     FILE_PATH = "Z:/Clean_CT_Data/Toshiba/Images"
     SAVE_PATH = "Z:/Clean_CT_Data/Toshiba/Times"
     
-    save_times(id_pairs)
+    save_times(id_pairs, FILE_PATH, SAVE_PATH, overwrite, subjects)

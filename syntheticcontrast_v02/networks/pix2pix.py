@@ -194,19 +194,29 @@ class HyperPix2Pix(Pix2Pix):
 
     def generator_init(self, config):
         # Check generator output dims match input
-        G_input_size = [1] + config["img_dims"] + [1]
+        G_input_size = [1] + self.img_dims + [1]
+        G_output_size = [1] + self.img_dims + [1]
         self.Generator = HyperGenerator(self.initialiser, config, name="generator")
-        assert self.Generator.build_model(tf.zeros(G_input_size)) == G_input_size
+
+        if "source_times" or "target_times" in self.g_in_ch:
+            assert self.Generator.build_model(tf.zeros(G_input_size), tf.zeros(1), tf.zeros(1)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size))} vs {G_input_size}"
+        else:
+            assert self.Generator.build_model(tf.zeros(G_input_size)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size))} vs {G_input_size}"
 
     def summary(self):
         source = tf.keras.Input(shape=self.img_dims + [1])
-        outputs = self.Generator.call(source)
+
+        if "source_times" or "target_times" in self.g_in_ch:
+            outputs = self.Generator.call(source, tf.zeros(1), tf.zeros(1))
+        else:
+            outputs = self.Generator.call(source)
+
         print("===========================================================")
         print(f"Generator: {np.sum([np.prod(v.shape) for v in self.Generator.trainable_variables])}")
         print("===========================================================")
         tf.keras.Model(inputs=source, outputs=outputs).summary()
-        source = tf.keras.Input(shape=self.img_dims + [1])
-        outputs = self.Discriminator.call(tf.concat([source] * self.d_in_ch, axis=4))
+        source = tf.keras.Input(shape=self.img_dims + [len(self.d_in_ch)])
+        outputs = self.Discriminator.call(source)
         print("===========================================================")
         vs = 0
         print(f"Discriminator: {np.sum([np.prod(v.shape) for v in self.Discriminator.trainable_variables])}")
