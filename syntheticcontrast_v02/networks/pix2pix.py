@@ -41,7 +41,7 @@ class Pix2Pix(tf.keras.Model):
         G_output_size = [1] + self.img_dims + [1]
         self.Generator = Generator(self.initialiser, config, name="generator")
 
-        if "source_times" or "target_times" in self.g_in_ch:
+        if "source_times" in self.g_in_ch or "target_times" in self.g_in_ch:
             assert self.Generator.build_model(tf.zeros(G_input_size), tf.zeros(1), tf.zeros(1)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size))} vs {G_input_size}"
         else:
             assert self.Generator.build_model(tf.zeros(G_input_size)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size))} vs {G_input_size}"
@@ -79,7 +79,7 @@ class Pix2Pix(tf.keras.Model):
     def summary(self):
         source = tf.keras.Input(shape=self.img_dims + [1])
 
-        if "source_times" or "target_times" in self.g_in_ch:
+        if "source_times" in self.g_in_ch or "target_times" in self.g_in_ch:
             outputs = self.Generator.call(source, tf.zeros(1), tf.zeros(1))
         else:
             outputs = self.Generator.call(source)
@@ -95,7 +95,7 @@ class Pix2Pix(tf.keras.Model):
         print("===========================================================")
         tf.keras.Model(inputs=source, outputs=outputs).summary()
 
-    @tf.function
+    # @tf.function
     def train_step(self, real_source, real_target, seg=None, source_times=None, target_times=None):
 
         """ Expects data in order 'source, target' or 'source, target, segmentations'"""
@@ -127,11 +127,11 @@ class Pix2Pix(tf.keras.Model):
             # Augmentation if required
             if self.Aug:
                 imgs, seg = self.Aug(imgs=[real_source, real_target, fake_target], seg=seg)
-                source, real_target, fake_target = imgs
+                real_source, real_target, fake_target = imgs
 
             # Concatenate extra channels for source, seg, times to discriminator
             d_in_list = []
-            if "source" in self.d_in_ch: d_in_list += [source]
+            if "source" in self.d_in_ch: d_in_list += [real_source]
             if "seg" in self.d_in_ch: d_in_list += [seg]
             if "source_times" in self.d_in_ch: d_in_list += [source_times_ch]
             if "target_times" in self.d_in_ch: d_in_list += [target_times_ch]
@@ -198,7 +198,7 @@ class HyperPix2Pix(Pix2Pix):
         G_output_size = [1] + self.img_dims + [1]
         self.Generator = HyperGenerator(self.initialiser, config, name="generator")
 
-        if "source_times" or "target_times" in self.g_in_ch:
+        if "source_times" in self.g_in_ch or "target_times" in self.g_in_ch:
             assert self.Generator.build_model(tf.zeros(G_input_size), tf.zeros(1), tf.zeros(1)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size))} vs {G_input_size}"
         else:
             assert self.Generator.build_model(tf.zeros(G_input_size)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size))} vs {G_input_size}"
@@ -206,7 +206,7 @@ class HyperPix2Pix(Pix2Pix):
     def summary(self):
         source = tf.keras.Input(shape=self.img_dims + [1])
 
-        if "source_times" or "target_times" in self.g_in_ch:
+        if "source_times" in self.g_in_ch or "target_times" in self.g_in_ch:
             outputs = self.Generator.call(source, tf.zeros(1), tf.zeros(1))
         else:
             outputs = self.Generator.call(source)
@@ -218,7 +218,6 @@ class HyperPix2Pix(Pix2Pix):
         source = tf.keras.Input(shape=self.img_dims + [len(self.d_in_ch)])
         outputs = self.Discriminator.call(source)
         print("===========================================================")
-        vs = 0
         print(f"Discriminator: {np.sum([np.prod(v.shape) for v in self.Discriminator.trainable_variables])}")
         print("===========================================================")
         tf.keras.Model(inputs=source, outputs=outputs).summary()

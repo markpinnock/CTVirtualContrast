@@ -530,28 +530,28 @@ if __name__ == "__main__":
         target = TestLoader.un_normalise(data["real_target"])
 
         plt.subplot(3, 2, 1)
-        plt.imshow(source[0, 128, :, :, 0].numpy().T, cmap="gray", origin="lower", vmin=-150, vmax=250)
+        plt.imshow(source[0, :, :, 0, 0].numpy(), cmap="gray", vmin=-150, vmax=250)
         plt.axis("off")
 
         if test_config["data"]["times"] is not None:
             plt.title(data["source_times"][0].numpy())
 
         plt.subplot(3, 2, 2)
-        plt.imshow(source[1, 128, :, :, 0].numpy().T, cmap="gray", origin="lower", vmin=-150, vmax=250)
+        plt.imshow(source[1, :, :, 0, 0].numpy(), cmap="gray", vmin=-150, vmax=250)
         plt.axis("off")
 
         if test_config["data"]["times"] is not None:
             plt.title(data["source_times"][1].numpy())
 
         plt.subplot(3, 2, 3)
-        plt.imshow(target[0, 128, :, :, 0].numpy().T, cmap="gray", origin="lower", vmin=-150, vmax=250)
+        plt.imshow(target[0, :, :, 0, 0].numpy(), cmap="gray", vmin=-150, vmax=250)
         plt.axis("off")
 
         if test_config["data"]["times"] is not None:
             plt.title(data["target_times"][0].numpy())
 
         plt.subplot(3, 2, 4)
-        plt.imshow(target[1, 128, :, :, 0].numpy().T, cmap="gray", origin="lower", vmin=-150, vmax=250)
+        plt.imshow(target[1, :, :, 0, 0].numpy(), cmap="gray", vmin=-150, vmax=250)
         plt.axis("off")
 
         if test_config["data"]["times"] is not None:
@@ -559,10 +559,10 @@ if __name__ == "__main__":
 
         if "seg" in data.keys():
             plt.subplot(3, 2, 5)
-            plt.imshow(data["seg"][0, 128, :, :, 0].numpy().T, origin="lower", )
+            plt.imshow(data["seg"][0, :, :, 0, 0].numpy())
             plt.axis("off")
             plt.subplot(3, 2, 6)
-            plt.imshow(data["seg"][1, 128, :, :, 0].numpy().T, origin="lower", )
+            plt.imshow(data["seg"][1, :, :, 0, 0].numpy())
             plt.axis("off")
 
         plt.show()

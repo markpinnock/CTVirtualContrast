@@ -223,7 +223,7 @@ class Generator(tf.keras.Model):
             else:
                 x = tconv(x, skip, training=True)
 
-        if self.time_layer == f"d{i + 1}":
+        if self.time_layer == f"u{i + 1}":
             x = self.final_layer(x, st, tt, training=True)
         else:
             x = self.final_layer(x, training=True)

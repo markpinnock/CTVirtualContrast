@@ -40,7 +40,9 @@ class HyperNet(tf.keras.layers.Layer):
 
         """ Takes layer embedding z, and returns kernel for that layer """
 
-        z = self.time_concat([z, source_time[:, tf.newaxis], target_time[:, tf.newaxis]])
+        if source_time is not None:
+            z = self.time_concat([z, source_time[:, tf.newaxis], target_time[:, tf.newaxis]])
+
         a = tf.add(tf.matmul(z, self.Wi), self.bi)
         a = tf.reshape(a, [self.in_dims, self.Nz])
         k = tf.add(tf.matmul(a, self.Wo), self.bo)

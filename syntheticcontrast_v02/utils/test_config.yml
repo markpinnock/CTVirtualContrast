@@ -1,9 +1,9 @@
 data:
-    data_path: "D:/ProjectImages/SyntheticContrastTest"
-    target: ["AC", "VC"]
+    data_path: "D:/ProjectImages/SyntheticContrast"
+    target: ["AC"]
     source: ["HQ"]
     segs: ["AC"]
-    times: "times_norm.json"
+    times: null #"times_norm.json"
     down_sample: 1
     depth: 64
     norm_type: "minmax"

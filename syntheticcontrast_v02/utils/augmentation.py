@@ -25,14 +25,14 @@ class DiffAug(tf.keras.layers.Layer):
         """ Random saturation in range [0, 2] """
 
         factor = tf.random.uniform((x.shape[0], 1, 1, 1, 1)) * 2
-        x_mean = tf.reduce_mean(x, axis=(1, 2, 3), keepdims=True)
+        x_mean = tf.reduce_mean(x, axis=4, keepdims=True)
         return (x - x_mean) * factor + x_mean
 
     def contrast(self, x):
         """ Random contrast in range [0.5, 1.5] """
 
         factor = tf.random.uniform((x.shape[0], 1, 1, 1, 1)) + 0.5
-        x_mean = tf.reduce_mean(x, axis=-1, keepdims=True)
+        x_mean = tf.reduce_mean(x, axis=[1, 2, 3], keepdims=True)
         return (x - x_mean) * factor + x_mean
     
     def translation(self, imgs, seg=None, ratio=0.125):
@@ -42,9 +42,9 @@ class DiffAug(tf.keras.layers.Layer):
         num_imgs = len(imgs)
         batch_size = tf.shape(imgs[0])[0]
         image_size = tf.shape(imgs[0])[1:3]
-        image_depth = tf.shape(imgs[0])[3]
+        # image_depth = tf.shape(imgs[0])[3]
 
-        if seg != None:
+        if seg is not None:
             x = tf.concat(imgs + [seg], axis=3)
         
         else:
@@ -106,7 +106,9 @@ class DiffAug(tf.keras.layers.Layer):
         num_imgs = len(imgs)
 
         imgs = tf.concat(imgs, axis=4)
-        if self.aug_config["colour"]: imgs = self.contrast(self.saturation(self.brightness(imgs)))
+
+        # NB: no saturation as monochrome images
+        if self.aug_config["colour"]: imgs = self.contrast(self.brightness(imgs))
         imgs = [tf.expand_dims(imgs[:, :, :, :, i], 4) for i in range(num_imgs)]
 
         if self.aug_config["translation"]: imgs, seg = self.translation(imgs, seg)
@@ -224,68 +226,69 @@ class StdAug(tf.keras.layers.Layer):
 if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
+    import numpy as np
     import yaml
-    from syntheticcontrast_v02.utils.dataloader import PairedLoader
+    from syntheticcontrast_v02.utils.newdataloader import UnpairedLoader
 
     test_config = yaml.load(open("syntheticcontrast_v02/utils/test_config.yml", 'r'), Loader=yaml.FullLoader)
 
     FILE_PATH = "D:/ProjectImages/SyntheticContrast"
-    TestLoader = PairedLoader(test_config["data"], dataset_type="training")
-    TestLoader.set_normalisation()
+    TestLoader = UnpairedLoader(test_config["data"], dataset_type="training")
+    _, _ = TestLoader.set_normalisation()
 
     if test_config["augmentation"]["type"] == "differentiable":
-        TestAug = DiffAug(test_config)
+        TestAug = DiffAug(test_config["augmentation"])
     else:
         TestAug = StdAug(test_config)
 
-    output_types = ["float32", "float32"]
+    output_types = ["real_source", "real_target"]
 
     if len(test_config["data"]["segs"]) > 0:
-        output_types += ["float32"]
+        output_types += ["seg"]
 
-    train_ds = tf.data.Dataset.from_generator(TestLoader.data_generator, output_types=tuple(output_types))
+    train_ds = tf.data.Dataset.from_generator(TestLoader.data_generator, output_types={k: "float32" for k in output_types})
 
     for data in train_ds.batch(4):
-        if len(test_config["data"]["segs"]) > 0:
-            source, target, seg = data
-            target, seg = TestAug([source, target], seg=seg)
-        else:
-            source, target = data
-            target, _ = TestAug([source, target], seg=None)
+        pred = np.zeros_like(data["real_source"].numpy())
+        pred[:, 0:pred.shape[1] // 2, 0:pred.shape[1] // 2, :, :] = 1
+        pred[:, pred.shape[1] // 2:, pred.shape[1] // 2:, :, :] = 1
+        perd = tf.convert_to_tensor(pred)
+        (source, target, pred), seg = TestAug([data["real_source"], data["real_target"], pred], seg=data["seg"])
 
-        imgs, segs = TestAug(imgs=[data[0], data[1]], seg=data[2])
-
-        source, target = imgs
-        # source = TestLoader.un_normalise(source)
-        # target = TestLoader.un_normalise(target)
-
-        plt.subplot(2, 4, 1)
-        plt.imshow(data[0][0, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
+        plt.subplot(2, 5, 1)
+        plt.imshow(data["real_source"][0, :, :, 0, 0], cmap="gray")
         plt.axis("off")
-        plt.subplot(2, 4, 5)
-        plt.imshow(data[0][1, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
+        plt.subplot(2, 5, 6)
+        plt.imshow(data["real_source"][1, :, :, 0, 0], cmap="gray")
         plt.axis("off")
 
-        plt.subplot(2, 4, 2)
-        plt.imshow(source[0, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
+        plt.subplot(2, 5, 2)
+        plt.imshow(source[0, :, :, 0, 0], cmap="gray")
         plt.axis("off")
-        plt.subplot(2, 4, 6)
-        plt.imshow(source[1, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
+        plt.subplot(2, 5, 7)
+        plt.imshow(source[1, :, :, 0, 0], cmap="gray")
         plt.axis("off")
         
-        plt.subplot(2, 4, 3)
-        plt.imshow(target[0, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
+        plt.subplot(2, 5, 3)
+        plt.imshow(target[0, :, :, 0, 0], cmap="gray")
         plt.axis("off")
-        plt.subplot(2, 4, 7)
-        plt.imshow(target[1, :, :, 0, 0], cmap="gray")#, vmin=-150, vmax=250)
+        plt.subplot(2, 5, 8)
+        plt.imshow(target[1, :, :, 0, 0], cmap="gray")
         plt.axis("off")
 
-        if len(test_config["data"]["segs"]) > 0:
-            plt.subplot(2, 4, 4)
-            plt.imshow(segs[0, :, :, 0, 0])
+        plt.subplot(2, 5, 4)
+        plt.imshow(pred[0, :, :, 0, 0], cmap="gray")
+        plt.axis("off")
+        plt.subplot(2, 5, 9)
+        plt.imshow(pred[1, :, :, 0, 0], cmap="gray")
+        plt.axis("off")
+
+        if "seg" in data.keys():
+            plt.subplot(2, 5, 5)
+            plt.imshow(seg[0, :, :, 0, 0])
             plt.axis("off")
-            plt.subplot(2, 4, 8)
-            plt.imshow(segs[1, :, :, 0, 0])
+            plt.subplot(2, 5, 10)
+            plt.imshow(seg[1, :, :, 0, 0])
             plt.axis("off")
 
         plt.show()
