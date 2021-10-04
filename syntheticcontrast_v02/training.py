@@ -61,8 +61,15 @@ def train(CONFIG):
             d_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt")
             )
 
-    elif CONFIG["expt"]["model"] == "HyperPix2Pix":
-        Model = HyperPix2Pix(config=CONFIG)
+    elif CONFIG["expt"]["model"] == "HyperPix2Pix1":
+        Model = HyperPix2Pix(config=CONFIG, version=1)
+        Model.compile(
+            g_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt"),
+            d_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt")
+            )
+
+    elif CONFIG["expt"]["model"] == "HyperPix2Pix2":
+        Model = HyperPix2Pix(config=CONFIG, version=2)
         Model.compile(
             g_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt"),
             d_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt")
@@ -99,8 +106,8 @@ def train(CONFIG):
         with writer.as_default():
             tf.summary.trace_export("graph", step=0)
 
-    if CONFIG["expt"]["model"] == "Pix2Pix" or CONFIG["expt"]["model"] == "HyperPix2Pix":
-        TrainingLoop = TrainingPix2Pix(
+    if CONFIG["expt"]["model"] == "CycleGAN":
+        TrainingLoop = TrainingCycleGAN(
             Model=Model,
             dataset=(train_ds, val_ds),
             train_generator=TrainGenerator,
@@ -109,7 +116,7 @@ def train(CONFIG):
             )
 
     else:
-        TrainingLoop = TrainingCycleGAN(
+        TrainingLoop = TrainingPix2Pix(
             Model=Model,
             dataset=(train_ds, val_ds),
             train_generator=TrainGenerator,

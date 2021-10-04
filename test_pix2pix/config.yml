@@ -18,7 +18,7 @@ data:
 expt:
     mb_size: 1
     save_every: 1
-    model: "Pix2Pix" # "GAN" or "HyperGAN"
+    model: "HyperPix2Pix2" # "GAN" or "HyperGAN"
     epochs: 1000
     verbose: true # Output model summary
     graph: false # Save graph for visualisation in Tensorboard

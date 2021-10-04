@@ -1,11 +1,9 @@
 import numpy as np
 import tensorflow as tf
 
-from .models import Discriminator, Generator, HyperGenerator
-from .stn import SpatialTransformer
+from .models import Discriminator, Generator, HyperGenerator_v01, HyperGenerator_v02
 from syntheticcontrast_v02.utils.augmentation import DiffAug, StdAug
-from syntheticcontrast_v02.utils.losses import (
-    minimax_D, minimax_G, L1, wasserstein_D, wasserstein_G, gradient_penalty, FocalLoss, FocalMetric)
+from syntheticcontrast_v02.utils.losses import minimax_D, minimax_G, L1, FocalLoss, FocalMetric
 
 
 #-------------------------------------------------------------------------
@@ -95,7 +93,7 @@ class Pix2Pix(tf.keras.Model):
         print("===========================================================")
         tf.keras.Model(inputs=source, outputs=outputs).summary()
 
-    # @tf.function
+    @tf.function
     def train_step(self, real_source, real_target, seg=None, source_times=None, target_times=None):
 
         """ Expects data in order 'source, target' or 'source, target, segmentations'"""
@@ -189,14 +187,21 @@ class HyperPix2Pix(Pix2Pix):
 
     """ GAN class using HyperNetwork for generator """
 
-    def __init__(self, config, name="HyperGAN"):
+    def __init__(self, config: dict, version: int, name: str = "HyperGAN"):
+        self.version = version
         super().__init__(config, name=name)
 
     def generator_init(self, config):
         # Check generator output dims match input
         G_input_size = [1] + self.img_dims + [1]
         G_output_size = [1] + self.img_dims + [1]
-        self.Generator = HyperGenerator(self.initialiser, config, name="generator")
+
+        if self.version == 1:
+            self.Generator = HyperGenerator_v01(self.initialiser, config, name="generator")
+        elif self.version == 2:
+            self.Generator = HyperGenerator_v02(self.initialiser, config, name="generator")
+        else:
+            raise ValueError(f"Incorrect version: {self.version}")
 
         if "source_times" in self.g_in_ch or "target_times" in self.g_in_ch:
             assert self.Generator.build_model(tf.zeros(G_input_size), tf.zeros(1), tf.zeros(1)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size))} vs {G_input_size}"
