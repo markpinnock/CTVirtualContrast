@@ -23,7 +23,7 @@ class Pix2Pix(tf.keras.Model):
 
         # Set up augmentation
         if config["augmentation"]["type"] == "standard":
-            self.Aug = StdAug(config=config["augmentation"])
+            self.Aug = StdAug(config=config)
         elif config["augmentation"]["type"] == "differentiable":
             self.Aug = DiffAug(config=config["augmentation"])
         else:

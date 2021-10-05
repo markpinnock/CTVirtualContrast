@@ -122,11 +122,10 @@ class Generator(tf.keras.Model):
         ngf = config["ngf"]
         num_layers = config["g_layers"]
         
-        if config["g_time_layer"] is not None:
-            self.time_layer = config["g_time_layer"]
-            assert int(self.time_layer[1]) <= num_layers, f"time layer {self.time_layer} vs number of layers {num_layers}"
+        if config["g_time_layers"] is not None:
+            self.time_layers = config["g_time_layers"]
         else:
-            self.time_layer = None
+            self.time_layers = None
 
         assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum number of generator layers: {max_num_layers}"
         self.encoder = []
@@ -192,6 +191,11 @@ class Generator(tf.keras.Model):
             1, (4, 4, 4), (2, 2, 2),
             padding="same", activation="linear",
             kernel_initializer=initialiser, name="output")
+        
+        layer_names = [layer.name for layer in self.encoder] + ["bottom"] + [layer.name for layer in self.decoder]
+
+        for time_input in self.time_layers:
+            assert time_input in layer_names, (time_input, layer_names)
 
     def build_model(self, x, st=None, tt=None):
 
@@ -203,14 +207,14 @@ class Generator(tf.keras.Model):
     def call(self, x, st=None, tt=None):
         skip_layers = []
 
-        for i, conv in enumerate(self.encoder):
-            if self.time_layer == f"d{i}":
+        for conv in self.encoder:
+            if conv.name in self.time_layers:
                 x = conv(x, st, tt, training=True)
             else:
                 x = conv(x, training=True)
             skip_layers.append(x)
 
-        if self.time_layer == f"d{i + 1}":
+        if self.bottom_layer.name in self.time_layers:
             x = self.bottom_layer(x, st, tt, training=True)
         else:
             x = self.bottom_layer(x, training=True)
@@ -218,17 +222,18 @@ class Generator(tf.keras.Model):
         x = tf.nn.relu(x)
         skip_layers.reverse()
 
-        for i, (skip, tconv) in enumerate(zip(skip_layers, self.decoder)):
-            if self.time_layer == f"u{i}":
+        for skip, tconv in zip(skip_layers, self.decoder):
+            if tconv.name in self.time_layers:
                 x = tconv(x, skip, st, tt, training=True)
             else:
                 x = tconv(x, skip, training=True)
 
-        if self.time_layer == f"u{i + 1}":
+        if self.final_layer.name in self.time_layers:
+
             x = self.final_layer(x, st, tt, training=True)
         else:
             x = self.final_layer(x, training=True)
-        
+
         return x
 
 

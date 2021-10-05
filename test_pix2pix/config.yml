@@ -18,7 +18,7 @@ data:
 expt:
     mb_size: 1
     save_every: 1
-    model: "HyperPix2Pix2" # "GAN" or "HyperGAN"
+    model: "Pix2Pix" # "GAN" or "HyperGAN"
     epochs: 1000
     verbose: true # Output model summary
     graph: false # Save graph for visualisation in Tensorboard
@@ -37,7 +37,7 @@ hyperparameters:
     g_layers: 6
     d_input: ["target", "source", "source_times", "target_times"]
     g_input: ["source", "source_times", "target_times"]
-    g_time_layer: "u4"
+    g_time_layers: ["up_0", "up_1", "up_2", "up_3", "up_4"]
     Nz: 128
 augmentation:
     type: "differentiable" # "standard", "differentiable" or null
