@@ -2,6 +2,21 @@ import tensorflow as tf
 
 
 #-------------------------------------------------------------------------
+""" Instance normalisation layer for Pix2Pix generator """
+
+class InstanceNorm(tf.keras.layers.Layer):
+
+    def __init__(self, name=None):
+        super().__init__(name=name)
+        self.episilon = 1e-12
+
+    def call(self, x):
+        mu = tf.math.reduce_mean(x, axis=[1, 2, 3], keepdims=True)
+        sigma = tf.math.reduce_std(x, axis=[1, 2, 3], keepdims=True)
+
+        return (x - mu) / (sigma + self.episilon)
+
+#-------------------------------------------------------------------------
 """ Down-sampling convolutional block for U-Net"""
 
 class DownBlock(tf.keras.layers.Layer):
@@ -86,20 +101,20 @@ class GANDownBlock(tf.keras.layers.Layer):
         bias = not batch_norm
 
         self.conv = tf.keras.layers.Conv3D(nc, weights, strides=strides, padding="same", kernel_initializer=initialiser, use_bias=bias, name="conv")
-        
-        if batch_norm:
-            self.bn = tf.keras.layers.BatchNormalization(name="batchnorm")
 
-    def call(self, x, s=None, t=None, training=True):
-        if s is not None:
-            source_time = tf.tile(tf.reshape(s, [-1, 1, 1, 1, 1]), [1] + x.shape[1:4] + [1], "s_tile")
-            target_time = tf.tile(tf.reshape(t, [-1, 1, 1, 1, 1]), [1] + x.shape[1:4] + [1], "t_tile")
-            x = tf.concat([x, source_time, target_time], axis=4, name="time_concat")
+        # Instance normalisation
+        if batch_norm:
+            self.bn = InstanceNorm(name="instancenorm")
+
+    def call(self, x, t=None, training=True):
+        if t is not None:
+            tiled_time = tf.tile(tf.reshape(t, [-1, 1, 1, 1, 1]), [1] + x.shape[1:4] + [1], "time_tile")
+            x = tf.concat([x, tiled_time], axis=4, name="time_concat")
 
         x = self.conv(x)
 
         if self.batch_norm:
-            x = self.bn(x, training)
+            x = self.bn(x)
 
         return tf.nn.leaky_relu(x, alpha=0.2, name="l_relu")
 
@@ -125,9 +140,10 @@ class GANUpBlock(tf.keras.layers.Layer):
         self.tconv = tf.keras.layers.Conv3DTranspose(nc, weights, strides=strides, padding="same", kernel_initializer=initialiser, use_bias=bias, name="tconv")
         self.conv = tf.keras.layers.Conv3D(nc, weights, strides=(1, 1, 1), padding="same", kernel_initializer=initialiser, use_bias=bias, name="conv")
 
+        # Instance normalisation
         if batch_norm:
-            self.bn1 = tf.keras.layers.BatchNormalization(name="batchnorm1")
-            self.bn2 = tf.keras.layers.BatchNormalization(name="batchnorm2")
+            self.bn1 = InstanceNorm(name="instancenorm1")
+            self.bn2 = InstanceNorm(name="instancenorm2")
 
         if dropout:
             self.dropout1 = tf.keras.layers.Dropout(0.5, name="dropout1")
@@ -135,16 +151,15 @@ class GANUpBlock(tf.keras.layers.Layer):
         
         self.concat = tf.keras.layers.Concatenate(name="concat")
     
-    def call(self, x, skip, s=None, t=None, training=True):
-        if s is not None:
-            source_time = tf.tile(tf.reshape(s, [-1, 1, 1, 1, 1]), [1] + x.shape[1:4] + [1], "s_tile")
-            target_time = tf.tile(tf.reshape(t, [-1, 1, 1, 1, 1]), [1] + x.shape[1:4] + [1], "t_tile")
-            x = tf.concat([x, source_time, target_time], axis=4, name="time_concat")
+    def call(self, x, skip, t=None, training=True):
+        if t is not None:
+            tiled_time = tf.tile(tf.reshape(t, [-1, 1, 1, 1, 1]), [1] + x.shape[1:4] + [1], "time_tile")
+            x = tf.concat([x, tiled_time], axis=4, name="time_concat")
 
         x = self.tconv(x)
 
         if self.batch_norm:
-            x = self.bn1(x, training=training)
+            x = self.bn1(x)
         
         if self.dropout:
             x = self.dropout1(x, training=training)
@@ -154,7 +169,7 @@ class GANUpBlock(tf.keras.layers.Layer):
         x = self.conv(x)
 
         if self.batch_norm:
-            x = self.bn2(x, training=training)
+            x = self.bn2(x)
 
         if self.dropout:
             x = self.dropout2(x, training=training)

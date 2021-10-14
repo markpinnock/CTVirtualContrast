@@ -26,9 +26,13 @@ class Discriminator(tf.keras.Model):
         assert len(img_dims) == 3, "3D input only"
         max_num_layers = int(np.log2(np.min([img_dims[0], img_dims[1]]) / 4))
         max_z_downsample = int(np.floor(np.log2(img_dims[2])))
-
         ndf = config["ndf"]
         num_layers = config["d_layers"]
+
+        if config["d_time_layers"] is not None:
+            self.time_layers = config["d_time_layers"]
+        else:
+           self.time_layers = []
        
         assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum numnber of discriminator layers: {max_num_layers}"
         self.conv_list = []
@@ -77,7 +81,7 @@ class Discriminator(tf.keras.Model):
                         kernel,
                         strides,
                         initialiser=initialiser,
-                        batch_norm=batch_norm, name=f"downblock_{i}"))
+                        batch_norm=batch_norm, name=f"down_{i}"))
             
             self.conv_list.append(tf.keras.layers.Conv3D(
                 1, (4, 4, 1), (1, 1, 1),
@@ -91,10 +95,13 @@ class Discriminator(tf.keras.Model):
 
         return self(x).shape
 
-    def call(self, x, training=True):
+    def call(self, x, t=None):
 
         for conv in self.conv_list:
-            x = conv(x, training=training)
+            if conv.name in self.time_layers:
+                x = conv(x, t, training=True)
+            else:
+                x = conv(x, training=True)
 
         return x
 
@@ -197,25 +204,25 @@ class Generator(tf.keras.Model):
         for time_input in self.time_layers:
             assert time_input in layer_names, (time_input, layer_names)
 
-    def build_model(self, x, st=None, tt=None):
+    def build_model(self, x, t=None):
 
         """ Build method takes tf.zeros((input_dims)) and returns
             shape of output - all layers implicitly built and weights set to trainable """
         
-        return self(x, st, tt).shape
+        return self(x, t).shape
 
-    def call(self, x, st=None, tt=None):
+    def call(self, x, t=None):
         skip_layers = []
 
         for conv in self.encoder:
             if conv.name in self.time_layers:
-                x = conv(x, st, tt, training=True)
+                x = conv(x, t, training=True)
             else:
                 x = conv(x, training=True)
             skip_layers.append(x)
 
         if self.bottom_layer.name in self.time_layers:
-            x = self.bottom_layer(x, st, tt, training=True)
+            x = self.bottom_layer(x, t, training=True)
         else:
             x = self.bottom_layer(x, training=True)
 
@@ -224,13 +231,13 @@ class Generator(tf.keras.Model):
 
         for skip, tconv in zip(skip_layers, self.decoder):
             if tconv.name in self.time_layers:
-                x = tconv(x, skip, st, tt, training=True)
+                x = tconv(x, skip, t, training=True)
             else:
                 x = tconv(x, skip, training=True)
 
         if self.final_layer.name in self.time_layers:
 
-            x = self.final_layer(x, st, tt, training=True)
+            x = self.final_layer(x, t, training=True)
         else:
             x = self.final_layer(x, training=True)
 
@@ -344,33 +351,33 @@ class HyperGenerator_v01(tf.keras.Model):
             padding="same", activation="linear",
             kernel_initializer=initialiser, name="output")
 
-    def build_model(self, x, st=None, tt=None):
+    def build_model(self, x, t=None):
 
         """ Build method takes tf.zeros((input_dims)) and returns
             shape of output - all layers implicitly built and weights set to trainable """
         
-        return self(x, st, tt).shape
+        return self(x, t).shape
 
-    def call(self, x, st=None, tt=None):
+    def call(self, x, t=None):
         skip_layers = []
 
         x = self.first_layer(x, training=True)
         skip_layers.append(x)
 
         for conv, embedding in zip(self.encoder, self.encoder_embedding):
-            w = embedding(self.Hypernet, st, tt)
+            w = embedding(self.Hypernet, t)
             x = conv(x, w, training=True)
             skip_layers.append(x)
         
-        w = self.bottom_embedding(self.Hypernet, st, tt)
+        w = self.bottom_embedding(self.Hypernet, t)
         x = self.bottom_layer(x, w, training=True)
         x = tf.nn.relu(x)
 
         skip_layers.reverse()
 
         for skip, conv, embedding_1, embedding_2 in zip(skip_layers, self.decoder, self.decoder_embedding_1, self.decoder_embedding_2):
-            w1 = embedding_1(self.Hypernet, st, tt)
-            w2 = embedding_2(self.Hypernet, st, tt)
+            w1 = embedding_1(self.Hypernet, t)
+            w2 = embedding_2(self.Hypernet, t)
             x = conv(x, w1, w2, skip, training=True)
 
         x = self.final_layer(x)

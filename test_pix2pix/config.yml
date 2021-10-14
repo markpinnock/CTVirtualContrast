@@ -1,7 +1,7 @@
 paths:
     cuda_path: "/usr/local/cuda/lib64"
 data:
-    data_path: "D:/ProjectImages/SyntheticContrast"
+    data_path: "C:/ProjectImages/SyntheticContrast"
     target: ["AC", "VC"]
     source: ["HQ"]
     segs: []
@@ -31,12 +31,11 @@ hyperparameters:
     g_opt: [2.0e-4, 0.5, 0.999]
     lambda: 100
     mu: 0.0 # Focal loss weighting (0.0 == OFF)
-    ndf: 32 # Discriminator starting channels
-    ngf: 32 # Generator starting channels
+    ndf: 8 # Discriminator starting channels
+    ngf: 8 # Generator starting channels
     d_layers: 4
     g_layers: 6
-    d_input: ["target", "source"]
-    g_input: ["source"]
+    d_time_layers: null
     g_time_layers: null
     Nz: 128
 augmentation:

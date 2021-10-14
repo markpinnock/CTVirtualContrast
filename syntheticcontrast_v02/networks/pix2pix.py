@@ -17,9 +17,18 @@ class Pix2Pix(tf.keras.Model):
         self.config = config
         self.lambda_ = config["hyperparameters"]["lambda"]
         self.mb_size = config["expt"]["mb_size"]
-        self.d_in_ch = config["hyperparameters"]["d_input"]
-        self.g_in_ch = config["hyperparameters"]["g_input"]
+        self.d_in_ch = 2
+        self.g_in_ch = 1
         self.img_dims = config["hyperparameters"]["img_dims"]
+
+        if config["data"]["times"] is None:
+            self.input_times = False
+            assert config["hyperparameters"]["g_time_layers"] is None
+            assert config["hyperparameters"]["d_time_layers"] is None
+        else:
+            self.input_times = True
+            assert config["hyperparameters"]["g_time_layers"] is not None
+            assert config["hyperparameters"]["d_time_layers"] is not None
 
         # Set up augmentation
         if config["augmentation"]["type"] == "standard":
@@ -39,16 +48,20 @@ class Pix2Pix(tf.keras.Model):
         G_output_size = [1] + self.img_dims + [1]
         self.Generator = Generator(self.initialiser, config, name="generator")
 
-        if "source_times" in self.g_in_ch or "target_times" in self.g_in_ch:
-            assert self.Generator.build_model(tf.zeros(G_input_size), tf.zeros(1), tf.zeros(1)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size))} vs {G_input_size}"
+        if self.input_times:
+            assert self.Generator.build_model(tf.zeros(G_input_size), tf.zeros(1)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size), tf.zeros(1))} vs {G_input_size}"
         else:
             assert self.Generator.build_model(tf.zeros(G_input_size)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size))} vs {G_input_size}"
 
     def discriminator_init(self, config):
         # Get discriminator patch size
-        D_input_size = [1] + self.img_dims + [len(self.d_in_ch)]
+        D_input_size = [1] + self.img_dims + [2]
         self.Discriminator = Discriminator(self.initialiser, config, name="discriminator")
-        self.patch_size = self.Discriminator.build_model(tf.zeros(D_input_size))
+
+        if self.input_times:
+            self.patch_size = self.Discriminator.build_model(tf.zeros(D_input_size), tf.zeros(1))
+        else:
+            self.patch_size = self.Discriminator.build_model(tf.zeros(D_input_size))
 
     def compile(self, g_optimiser, d_optimiser):
         self.g_optimiser = g_optimiser
@@ -77,8 +90,8 @@ class Pix2Pix(tf.keras.Model):
     def summary(self):
         source = tf.keras.Input(shape=self.img_dims + [1])
 
-        if "source_times" in self.g_in_ch or "target_times" in self.g_in_ch:
-            outputs = self.Generator.call(source, tf.zeros(1), tf.zeros(1))
+        if self.input_times:
+            outputs = self.Generator.call(source, tf.zeros(1))
         else:
             outputs = self.Generator.call(source)
 
@@ -86,40 +99,38 @@ class Pix2Pix(tf.keras.Model):
         print("Generator")
         print("===========================================================")
         tf.keras.Model(inputs=source, outputs=outputs).summary()
-        source = tf.keras.Input(shape=self.img_dims + [len(self.d_in_ch)])
-        outputs = self.Discriminator.call(source)
+        source = tf.keras.Input(shape=self.img_dims + [2])
+        
+        if self.input_times:
+            outputs = self.Discriminator.call(source, tf.zeros(1))
+        else:
+            outputs = self.Discriminator.call(source)
+
         print("===========================================================")
         print("Discriminator")
         print("===========================================================")
         tf.keras.Model(inputs=source, outputs=outputs).summary()
 
     @tf.function
-    def train_step(self, real_source, real_target, seg=None, source_times=None, target_times=None):
+    def train_step(self, real_source, real_target, seg=None, times=None):
 
         """ Expects data in order 'source, target' or 'source, target, segmentations'"""
-
-        if source_times is not None:
-            source_times_ch = tf.tile(tf.reshape(source_times, [-1, 1, 1, 1, 1]), [1] + self.img_dims + [1])
-        if target_times is not None:
-            target_times_ch = tf.tile(tf.reshape(target_times, [-1, 1, 1, 1, 1]), [1] + self.img_dims + [1])
 
         with tf.GradientTape(persistent=True) as tape:
 
             # Generate fake target
-            if source_times is not None:
-                fake_target = self.Generator(real_source, source_times, target_times)
+            if self.input_times:
+                fake_target = self.Generator(real_source, times)
             else:
                 fake_target = self.Generator(real_source)
             
             # Calculate generator L1 before augmentation
             if seg is not None:
                 g_L1 = self.L1_loss(real_target, fake_target, seg)
+                self.train_L1_metric.update_state(real_target, fake_target, seg)
+
             else:
                 g_L1 = self.L1_loss(real_target, fake_target)
-
-            if seg is not None:
-                self.train_L1_metric.update_state(real_target, fake_target, seg)
-            else:
                 self.train_L1_metric.update_state(g_L1)
 
             # Augmentation if required
@@ -127,25 +138,16 @@ class Pix2Pix(tf.keras.Model):
                 imgs, seg = self.Aug(imgs=[real_source, real_target, fake_target], seg=seg)
                 real_source, real_target, fake_target = imgs
 
-            # Concatenate extra channels for source, seg, times to discriminator
-            d_in_list = []
-            if "source" in self.d_in_ch: d_in_list += [real_source]
-            if "seg" in self.d_in_ch: d_in_list += [seg]
-            if "source_times" in self.d_in_ch: d_in_list += [source_times_ch]
-            if "target_times" in self.d_in_ch: d_in_list += [target_times_ch]
-
-            if len(d_in_list) > 0:
-                fake_in = tf.concat([fake_target] + d_in_list, axis=4, name="d_fake_concat")
-                real_in = tf.concat([real_target] + d_in_list, axis=4, name="d_real_concat")
-                d_in = tf.concat([real_in, fake_in], axis=0)
-
-            else:
-                d_in = tf.concat([real_target, fake_target], axis=0)
+            # Concatenate targets and sources
+            fake_in = tf.concat([fake_target, real_source], axis=4, name="d_fake_concat")
+            real_in = tf.concat([real_target, real_source], axis=4, name="d_real_concat")
+            d_in = tf.concat([real_in, fake_in], axis=0, name="d_real_fake_concat")
 
             # Generate predictions and calculate losses
             d_pred = self.Discriminator(d_in)
-            d_loss = self.d_loss(d_pred[0, ...], d_pred[1, ...])
-            g_loss = self.g_loss(d_pred[1, ...])
+            mb_size = d_pred.shape[0] // 2
+            d_loss = self.d_loss(d_pred[0:mb_size, ...], d_pred[mb_size:, ...])
+            g_loss = self.g_loss(d_pred[mb_size:, ...])
             g_total_loss = g_loss + self.lambda_ * g_L1
 
         # Get gradients and update weights
@@ -159,11 +161,11 @@ class Pix2Pix(tf.keras.Model):
         self.g_metric.update_state(g_loss)
 
     @tf.function
-    def test_step(self, real_source, real_target, seg=None, source_times=None, target_times=None):
+    def test_step(self, real_source, real_target, seg=None, times=None):
 
         # Generate fake target
-        if source_times is not None:
-            fake_target = self.Generator(real_source, source_times, target_times)
+        if self.input_times:
+            fake_target = self.Generator(real_source, times)
         else:
             fake_target = self.Generator(real_source)
 
@@ -203,16 +205,16 @@ class HyperPix2Pix(Pix2Pix):
         else:
             raise ValueError(f"Incorrect version: {self.version}")
 
-        if "source_times" in self.g_in_ch or "target_times" in self.g_in_ch:
-            assert self.Generator.build_model(tf.zeros(G_input_size), tf.zeros(1), tf.zeros(1)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size))} vs {G_input_size}"
+        if self.input_times:
+            assert self.Generator.build_model(tf.zeros(G_input_size), tf.zeros(1)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size), tf.zeros(1))} vs {G_input_size}"
         else:
             assert self.Generator.build_model(tf.zeros(G_input_size)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size))} vs {G_input_size}"
 
     def summary(self):
         source = tf.keras.Input(shape=self.img_dims + [1])
 
-        if "source_times" in self.g_in_ch or "target_times" in self.g_in_ch:
-            outputs = self.Generator.call(source, tf.zeros(1), tf.zeros(1))
+        if self.input_times:
+            outputs = self.Generator.call(source, tf.zeros(1))
         else:
             outputs = self.Generator.call(source)
 
@@ -221,7 +223,12 @@ class HyperPix2Pix(Pix2Pix):
         print("===========================================================")
         tf.keras.Model(inputs=source, outputs=outputs).summary()
         source = tf.keras.Input(shape=self.img_dims + [len(self.d_in_ch)])
-        outputs = self.Discriminator.call(source)
+
+        if self.input_times:
+            outputs = self.Discriminator.call(source, tf.zeros(1))
+        else:
+            outputs = self.Generator.call(source)    
+
         print("===========================================================")
         print(f"Discriminator: {np.sum([np.prod(v.shape) for v in self.Discriminator.trainable_variables])}")
         print("===========================================================")

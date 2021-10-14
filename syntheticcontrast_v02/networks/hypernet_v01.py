@@ -24,8 +24,6 @@ class HyperNet_v01(tf.keras.layers.Layer):
         self.d = d
         self.in_dims = in_dims
         self.out_dims = out_dims
-        # self.init = tf.keras.initializers.TruncatedNormal(0, 1) # Different to modulo 2 technique used in github repo
-        self.time_concat = tf.keras.layers.Concatenate(name="z_concatenate")
 
     def build(self, input_shape=None):
         # Instead of outputting i matrices using W and b for each i as in paper, combine into one op
@@ -34,14 +32,14 @@ class HyperNet_v01(tf.keras.layers.Layer):
         self.Wo = self.add_weight(name='Wo', shape=[self.Nz, self.out_dims * self.d * self.f * self.f], initializer="glorot_normal", trainable=True)
         self.bo = self.add_weight(name='bo', shape=[self.out_dims * self.d * self.f * self.f], initializer="zeros", trainable=True)
 
-    def call(self, z):
+    def call(self, z, num_kernels: int = 1):
 
         """ Takes layer embedding z, and returns kernel for that layer """
 
         a = tf.add(tf.matmul(z, self.Wi), self.bi)
         a = tf.reshape(a, [self.in_dims, self.Nz])
         k = tf.add(tf.matmul(a, self.Wo), self.bo)
-        k = tf.reshape(k, [self.f, self.f, self.d, self.in_dims, self.out_dims])
+        k = tf.reshape(k, [num_kernels, self.f, self.f, self.d, self.in_dims, self.out_dims])
 
         return k
 
@@ -68,7 +66,7 @@ class LayerEmbedding(tf.keras.layers.Layer):
 
     def build(self, input_shape):
         self.z = []
-        # for k in range... depthwise
+
         for i in range(self.depth_kernels):
             t = []
 
@@ -76,21 +74,20 @@ class LayerEmbedding(tf.keras.layers.Layer):
                 tt = []
 
                 for k in range(self.out_kernels):
-                    tt.append(self.add_weight(name=f"z{self.out_kernels * i + j + k}", shape=[2, self.Nz], initializer="he_normal", trainable=True))
+                    tt.append(self.add_weight(name=f"z{self.out_kernels * i + j + k}", shape=[1, self.Nz], initializer="glorot_normal", trainable=True))
             
                 t.append(tt)
 
             self.z.append(t)
 
-    def call(self, h, st=None, tt=None):
+    def call(self, h, t=None):
 
         """ Takes HyperNetwork as input and converts embedding to kernel """
     
-        if st is None:
-            x = tf.ones([1, 2])
-        else:
-            x = self.concat([st[:, tf.newaxis], tt[:, tf.newaxis]])
+        if t is None:
+            ks = tf.concat([tf.concat([tf.concat([h(self.z[i][j][k], num_kernels=1) for k in range(self.out_kernels)], axis=4) for j in range(self.in_kernels)], axis=3) for i in range(self.depth_kernels)], axis=2)
 
-        ks = tf.concat([tf.concat([tf.concat([h(tf.matmul(x, self.z[i][j][k])) for k in range(self.out_kernels)], axis=4) for j in range(self.in_kernels)], axis=3) for i in range(self.depth_kernels)], axis=2)
+        else:
+            ks = tf.concat([tf.concat([tf.concat([h(tf.matmul(t, self.z[i][j][k]), num_kernels=t.shape[0]) for k in range(self.out_kernels)], axis=4) for j in range(self.in_kernels)], axis=3) for i in range(self.depth_kernels)], axis=2)
 
         return ks
