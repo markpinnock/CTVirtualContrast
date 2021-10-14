@@ -8,12 +8,13 @@ from .util import load_images, resample, display_imgs, get_HUs, aggregate_HUs
 
 #-------------------------------------------------------------------------
 
-def display_subjects(subject_list: list, subject_ignore: list = [], image_ignore: list = [], times: dict = None, depth_idx: int = None):
+def display_subjects(subject_list: list, subject_ignore: list = [], image_ignore: list = [], depth_idx: int = None):
     for subject in subject_list:
-        if subject in subject_ignore:
+        if subject in subject_ignore or 'F' in subject:
             continue
 
-        imgs, segs = load_images(subject, IMG_PATH, SEG_PATH, ignore=image_ignore)
+        print(subject)
+        imgs, segs = load_images(subject, IMG_PATH, SEG_PATH, TRANS_PATH, ignore=image_ignore)
         imgs, segs = resample(imgs, segs)
 
         AC = [n for n in imgs.keys() if 'AC' in n]
@@ -21,8 +22,10 @@ def display_subjects(subject_list: list, subject_ignore: list = [], image_ignore
         HQ = [n for n in imgs.keys() if 'HQ' in n]
         keys = sorted(AC + VC + HQ, key=lambda x: int(x[-3:]))
 
-        if times is not None:
-            t = [times[f"{k}.nrrd"] for k in keys]
+        with open(f"{TIME_PATH}/{subject}/time.json", 'r') as fp:
+            times = json.load(fp)
+
+        t = [times[f"{k}.nrrd"] for k in keys]
 
         overlay = np.copy(segs[AC[0]])
 
@@ -37,7 +40,7 @@ def display_HUs(imgs: dict, seg: object, keys: list, t: list = None):
 
     plt.figure(figsize=(18, 10))
 
-    if times is None:
+    if t is None:
         plt.plot(Ao, label="Ao")
         plt.plot(RK, label="RK")
         plt.plot(LK, label="LK")
@@ -99,23 +102,22 @@ def display_aggregate_HUs(HUs):
 
 if __name__ == "__main__":
 
-    with open("syntheticcontrast/preproc/ignore.json", 'r') as fp:
+    with open("syntheticcontrast_v02/preproc/ignore.json", 'r') as fp:
         ignore = json.load(fp)
-
-    with open("syntheticcontrast/contrastmodelling/times.json", 'r') as fp:
-        times = json.load(fp)
 
     subject_ignore = list(ignore["subject_ignore"].keys())
     image_ignore = ignore["image_ignore"]
-    # subject_ignore += ["T029A0"]
 
-    IMG_PATH = "D:/ProjectImages/Images"
-    SEG_PATH = "D:/ProjectImages/Segmentations"
-    subjects = os.listdir(IMG_PATH)
-    subject_ignore += ["T005A0", "T016A0", "T021A0", "T024A0", "T030A0", "T031A0", "T038A0"] # misregistered
+    IMG_PATH = "Z:/Clean_CT_Data/Toshiba/Images"
+    SEG_PATH = "Z:/Clean_CT_Data/Toshiba/Segmentations"
+    TRANS_PATH = "Z:/Clean_CT_Data/Toshiba/Transforms"
+    TIME_PATH = "Z:/Clean_CT_Data/Toshiba/Times"
+    subjects = os.listdir(IMG_PATH)[15:]
+    subject_ignore += ["T005A0", "T016A0", "T021A0", "T024A0", "T030A0", "T031A0"]#, "T038A0"] # misregistered
 
-    # display_subjects(subjects, subject_ignore=subject_ignore, image_ignore=image_ignore, times=times, depth_idx=None)
-    HUs = aggregate_HUs(subjects, subject_ignore=subject_ignore, image_ignore=image_ignore, times=times, img_path=IMG_PATH, seg_path=SEG_PATH)
+    display_subjects(subjects, subject_ignore=subject_ignore, image_ignore=image_ignore, depth_idx=None)
+    HUs = aggregate_HUs(subjects, subject_ignore=subject_ignore, image_ignore=image_ignore, img_path=IMG_PATH, seg_path=SEG_PATH)
     display_aggregate_HUs(HUs)
 
+# Not enough segs? T016A0
 # Misregistered: T005A0HQ004, T016A0, T021A0HQ002, T024A0HQ056, T030A0, T031A0HQ007, T038A0

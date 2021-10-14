@@ -5,7 +5,7 @@ data:
     target: ["AC", "VC"]
     source: ["HQ"]
     segs: []
-    times: "times_norm.json"
+    times: null
     down_sample: 1
     depth: 64
     norm_type: "minmax"
@@ -17,7 +17,7 @@ data:
     fold: 5
 expt:
     mb_size: 1
-    save_every: 1
+    save_every: 10
     model: "Pix2Pix" # "GAN" or "HyperGAN"
     epochs: 1000
     verbose: true # Output model summary
@@ -31,13 +31,13 @@ hyperparameters:
     g_opt: [2.0e-4, 0.5, 0.999]
     lambda: 100
     mu: 0.0 # Focal loss weighting (0.0 == OFF)
-    ndf: 64 # Discriminator starting channels
-    ngf: 64 # Generator starting channels
+    ndf: 32 # Discriminator starting channels
+    ngf: 32 # Generator starting channels
     d_layers: 4
     g_layers: 6
-    d_input: ["target", "source", "source_times", "target_times"]
-    g_input: ["source", "source_times", "target_times"]
-    g_time_layers: ["up_0", "up_1", "up_2", "up_3", "up_4"]
+    d_input: ["target", "source"]
+    g_input: ["source"]
+    g_time_layers: null
     Nz: 128
 augmentation:
     type: "differentiable" # "standard", "differentiable" or null

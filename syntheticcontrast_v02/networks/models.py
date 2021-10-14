@@ -125,7 +125,7 @@ class Generator(tf.keras.Model):
         if config["g_time_layers"] is not None:
             self.time_layers = config["g_time_layers"]
         else:
-            self.time_layers = None
+           self.time_layers = []
 
         assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum number of generator layers: {max_num_layers}"
         self.encoder = []

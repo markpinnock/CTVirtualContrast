@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import glob
 import numpy as np
 import os
 import SimpleITK as itk
@@ -25,7 +26,7 @@ def seg_mean(img, seg):
 
 #-------------------------------------------------------------------------
 
-def load_images(subject_name, img_path, seg_path, ignore):
+def load_images(subject_name, img_path, seg_path, trans_path, ignore):
     images = {}
     segs = {}
 
@@ -40,13 +41,29 @@ def load_images(subject_name, img_path, seg_path, ignore):
     image_names = [n for n in image_names if n[-16:-5] not in ignore]
 
     for i in range(len(image_names)):
+        transform_candidates = glob.glob(f"{trans_path}/{subject_name}/{image_names[i][-8:-5]}_to_*")
+
+        if len(transform_candidates) == 1:
+            transform = itk.ReadTransform(transform_candidates[0])
+        elif len(transform_candidates) == 0:
+            transform = None
+        else:
+            raise ValueError(transform_candidates)
+
         img = itk.ReadImage(image_names[i], itk.sitkInt32)
+
+        if transform is not None:
+            img = itk.Resample(img, transform, defaultPixelValue=-2048)
+
         image_dir = np.around(img.GetDirection())
         assert img.GetSpacing()[2] == 1.0, f"{image_names[i]}: {img.GetSpacing()}"
-        seg_name = f"{seg_path}/{subject_name}S/{image_names[i][-16:-5]}.seg.nrrd"
+        seg_name = f"{seg_path}/{subject_name}/{image_names[i][-16:-5]}-label.nrrd"
 
         try:
             seg = itk.ReadImage(seg_name)
+
+            if transform is not None:
+                seg = itk.Resample(seg, transform, defaultPixelValue=0)
 
         except RuntimeError:
             seg = None
@@ -63,14 +80,14 @@ def load_images(subject_name, img_path, seg_path, ignore):
             if seg is not None:
                 seg = itk.PermuteAxes(seg, [1, 0, 2])
                 seg = seg[::int(image_dir[0]), ::int(image_dir[4]), :]
-                segs[seg_name[-20:-9]] = seg
+                segs[seg_name[-22:-11]] = seg
 
         else:
             img = img[::int(image_dir[0]), ::int(image_dir[4]), :]
 
             if seg is not None:
                 seg = seg[::int(image_dir[0]), ::int(image_dir[4]), :]
-                segs[seg_name[-20:-9]] = seg
+                segs[seg_name[-22:-11]] = seg
 
         images[image_names[i][-16:-5]] = img
 
@@ -206,7 +223,7 @@ def get_HUs(imgs: dict, seg: object, keys: list):
     LK = []
     Tu = []
 
-    assert seg.min() == 0 and seg.max() == 4
+    assert seg.min() == 0 and seg.max() == 4, (seg.min(), seg.max())
 
     for key in keys:
         Ao.append(seg_mean(imgs[key], seg * (seg == 1)))
