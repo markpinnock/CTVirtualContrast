@@ -1,11 +1,11 @@
 paths:
     cuda_path: "/usr/local/cuda/lib64"
 data:
-    data_path: "C:/ProjectImages/SyntheticContrast"
+    data_path: "D:/ProjectImages/SyntheticContrast"
     target: ["AC", "VC"]
     source: ["HQ"]
-    segs: []
-    times: null
+    segs: ["AC"]
+    times: "times_ordinal.json"
     down_sample: 1
     depth: 64
     norm_type: "minmax"
@@ -18,26 +18,26 @@ data:
 expt:
     mb_size: 1
     save_every: 10
-    model: "Pix2Pix" # "GAN" or "HyperGAN"
+    model: "HyperPix2Pix1" # "GAN" or "HyperGAN"
     epochs: 1000
     verbose: true # Output model summary
     graph: false # Save graph for visualisation in Tensorboard
     log_scalars: true # Log losses for visualisation in Tensorboard
     log_histograms: false # Log weights for visualisation in Tensorboard
-    focal: false # Use focal loss or not
+    focal: true # Use focal loss or not
 hyperparameters:
     img_dims: [256, 256, 64]
     d_opt: [2.0e-4, 0.5, 0.999]
     g_opt: [2.0e-4, 0.5, 0.999]
     lambda: 100
-    mu: 0.0 # Focal loss weighting (0.0 == OFF)
-    ndf: 8 # Discriminator starting channels
-    ngf: 8 # Generator starting channels
+    mu: 0.3 # Focal loss weighting (0.0 == OFF)
+    ndf: 32 # Discriminator starting channels
+    ngf: 32 # Generator starting channels
     d_layers: 4
-    g_layers: 6
-    d_time_layers: null
-    g_time_layers: null
-    Nz: 128
+    g_layers: 7
+    d_time_layers: ["down_0", "down_1", "down_2", "down_3"]
+    g_time_layers: []
+    Nz: 64
 augmentation:
     type: "differentiable" # "standard", "differentiable" or null
     depth: 64

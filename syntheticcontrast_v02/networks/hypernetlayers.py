@@ -1,5 +1,7 @@
 import tensorflow as tf
 
+from .layers import InstanceNorm
+
 
 #-------------------------------------------------------------------------
 """ Down-sampling convolutional block for generator with HyperNet """
@@ -17,7 +19,7 @@ class HyperGANDownBlock(tf.keras.layers.Layer):
         self.strides = [1] + list(strides) + [1]
         
         if batch_norm:
-            self.bn = tf.keras.layers.BatchNormalization(name="batchnorm")
+            self.bn = InstanceNorm(name="instancenorm")
 
     def call(self, x, w, training):
         if w.shape[0] == 1:
@@ -25,13 +27,16 @@ class HyperGANDownBlock(tf.keras.layers.Layer):
         
         else:
             num_kernels = w.shape[0]
+            xs = []
 
             for i in range(num_kernels):
-                x[i, ...] = tf.nn.conv3d(x[i, ...], w[i, ...], self.strides, padding="SAME", name="conv")
+                xs.append(tf.nn.conv3d(x[i, ...][tf.newaxis, ...], w[i, ...], self.strides, padding="SAME", name="conv"))
+
+            x = tf.concat(xs, axis=0)
 
         # As we are using batchnorm, there is no bias term
         if self.batch_norm:
-            x = self.bn(x, training)
+            x = self.bn(x)
 
         return tf.nn.leaky_relu(x, alpha=0.2, name="l_relu")
 
@@ -51,11 +56,10 @@ class HyperGANUpBlock(tf.keras.layers.Layer):
         super().__init__(name=name)
         self.batch_norm = batch_norm
         self.dropout = dropout
-        self.strides = [1] + list(strides) + [1]
 
         if batch_norm:
-            self.bn1 = tf.keras.layers.BatchNormalization(name="batchnorm1")
-            self.bn2 = tf.keras.layers.BatchNormalization(name="batchnorm2")
+            self.bn1 = InstanceNorm(name="instancenorm1")
+            self.bn2 = InstanceNorm(name="instancenorm2")
 
         if dropout:
             self.dropout = tf.keras.layers.Dropout(0.5, name="dropout")
@@ -71,13 +75,16 @@ class HyperGANUpBlock(tf.keras.layers.Layer):
 
         else:
             num_kernels = w1.shape[0]
+            xs = []
 
             for i in range(num_kernels):
-                x[i, ...] = tf.nn.conv3d(x[i, ...], w1[i, ...], self.strides, padding="SAME", name="tconv")
+                xs.append(tf.nn.conv3d(x[i, ...][tf.newaxis, ...], w1[i, ...], (1, 1, 1, 1, 1), padding="SAME", name="tconv"))
 
-        # As we are using batchnorm, there is no bias term
+            x = tf.concat(xs, axis=0)
+
+        # As we are using instance norm, there is no bias term
         if self.batch_norm:
-            x = self.bn1(x, training=training)
+            x = self.bn1(x)
         
         if self.dropout:
             x = self.dropout(x, training=training)
@@ -90,12 +97,15 @@ class HyperGANUpBlock(tf.keras.layers.Layer):
 
         else:
             num_kernels = w2.shape[0]
+            xs = []
 
             for i in range(num_kernels):
-                x[i, ...] = tf.nn.conv3d(x[i, ...], w1[i, ...], self.strides, padding="SAME", name="conv")
+                xs.append(tf.nn.conv3d(x[i, ...][tf.newaxis, ...], w1[i, ...], (1, 1, 1, 1, 1), padding="SAME", name="conv"))
+
+            x = tf.concat(xs, axis=0)
 
         if self.batch_norm:
-            x = self.bn2(x, training=training)
+            x = self.bn2(x)
 
         if self.dropout:
             x = self.dropout(x, training=training)

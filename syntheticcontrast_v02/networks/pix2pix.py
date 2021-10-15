@@ -55,7 +55,7 @@ class Pix2Pix(tf.keras.Model):
 
     def discriminator_init(self, config):
         # Get discriminator patch size
-        D_input_size = [1] + self.img_dims + [2]
+        D_input_size = [2] + self.img_dims + [2]
         self.Discriminator = Discriminator(self.initialiser, config, name="discriminator")
 
         if self.input_times:
@@ -112,7 +112,7 @@ class Pix2Pix(tf.keras.Model):
         tf.keras.Model(inputs=source, outputs=outputs).summary()
 
     @tf.function
-    def train_step(self, real_source, real_target, seg=None, times=None):
+    def train_step(self, real_source, real_target, seg=None, source_times=None, target_times=None):
 
         """ Expects data in order 'source, target' or 'source, target, segmentations'"""
 
@@ -120,7 +120,7 @@ class Pix2Pix(tf.keras.Model):
 
             # Generate fake target
             if self.input_times:
-                fake_target = self.Generator(real_source, times)
+                fake_target = self.Generator(real_source, target_times)
             else:
                 fake_target = self.Generator(real_source)
             
@@ -144,7 +144,7 @@ class Pix2Pix(tf.keras.Model):
             d_in = tf.concat([real_in, fake_in], axis=0, name="d_real_fake_concat")
 
             # Generate predictions and calculate losses
-            d_pred = self.Discriminator(d_in)
+            d_pred = self.Discriminator(d_in, target_times)
             mb_size = d_pred.shape[0] // 2
             d_loss = self.d_loss(d_pred[0:mb_size, ...], d_pred[mb_size:, ...])
             g_loss = self.g_loss(d_pred[mb_size:, ...])
@@ -161,11 +161,11 @@ class Pix2Pix(tf.keras.Model):
         self.g_metric.update_state(g_loss)
 
     @tf.function
-    def test_step(self, real_source, real_target, seg=None, times=None):
+    def test_step(self, real_source, real_target, seg=None, source_times=None, target_times=None):
 
         # Generate fake target
         if self.input_times:
-            fake_target = self.Generator(real_source, times)
+            fake_target = self.Generator(real_source, target_times)
         else:
             fake_target = self.Generator(real_source)
 
@@ -222,12 +222,12 @@ class HyperPix2Pix(Pix2Pix):
         print(f"Generator: {np.sum([np.prod(v.shape) for v in self.Generator.trainable_variables])}")
         print("===========================================================")
         tf.keras.Model(inputs=source, outputs=outputs).summary()
-        source = tf.keras.Input(shape=self.img_dims + [len(self.d_in_ch)])
+        source = tf.keras.Input(shape=self.img_dims + [2])
 
         if self.input_times:
             outputs = self.Discriminator.call(source, tf.zeros(1))
         else:
-            outputs = self.Generator.call(source)    
+            outputs = self.Discriminator.call(source)    
 
         print("===========================================================")
         print(f"Discriminator: {np.sum([np.prod(v.shape) for v in self.Discriminator.trainable_variables])}")

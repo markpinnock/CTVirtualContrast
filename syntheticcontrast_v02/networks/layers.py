@@ -10,7 +10,7 @@ class InstanceNorm(tf.keras.layers.Layer):
         super().__init__(name=name)
         self.episilon = 1e-12
 
-    def call(self, x):
+    def call(self, x, training=None):
         mu = tf.math.reduce_mean(x, axis=[1, 2, 3], keepdims=True)
         sigma = tf.math.reduce_std(x, axis=[1, 2, 3], keepdims=True)
 
@@ -95,26 +95,33 @@ class GANDownBlock(tf.keras.layers.Layer):
         - initialiser: e.g. keras.initializers.RandomNormal
         - batch_norm: True/False """
 
-    def __init__(self, nc, weights, strides, initialiser, batch_norm=True, name=None):
+    def __init__(self, nc, weights, strides, initialiser, model, batch_norm=True, name=None):
         super().__init__(name=name)
         self.batch_norm = batch_norm
         bias = not batch_norm
 
         self.conv = tf.keras.layers.Conv3D(nc, weights, strides=strides, padding="same", kernel_initializer=initialiser, use_bias=bias, name="conv")
 
-        # Instance normalisation
-        if batch_norm:
+        # Normalisation
+        if batch_norm and model == "generator":
             self.bn = InstanceNorm(name="instancenorm")
+        elif batch_norm and model == "discriminator":
+            self.bn = tf.keras.layers.BatchNormalization(name="batchnorm")
+
+        if model == "generator":
+            self.time_reps = 1
+        else:
+            self.time_reps = 2
 
     def call(self, x, t=None, training=True):
         if t is not None:
-            tiled_time = tf.tile(tf.reshape(t, [-1, 1, 1, 1, 1]), [1] + x.shape[1:4] + [1], "time_tile")
+            tiled_time = tf.tile(tf.reshape(t, [-1, 1, 1, 1, 1]), [self.time_reps] + x.shape[1:4] + [1], "time_tile")
             x = tf.concat([x, tiled_time], axis=4, name="time_concat")
 
         x = self.conv(x)
 
         if self.batch_norm:
-            x = self.bn(x)
+            x = self.bn(x, training=training)
 
         return tf.nn.leaky_relu(x, alpha=0.2, name="l_relu")
 

@@ -81,6 +81,7 @@ class Discriminator(tf.keras.Model):
                         kernel,
                         strides,
                         initialiser=initialiser,
+                        model="discriminator",
                         batch_norm=batch_norm, name=f"down_{i}"))
             
             self.conv_list.append(tf.keras.layers.Conv3D(
@@ -88,12 +89,17 @@ class Discriminator(tf.keras.Model):
                 padding='valid',
                 kernel_initializer=initialiser, name="output"))
 
-    def build_model(self, x):
+        layer_names = [layer.name for layer in self.conv_list]
+
+        for time_input in self.time_layers:
+            assert time_input in layer_names, (time_input, layer_names)
+
+    def build_model(self, x, t=None):
 
         """ Build method takes tf.zeros((input_dims)) and returns
             shape of output - all layers implicitly built and weights set to trainable """
 
-        return self(x).shape
+        return self(x, t).shape
 
     def call(self, x, t=None):
 
@@ -160,6 +166,7 @@ class Generator(tf.keras.Model):
                     kernel,
                     strides,
                     initialiser=initialiser,
+                    model="generator",
                     batch_norm=True, name=f"down_{i}"))
 
         self.bottom_layer = GANDownBlock(
@@ -167,6 +174,7 @@ class Generator(tf.keras.Model):
             kernel,
             strides,
             initialiser=initialiser,
+            model="generator",
             batch_norm=True, name="bottom")
 
         cache["strides"].append(strides)
@@ -219,6 +227,7 @@ class Generator(tf.keras.Model):
                 x = conv(x, t, training=True)
             else:
                 x = conv(x, training=True)
+
             skip_layers.append(x)
 
         if self.bottom_layer.name in self.time_layers:
@@ -285,7 +294,7 @@ class HyperGenerator_v01(tf.keras.Model):
         # First layer is standard non-HyperNet conv layer
         self.first_layer = GANDownBlock(
             ngf, (4, 4, 4), (2, 2, 2),
-            initialiser=initialiser, batch_norm=True, name="down_0")
+            initialiser=initialiser, model="generator", batch_norm=True, name="down_0")
 
         for i in range(1, num_layers - 1):
             channels = np.min([ngf * 2 ** i, 512])

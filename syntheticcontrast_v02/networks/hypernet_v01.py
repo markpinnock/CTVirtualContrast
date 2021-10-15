@@ -37,7 +37,7 @@ class HyperNet_v01(tf.keras.layers.Layer):
         """ Takes layer embedding z, and returns kernel for that layer """
 
         a = tf.add(tf.matmul(z, self.Wi), self.bi)
-        a = tf.reshape(a, [self.in_dims, self.Nz])
+        a = tf.reshape(a, [num_kernels, self.in_dims, self.Nz])
         k = tf.add(tf.matmul(a, self.Wo), self.bo)
         k = tf.reshape(k, [num_kernels, self.f, self.f, self.d, self.in_dims, self.out_dims])
 
@@ -85,9 +85,9 @@ class LayerEmbedding(tf.keras.layers.Layer):
         """ Takes HyperNetwork as input and converts embedding to kernel """
     
         if t is None:
-            ks = tf.concat([tf.concat([tf.concat([h(self.z[i][j][k], num_kernels=1) for k in range(self.out_kernels)], axis=4) for j in range(self.in_kernels)], axis=3) for i in range(self.depth_kernels)], axis=2)
+            ks = tf.concat([tf.concat([tf.concat([h(self.z[i][j][k], num_kernels=1) for k in range(self.out_kernels)], axis=5) for j in range(self.in_kernels)], axis=4) for i in range(self.depth_kernels)], axis=3)
 
         else:
-            ks = tf.concat([tf.concat([tf.concat([h(tf.matmul(t, self.z[i][j][k]), num_kernels=t.shape[0]) for k in range(self.out_kernels)], axis=4) for j in range(self.in_kernels)], axis=3) for i in range(self.depth_kernels)], axis=2)
+            ks = tf.concat([tf.concat([tf.concat([h(tf.matmul(t[:, tf.newaxis], self.z[i][j][k]), num_kernels=t.shape[0]) for k in range(self.out_kernels)], axis=5) for j in range(self.in_kernels)], axis=4) for i in range(self.depth_kernels)], axis=3)
 
         return ks
