@@ -382,6 +382,34 @@ class BaseImgLoader(ABC):
 
             i += 1
 
+    def inference_generator(self):
+        N = len(self._fold_sources)
+        i = 0
+
+        # Pair source and target images
+        while i < N:
+            source_name = self._fold_sources[i]
+
+            if len(self.sub_folders) == 0:
+                source = np.load(f"{self._img_paths}/{source_name}")
+            else:
+                source = np.load(f"{self._img_paths[source_name[6:8]]}/{source_name}")
+
+            total_depth = source.shape[2]
+            num_iter = total_depth // self.depth
+
+            for j in range(num_iter):
+                sub_source = source[::self.down_sample, ::self.down_sample, (j * self.depth):((j + 1) * self.depth), np.newaxis]
+                sub_source = self._normalise(sub_source)
+
+                yield {"real_source": sub_source, "subject_ID": source_name, "index_low": j * self.depth, "index_high": (j + 1) * self.depth}
+
+            sub_source = source[::self.down_sample, ::self.down_sample, -self.depth:, np.newaxis]
+
+            yield {"real_source": sub_source, "subject_ID": source_name, "index_low": total_depth - self.depth, "index_high": total_depth}
+
+            i += 1
+
 #-------------------------------------------------------------------------
 """ Data loader for one to one source-target pairings """
 

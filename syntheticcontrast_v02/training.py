@@ -42,7 +42,7 @@ def train(CONFIG):
     if CONFIG["data"]["times"] is not None:
         output_types += ["source_times", "target_times"]
 
-    # Create dataloader (one mb for generator, one for discriminator)
+    # Create dataloader
     train_ds = tf.data.Dataset.from_generator(
         generator=TrainGenerator.data_generator,
         output_types={k: "float32" for k in output_types}

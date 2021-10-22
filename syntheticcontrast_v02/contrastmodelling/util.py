@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import glob
+import json
 import numpy as np
 import os
 import SimpleITK as itk
@@ -236,43 +237,58 @@ def get_HUs(imgs: dict, seg: object, keys: list):
 
 #-------------------------------------------------------------------------
 
-def aggregate_HUs(subject_list: list, subject_ignore: list = [], image_ignore: list = [], times: dict = None, img_path: str = None, seg_path: str = None):
+def aggregate_HUs(
+    subject_list: list,
+    subject_ignore: list = [],
+    image_ignore: list = [],
+    times: dict = None,
+    img_path: str = None,
+    seg_path: str = None,
+    trans_path: str = None,
+    time_path: str = None
+    ):
     HUs = {}
     fewest_series = 1000
 
     for subject in subject_list:
-        if subject in subject_ignore:
+        if subject in subject_ignore or 'F' in subject:
             continue
 
         print(subject)
-        imgs, segs = load_images(subject, img_path, seg_path, ignore=image_ignore)
+        imgs, segs = load_images(subject, img_path, seg_path, trans_path, ignore=image_ignore)
         imgs, segs = resample(imgs, segs)
 
         AC = [n for n in imgs.keys() if 'AC' in n]
         VC = [n for n in imgs.keys() if 'VC' in n]
         HQ = [n for n in imgs.keys() if 'HQ' in n]
         keys = sorted(AC + VC + HQ, key=lambda x: int(x[-3:]))
-        assert 'AC' in keys[1], keys # Check every subject has an initial HQ volume
+        if 'AC' not in keys[1]: continue
 
-        if len(keys) < fewest_series:
-            fewest_series = len(keys)
+        with open(f"{time_path}/{subject}/time.json", 'r') as fp:
+            times = json.load(fp)
+
+        # if len(keys) < fewest_series:
+        #     fewest_series = len(keys)
 
         Ao, RK, LK, Tu = get_HUs(imgs, segs[AC[0]], keys)
-        
-        if times is not None:
-            t = [times[f"{k}.nrrd"] for k in keys]
-            assert len(t) == len(Ao), f"Times length != contrast length {len(t)} {len(Ao)}"
-        else:
-            t = None
+
+        t = [times[f"{k}.nrrd"] for k in keys]
+        assert len(t) == len(Ao), f"Times length != contrast length {len(t)} {len(Ao)}"
+
+        # if times is not None:
+        #     t = [times[f"{k}.nrrd"] for k in keys]
+        #     assert len(t) == len(Ao), f"Times length != contrast length {len(t)} {len(Ao)}"
+        # else:
+        #     t = None
 
         HUs[subject] = {'Ao': Ao, 'RK': RK, 'LK': LK, 'Tu': Tu, "times": t}
     
-    HU_agg = {
-        'Ao': np.vstack([HUs[key]['Ao'][0:fewest_series] for key in HUs.keys()]),
-        'RK': np.vstack([HUs[key]['RK'][0:fewest_series] for key in HUs.keys()]),
-        'LK': np.vstack([HUs[key]['LK'][0:fewest_series] for key in HUs.keys()]),
-        'Tu': np.vstack([HUs[key]['Tu'][0:fewest_series] for key in HUs.keys()]),
-        'times': np.vstack([HUs[key]['times'][0:fewest_series] for key in HUs.keys()])
-        }
+    # HU_agg = {
+    #     'Ao': np.vstack([HUs[key]['Ao'][0:fewest_series] for key in HUs.keys()]),
+    #     'RK': np.vstack([HUs[key]['RK'][0:fewest_series] for key in HUs.keys()]),
+    #     'LK': np.vstack([HUs[key]['LK'][0:fewest_series] for key in HUs.keys()]),
+    #     'Tu': np.vstack([HUs[key]['Tu'][0:fewest_series] for key in HUs.keys()]),
+    #     'times': np.vstack([HUs[key]['times'][0:fewest_series] for key in HUs.keys()])
+    #     }
 
-    return HU_agg
+    return HUs

@@ -8,13 +8,22 @@ from .util import load_images, resample, display_imgs, get_HUs, aggregate_HUs
 
 #-------------------------------------------------------------------------
 
-def display_subjects(subject_list: list, subject_ignore: list = [], image_ignore: list = [], depth_idx: int = None):
+def display_subjects(
+    subject_list: list,
+    subject_ignore: list = [],
+    image_ignore: list = [],
+    depth_idx: int = None,
+    img_path: str = None,
+    seg_path: str = None,
+    trans_path: str = None,
+    time_path: str = None
+    ):
     for subject in subject_list:
         if subject in subject_ignore or 'F' in subject:
             continue
 
         print(subject)
-        imgs, segs = load_images(subject, IMG_PATH, SEG_PATH, TRANS_PATH, ignore=image_ignore)
+        imgs, segs = load_images(subject, img_path, seg_path, trans_path, ignore=image_ignore)
         imgs, segs = resample(imgs, segs)
 
         AC = [n for n in imgs.keys() if 'AC' in n]
@@ -22,11 +31,10 @@ def display_subjects(subject_list: list, subject_ignore: list = [], image_ignore
         HQ = [n for n in imgs.keys() if 'HQ' in n]
         keys = sorted(AC + VC + HQ, key=lambda x: int(x[-3:]))
 
-        with open(f"{TIME_PATH}/{subject}/time.json", 'r') as fp:
+        with open(f"{time_path}/{subject}/time.json", 'r') as fp:
             times = json.load(fp)
 
         t = [times[f"{k}.nrrd"] for k in keys]
-
         overlay = np.copy(segs[AC[0]])
 
         display_imgs(imgs, segs, keys, overlay=overlay, depth_idx=depth_idx)
@@ -61,45 +69,6 @@ def display_HUs(imgs: dict, seg: object, keys: list, t: list = None):
 
 #-------------------------------------------------------------------------
 
-def display_aggregate_HUs(HUs):
-    t = HUs.pop("times")
-
-    if None in t:
-        N = HUs['Ao'].shape[1] # TODO: FIX
-        t = np.linspace(0, N - 1, N)
-
-    min_HU = np.min([a for a in HUs.values()])
-    max_HU = np.max([a for a in HUs.values()])
-
-    fig, axs = plt.subplots(2, 2)
-
-    for i in range(HUs['Ao'].shape[0]):
-        axs[0, 0].semilogx(t[i, :], HUs['Ao'][i, :], marker='+')#, c='k')
-        axs[0, 1].semilogx(t[i, :], HUs['RK'][i, :], marker='+')#, c='k')
-        axs[1, 0].semilogx(t[i, :], HUs['LK'][i, :], marker='+')#, c='k')
-        axs[1, 1].semilogx(t[i, :], HUs['Tu'][i, :], marker='+')#, c='k')
-    
-    # axs[0, 0].plot(t, HUs['Ao'].mean(axis=0), c='r')
-    # axs[0, 1].plot(t, HUs['RK'].mean(axis=0), c='r')
-    # axs[1, 0].plot(t, HUs['LK'].mean(axis=0), c='r')
-    # axs[1, 1].plot(t, HUs['Tu'].mean(axis=0), c='r')
-
-    for ax in axs.ravel():
-        ax.set_xlabel("Time")
-        ax.set_ylabel("HU")
-        ax.set_xlabel("Time")
-        ax.set_ylim([min_HU, max_HU])
-
-    axs[0, 0].set_title("Aorta")
-    axs[0, 1].set_title("RK")
-    axs[1, 0].set_title("LK")
-    axs[1, 1].set_title("Tumour")
-
-    plt.show()
-
-
-#-------------------------------------------------------------------------
-
 if __name__ == "__main__":
 
     with open("syntheticcontrast_v02/preproc/ignore.json", 'r') as fp:
@@ -112,12 +81,15 @@ if __name__ == "__main__":
     SEG_PATH = "Z:/Clean_CT_Data/Toshiba/Segmentations"
     TRANS_PATH = "Z:/Clean_CT_Data/Toshiba/Transforms"
     TIME_PATH = "Z:/Clean_CT_Data/Toshiba/Times"
-    subjects = os.listdir(IMG_PATH)[15:]
-    subject_ignore += ["T005A0", "T016A0", "T021A0", "T024A0", "T030A0", "T031A0"]#, "T038A0"] # misregistered
+    subjects = os.listdir(IMG_PATH)
 
-    display_subjects(subjects, subject_ignore=subject_ignore, image_ignore=image_ignore, depth_idx=None)
-    HUs = aggregate_HUs(subjects, subject_ignore=subject_ignore, image_ignore=image_ignore, img_path=IMG_PATH, seg_path=SEG_PATH)
-    display_aggregate_HUs(HUs)
+    subject_ignore += ["T016A0"]
+
+    display_subjects(subjects, subject_ignore=subject_ignore, image_ignore=image_ignore, depth_idx=None, img_path=IMG_PATH, seg_path=SEG_PATH, trans_path=TRANS_PATH, time_path=TIME_PATH)
+    # HUs = aggregate_HUs(subjects, subject_ignore=subject_ignore, image_ignore=image_ignore, times=None, img_path=IMG_PATH, seg_path=SEG_PATH, trans_path=TRANS_PATH, time_path=TIME_PATH)
+
+    with open("C:/Users/roybo/Programming/PhD/007_CNN_Virtual_Contrast/syntheticcontrast_v02/contrastmodelling/HUs.json", 'w') as fp:
+        json.dump(HUs, fp, indent=4)
 
 # Not enough segs? T016A0
-# Misregistered: T005A0HQ004, T016A0, T021A0HQ002, T024A0HQ056, T030A0, T031A0HQ007, T038A0
+# No initial HQ? T042A1

@@ -125,6 +125,9 @@ class TrainingPix2Pix:
                 self.save_images(epoch + 1, phase="train")
                 self.save_images(epoch + 1, phase="validation")
 
+            if (epoch + 1) % self.SAVE_EVERY == 0 and self.config["expt"]["save_model"]:
+                self.Model.Generator.save_weights(f"{self.MODEL_SAVE_PATH}/generator.ckpt")
+
             # if self.Model.val_L1_metric.result() < best_L1 and not self.config["EXPT"]["VERBOSE"]:
             #     self.Model.save_weights(f"{self.MODEL_SAVE_PATH}{self.config['EXPT']['EXPT_NAME']}")
             #     best_L1 = self.Model.val_L1_metric.result()
