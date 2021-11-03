@@ -25,7 +25,7 @@ def json_to_df(j):
         df["images"] = i
 
     df = pd.concat(dfs, axis=0).reset_index(drop=True)
-    df[["d_eta", "g_eta", "lambda"]] = df[["d_eta", "g_eta", "lambda"]].apply(lambda x: np.log10(x))
+    # df[["d_eta", "g_eta", "lambda"]] = df[["d_eta", "g_eta", "lambda"]].apply(lambda x: np.log10(x))
 
     return df
 
@@ -40,31 +40,34 @@ def reduce_dims(d):
 
 if __name__ == "__main__":
 
-    with open("C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/P2P_expts.json", 'r') as fp:
-        P2Pexpts = json.load(fp)
+    with open("C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase3/P2PT.json", 'r') as fp:
+        P2PT = json.load(fp)
 
-    with open("C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/P2PT_expts.json", 'r') as fp:
-        P2PTexpts = json.load(fp)
+    with open("C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase3/HP2PT.json", 'r') as fp:
+        HP2PT = json.load(fp)
 
-    P2P = json_to_df(P2Pexpts)
-    P2PT = json_to_df(P2PTexpts)
-    P2Pn = reduce_dims(P2P)
-    P2PTn = reduce_dims(P2PT)
+    P2P = json_to_df(P2PT)
+    P2PT = json_to_df(HP2PT)
 
-    A = pd.concat([P2P, P2PT], axis=0).reset_index(drop=True)
-    B = pd.concat([P2Pn, P2PTn], axis=0).reset_index(drop=True)
+    print(P2P.groupby("images").quantile([0.05, 0.5, 0.95]))
+    print(P2PT.groupby("images").quantile([0.05, 0.5, 0.95]))
+    # P2Pn = reduce_dims(P2P)
+    # P2PTn = reduce_dims(P2PT)
 
-    mean = A.groupby("images").mean()
-    upper = mean + 1.96 * A.groupby("images").std()
-    lower = mean - 1.96 * A.groupby("images").std()
-    print(mean)
-    print(upper)
-    print(lower)
+    # A = pd.concat([P2P, P2PT], axis=0).reset_index(drop=True)
+    # B = pd.concat([P2Pn, P2PTn], axis=0).reset_index(drop=True)
+
+    # mean = A.groupby("images").mean()
+    # upper = mean + 1.96 * A.groupby("images").std()
+    # lower = mean - 1.96 * A.groupby("images").std()
+    # print(mean)
+    # print(upper)
+    # print(lower)
     
-    plt.plot(mean["lambda"], 'k-')
-    plt.plot(upper["lambda"], 'k--')
-    plt.plot(lower["lambda"], 'k--')
-    plt.plot(mean["mu"], 'r-')
-    plt.plot(upper["mu"], 'r--')
-    plt.plot(lower["mu"], 'r--')
-    plt.show()
+    # plt.plot(mean["lambda"], 'k-')
+    # plt.plot(upper["lambda"], 'k--')
+    # plt.plot(lower["lambda"], 'k--')
+    # plt.plot(mean["mu"], 'r-')
+    # plt.plot(upper["mu"], 'r--')
+    # plt.plot(lower["mu"], 'r--')
+    # plt.show()
