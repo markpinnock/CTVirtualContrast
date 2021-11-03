@@ -129,12 +129,12 @@ def one_compartment(HUs):
     std_d = dict.fromkeys(delayed.keys())
 
     times_to_include = (delayed["Ao"] != 0).sum(axis=0) > 0
-    times = np.hstack([0.0, 35.0, 90.0, grid[times_to_include]])
+    times = np.hstack([35.0, 90.0, grid[times_to_include]])
 
     for key in delayed.keys():
         delayed[key] = delayed[key][:, times_to_include]
-        mean_d[key] = np.hstack([HU_0[key].mean(), HU_35[key].mean(), HU_90[key].mean(), delayed[key].mean(axis=0)])
-        std_d[key] = np.hstack([HU_0[key].std(), HU_35[key].std(), HU_90[key].std(), delayed[key].std(axis=0)])
+        mean_d[key] = np.hstack([HU_35[key].mean(), HU_90[key].mean(), delayed[key].mean(axis=0)])
+        std_d[key] = np.hstack([HU_35[key].std(), HU_90[key].std(), delayed[key].std(axis=0)])
 
     y = np.log(mean_d["Ao"])[:, np.newaxis]
     X = np.hstack([np.ones_like(y), times[:, np.newaxis]])
@@ -151,6 +151,11 @@ def one_compartment(HUs):
     beta = np.linalg.inv(X.T @ X) @ X.T @ y
     print(np.exp(beta[0]), 1 / beta[1] / 60, 1 / beta[1] * np.log(2) / 60)
 
+    y_hat = np.exp(beta[0]) * np.exp(beta[1] * np.hstack([35.0, 90.0, grid[times_to_include]]))
+
+    plt.scatter(times, mean_d["Ao"])
+    plt.plot(np.hstack([35.0, 90.0, grid[times_to_include]]), y_hat, 'k')
+    plt.show()
 
 #-------------------------------------------------------------------------
 

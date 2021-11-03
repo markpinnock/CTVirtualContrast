@@ -29,7 +29,7 @@ import SimpleITK as itk
 
 class ImgConvBase(abc.ABC):
 
-    def __init__(self, image_path, segmentation_path, transformation_path, save_path, output_dims, ignore, NCC_tol):
+    def __init__(self, image_path, segmentation_path, transformation_path, save_path, output_dims, include, ignore, NCC_tol):
         self.img_path = image_path
         self.seg_path = segmentation_path
         self.trans_path = transformation_path
@@ -46,7 +46,11 @@ class ImgConvBase(abc.ABC):
         self.HU_min_all = 2048
         self.HU_max_all = -2048
 
-        self.subjects = [name for name in os.listdir(self.img_path) if 'F' not in name and name not in ignore]
+        if include is None:
+            self.subjects = [name for name in os.listdir(self.img_path) if 'F' not in name and name not in ignore]
+        else:
+            self.subjects = [name for name in os.listdir(self.img_path) if name in include and 'F' not in name and name not in ignore]
+
         self.subjects.sort()
 
     def list_images(self, ignore: list = None, num_HQ: int = 1000, num_AC: int = 1000, num_VC: int = 1000):
@@ -574,29 +578,31 @@ class Unpaired(ImgConvBase):
                         assert down_sample == 1, "Down-sample > 1 only with npy"
                         itk.WriteImage(img, f"{self.save_path}/Images/{stem}.nii")
 
-            for name, seg in zip(seg_names, seg_arrays):
-                idx = 0  
-                stem = name[-22:-11]
+            if segs is not None:
 
-                if subvol_depth > 0:
-                    assert file_type != "npy", "Only works with npy"
+                for name, seg in zip(seg_names, seg_arrays):
+                    idx = 0  
+                    stem = name[-22:-11]
 
-                    for i in range(0, vol_thick, self.output_dims[2]):
-                        if i + self.output_dims[2] > vol_thick:
-                            break
+                    if subvol_depth > 0:
+                        assert file_type != "npy", "Only works with npy"
 
-                        sub_vol = seg[::down_sample, ::down_sample, i:i + self.output_dims[2]]
-                        np.save(f"{self.save_path}/Segmentations/{stem}_{idx:03d}.npy", sub_vol)
-                        idx += 1
-                        count += 1
+                        for i in range(0, vol_thick, self.output_dims[2]):
+                            if i + self.output_dims[2] > vol_thick:
+                                break
 
-                else:
-                    if file_type == "npy":
-                        np.save(f"{self.save_path}/Segmentations/{stem}.npy", seg[::down_sample, ::down_sample, :])
+                            sub_vol = seg[::down_sample, ::down_sample, i:i + self.output_dims[2]]
+                            np.save(f"{self.save_path}/Segmentations/{stem}_{idx:03d}.npy", sub_vol)
+                            idx += 1
+                            count += 1
 
                     else:
-                        assert down_sample == 1, "Down-sample > 1 only with npy"
-                        itk.WriteImage(seg, f"{self.save_path}/Segmentations/{stem}.nii")
+                        if file_type == "npy":
+                            np.save(f"{self.save_path}/Segmentations/{stem}.npy", seg[::down_sample, ::down_sample, :])
+
+                        else:
+                            assert down_sample == 1, "Down-sample > 1 only with npy"
+                            itk.WriteImage(seg, f"{self.save_path}/Segmentations/{stem}.nii")
 
         return count
 
@@ -650,8 +656,9 @@ class Unpaired(ImgConvBase):
 if __name__ == "__main__":
 
     FILE_PATH = "Z:/Clean_CT_Data/Toshiba/"
-    # FILE_PATH = "D:/ProjectImages/"
-    SAVE_PATH = "D:/ProjectImages/SyntheticContrast"
+    SAVE_PATH = "D:/ProjectImages/SyntheticContrastTest"
+
+    to_include = ["T051A0", "T052A0", "T055A0", "T057A0", "T058A0", "T061A0", "T062A0", "T063A0", "T064A0"]
 
     with open("syntheticcontrast_v02/preproc/ignore.json", 'r') as fp:
         ignore = json.load(fp)
@@ -665,6 +672,7 @@ if __name__ == "__main__":
         transformation_path=FILE_PATH + "/Transforms",
         save_path=SAVE_PATH,
         output_dims=(256, 256, 64),
+        include=to_include,
         ignore=subject_ignore, NCC_tol=0.0
         )
 

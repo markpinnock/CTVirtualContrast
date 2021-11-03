@@ -22,9 +22,9 @@ def NRRDConv(image_path, pred_path, save_path):
 
         assert len(CE_candidates) == 1, CE_candidates
 
-        pred_nrrd = itk.GetImageFromArray(np.load(f"{pred_path}/{pred_name}").astype("int16"))
-        HQ_nrrd = itk.GetImageFromArray(np.load(f"{image_path}/{HQ_name}").astype("int16"))
-        CE_nrrd = itk.GetImageFromArray(np.load(f"{CE_candidates[0]}").astype("int16"))
+        pred_nrrd = itk.GetImageFromArray(np.load(f"{pred_path}/{pred_name}").astype("int16").transpose([2, 0, 1]))
+        HQ_nrrd = itk.GetImageFromArray(np.load(f"{image_path}/{HQ_name}").astype("int16").transpose([2, 0, 1]))
+        CE_nrrd = itk.GetImageFromArray(np.load(f"{CE_candidates[0]}").astype("int16").transpose([2, 0, 1]))
 
         itk.WriteImage(pred_nrrd, f"{save_path}/{pred_name[:-4]}.nrrd")
         itk.WriteImage(HQ_nrrd, f"{save_path}/{HQ_name[:-4]}.nrrd")
@@ -35,7 +35,7 @@ def NRRDConv(image_path, pred_path, save_path):
 
 if __name__ == "__main__":
     NRRDConv(
-        "D:/ProjectImages/SyntheticContrast/Images",
-        "C:/Users/roybo/Programming/PhD/007_CNN_Virtual_Contrast/test_pix2pix/save780/predictions/",
-        "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase3/output/save780"
+        "D:/ProjectImages/SyntheticContrastTest/Images",
+        "C:/Users/roybo/Programming/PhD/007_CNN_Virtual_Contrast/test_pix2pix/H2_save280/predictions/",
+        "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase3/output/H2_save280"
         )
