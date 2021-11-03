@@ -24,13 +24,33 @@ def minimax_G(fake_output):
 #-------------------------------------------------------------------------
 """ Pix2pix L1 loss
     Isola et al. Image-to-image translation with conditional adversarial networks.
-    Proceedings of the IEEE conference on computer vision and pattern recognition, 2017.
+    CVPR, 2017.
     https://arxiv.org/abs/1406.2661 """
 
 @tf.function
 def L1(real_img, fake_img):
     return tf.reduce_mean(tf.abs(real_img - fake_img), name="L1")
 
+
+#-------------------------------------------------------------------------
+""" Least squares loss
+    Mao et al. Least squares generative adversarial networks. ICCV, 2017.
+    https://arxiv.org/abs/1611.04076
+    
+    Zhu et al. Unpaired Image-to-image translation using cycle-consistent
+    adversarial networks. ICCV 2017.
+    https://arxiv.org/abs/1703.10593 """
+
+@tf.function
+def least_squares_D(real_output, fake_output):
+    real_loss = 0.5 * tf.reduce_mean(tf.square(real_output - 1))
+    fake_loss = 0.5 * tf.reduce_mean(tf.square(fake_output))
+    return fake_loss + real_loss
+
+@tf.function
+def least_squares_G(fake_output):
+    fake_loss = tf.reduce_mean(tf.square(fake_output - 1))
+    return fake_loss
 
 #-------------------------------------------------------------------------
 """ Wasserstein loss
