@@ -287,7 +287,7 @@ class TrainingCycleGAN:
 
             # Run training step for each batch in training data
             for data in self.ds_train:
-                self.Model.train_step(*data)
+                self.Model.train_step(**data)
 
             # Log losses
             if self.config["expt"]["log_scalars"]:
@@ -329,7 +329,7 @@ class TrainingCycleGAN:
 
                 # Run validation step for each batch in validation data
                 for data in self.ds_val:
-                    self.Model.test_step(*data)
+                    self.Model.test_step(**data)
 
                 # Log losses
                 if self.config["expt"]["focal"]:
@@ -355,6 +355,9 @@ class TrainingCycleGAN:
                 self.save_images(epoch + 1, phase="train")
                 self.save_images(epoch + 1, phase="validation")
 
+            if (epoch + 1) % self.SAVE_EVERY == 0 and self.config["expt"]["save_model"]:
+                self.Model.G_forward.save_weights(f"{self.MODEL_SAVE_PATH}/generator.ckpt")
+
             # if self.Model.val_L1_metric.result() < best_L1 and not self.config["EXPT"]["VERBOSE"]:
             #     self.Model.save_weights(f"{self.MODEL_SAVE_PATH}{self.config['EXPT']['EXPT_NAME']}")
             #     best_L1 = self.Model.val_L1_metric.result()
@@ -377,15 +380,10 @@ class TrainingCycleGAN:
 
         data = data_generator.example_images()
 
-        if len(data) == 2:
-            source, target = data
-        else:
-            source, target, seg = data
+        pred = self.Model.G_forward(data["real_source"], training=True).numpy()
 
-        pred = self.Model.G_forward(source, training=False).numpy()
-
-        source = data_generator.un_normalise(source)
-        target = data_generator.un_normalise(target)
+        source = data_generator.un_normalise(data["real_source"])
+        target = data_generator.un_normalise(data["real_target"])
         pred = data_generator.un_normalise(pred)
 
         fig, axs = plt.subplots(target.shape[0], 5)

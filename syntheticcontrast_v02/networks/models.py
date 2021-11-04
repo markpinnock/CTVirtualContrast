@@ -2,8 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 from .layers import GANDownBlock, GANUpBlock
-from .hypernet_v01 import HyperNet_v01, LayerEmbedding
-from .hypernet_v02 import HyperNetwork_v02
+from .hypernet_v01 import HyperNet, LayerEmbedding
 from .hypernetlayers import HyperGANDownBlock, HyperGANUpBlock
 
 
@@ -256,7 +255,7 @@ class Generator(tf.keras.Model):
 #-------------------------------------------------------------------------
 """ Generator for Pix2pix with HyperNetwork """
 
-class HyperGenerator_v01(tf.keras.Model):
+class HyperGenerator(tf.keras.Model):
 
     """ Input:
         - initialiser e.g. keras.initializers.RandomNormal
@@ -282,7 +281,7 @@ class HyperGenerator_v01(tf.keras.Model):
         self.encoder_embedding = []
 
         # Initialise HyperNet
-        self.Hypernet = HyperNet_v01(Nz=config["Nz"], f=4, d=2, in_dims=ngf, out_dims=ngf, name="HyperNet")
+        self.Hypernet = HyperNet(Nz=config["Nz"], f=4, d=2, in_dims=ngf, out_dims=ngf, name="HyperNet")
 
         # Cache channels, strides and weights
         cache = {"channels": [], "strides": [], "kernels": []}
@@ -388,120 +387,6 @@ class HyperGenerator_v01(tf.keras.Model):
             w1 = embedding_1(self.Hypernet, t)
             w2 = embedding_2(self.Hypernet, t)
             x = conv(x, w1, w2, skip, training=True)
-
-        x = self.final_layer(x)
-
-        return x
-
-
-#-------------------------------------------------------------------------
-""" Generator for Pix2pix with HyperNetwork """
-
-class HyperGenerator_v02(tf.keras.Model):
-
-    """ Input:
-        - initialiser e.g. keras.initializers.RandomNormal
-        - nc: number of channels in first layer
-        - num_layers: number of layers
-        - img_dims: input image size
-        Returns:
-        - keras.Model """
-
-    def __init__(self, initialiser, config, name=None):
-        super().__init__(name=name)
-
-        # Check network and image dimensions
-        img_dims = config["img_dims"]
-        assert len(img_dims) == 3, "3D input only"
-        max_num_layers = int(np.log2(np.min([img_dims[0], img_dims[1]])))
-        max_z_downsample = int(np.floor(np.log2(img_dims[2])))
-        ngf = config["ngf"]
-        num_layers = config["g_layers"]
-        assert num_layers <= max_num_layers and num_layers >= 0, f"Maximum number of generator layers: {max_num_layers}"
-        
-        self.encoder = []
-        self.kernel_dims = {}
-
-        # Cache channels, strides and weights
-        cache = {"channels": [], "strides": [], "kernels": []}
-
-        for i in range(0, num_layers - 1):
-            channels = np.min([ngf * 2 ** i, 512])
-
-            if i >= max_z_downsample - 1:
-                strides = (2, 2, 1)
-                kernel = (4, 4, 2)
-            else:
-                strides = (2, 2, 2)
-                kernel = (4, 4, 4)
-
-            cache["channels"].append(channels)
-            cache["strides"].append(strides)
-            cache["kernels"].append(kernel)
-
-            name = f"down_{i}"
-            self.encoder.append(HyperGANDownBlock(strides, batch_norm=True, name=name))
-            
-            if i == 0:
-                self.kernel_dims[name] = list(kernel) + [1] + [channels]
-            else:
-                self.kernel_dims[name] = list(kernel) + [ngf * 2 ** (i - 1)] + [channels]
-
-        cache["strides"].append(strides)
-        cache["kernels"].append(kernel)
-
-        self.bottom_layer = HyperGANDownBlock(strides, batch_norm=True, name="bottom")
-        self.kernel_dims["bottom"] = list(kernel) + [cache["channels"][-1]] * 2
-
-        cache["channels"].reverse()
-        cache["kernels"].reverse()
-        cache["strides"].reverse()
-
-        self.decoder = []
-        dropout = True
-
-        for i in range(0, num_layers - 1):
-            if i > 2: dropout = False
-            channels = cache["channels"][i]
-            strides = cache["strides"][i]
-            kernel = cache["kernels"][i]
-
-            name = f"up_{i}"
-            self.decoder.append(HyperGANUpBlock(strides, batch_norm=True, dropout=dropout, name=name))
-            self.kernel_dims[f"{name}A"] = list(kernel) + [cache["channels"][i - 1]] + [channels]
-            self.kernel_dims[f"{name}B"] = list(kernel) + [channels * 2] + [channels]
-
-        # Last layer is standard non-HyperNet conv layer
-        self.final_layer = tf.keras.layers.Conv3DTranspose(
-            1, (4, 4, 4), (2, 2, 2),
-            padding="same", activation="linear",
-            kernel_initializer=initialiser, name="output")
-
-        self.HyperNet = HyperNetwork_v02(self.kernel_dims, name="HyperNet")
-
-    def build_model(self, x, st=None, tt=None):
-
-        """ Build method takes tf.zeros((input_dims)) and returns
-            shape of output - all layers implicitly built and weights set to trainable """
-        
-        return self(x, st, tt).shape
-
-    def call(self, x, st=None, tt=None):
-        skip_layers = []
-
-        w = self.HyperNet(st, tt)
-
-        for conv in self.encoder:
-            x = conv(x, w[conv.name], training=True)
-            skip_layers.append(x)
-        
-        x = self.bottom_layer(x, w["bottom"], training=True)
-        x = tf.nn.relu(x)
-
-        skip_layers.reverse()
-
-        for skip, conv in zip(skip_layers, self.decoder):
-            x = conv(x, w[f"{conv.name}A"], w[f"{conv.name}B"], skip, training=True)
 
         x = self.final_layer(x)
 

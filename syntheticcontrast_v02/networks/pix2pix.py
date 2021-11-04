@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-from .models import Discriminator, Generator, HyperGenerator_v01, HyperGenerator_v02
+from .models import Discriminator, Generator, HyperGenerator
 from syntheticcontrast_v02.utils.augmentation import DiffAug, StdAug
 from syntheticcontrast_v02.utils.losses import minimax_D, minimax_G, L1, FocalLoss, FocalMetric
 
@@ -189,8 +189,7 @@ class HyperPix2Pix(Pix2Pix):
 
     """ GAN class using HyperNetwork for generator """
 
-    def __init__(self, config: dict, version: int, name: str = "HyperGAN"):
-        self.version = version
+    def __init__(self, config: dict, name: str = "HyperGAN"):
         super().__init__(config, name=name)
 
     def generator_init(self, config):
@@ -198,12 +197,7 @@ class HyperPix2Pix(Pix2Pix):
         G_input_size = [1] + self.img_dims + [1]
         G_output_size = [1] + self.img_dims + [1]
 
-        if self.version == 1:
-            self.Generator = HyperGenerator_v01(self.initialiser, config, name="generator")
-        elif self.version == 2:
-            self.Generator = HyperGenerator_v02(self.initialiser, config, name="generator")
-        else:
-            raise ValueError(f"Incorrect version: {self.version}")
+        self.Generator = HyperGenerator(self.initialiser, config, name="generator")
 
         if self.input_times:
             assert self.Generator.build_model(tf.zeros(G_input_size), tf.zeros(1)) == G_output_size, f"{self.Generator.build_model(tf.zeros(G_input_size), tf.zeros(1))} vs {G_input_size}"

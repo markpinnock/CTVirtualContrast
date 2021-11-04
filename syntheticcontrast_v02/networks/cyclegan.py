@@ -3,12 +3,11 @@ import tensorflow as tf
 
 from .models import Discriminator, Generator
 from syntheticcontrast_v02.utils.augmentation import DiffAug, StdAug
-from syntheticcontrast_v02.utils.losses import (
-    minimax_D, minimax_G, L1, wasserstein_D, wasserstein_G, gradient_penalty, FocalLoss, FocalMetric)
+from syntheticcontrast_v02.utils.losses import minimax_D, minimax_G, least_squares_D, least_squares_G, L1
 
 
 #-------------------------------------------------------------------------
-""" Wrapper for standard Pix2pix GAN """
+""" Wrapper for CycleGAN """
 
 class CycleGAN(tf.keras.Model):
 
@@ -25,7 +24,7 @@ class CycleGAN(tf.keras.Model):
         if config["augmentation"]["type"] == "standard":
             self.Aug = StdAug(config=config)
         elif config["augmentation"]["type"] == "differentiable":
-            self.Aug = DiffAug(config=config)
+            self.Aug = DiffAug(config=config["augmentation"])
         else:
             self.Aug = None
 
@@ -151,39 +150,24 @@ class CycleGAN(tf.keras.Model):
         self.d_backward_metric.update_state(d_backward_loss)
     
     @tf.function
-    def train_step(self, source, target, seg=None, source_time=None, seg_time=None):
+    def train_step(self, real_source, real_target, seg=None, source_time=None, seg_time=None):
 
-        """ Expects data in order 'source, target' or 'source, target, segmentations'"""
+        """ Expects data in order 'real_source, real_target'"""
 
-        # Select minibatch of images and masks for generator training
-        g_real_source = source[0:self.mb_size, ...]
-        g_real_target = target[0:self.mb_size, ...]
-
-        # Select minibatch of real images and generate fake images for discriminator run
-        # If not enough different images for both generator and discriminator, share minibatch
-        if self.mb_size == source.shape[0]:
-            d_real_source = source[0:self.mb_size, ...]
-            d_real_target = target[0:self.mb_size, ...]
-            d_fake_target = self.G_forward(d_real_source)
-            d_fake_source = self.G_backward(d_real_target)
-
-        else:
-            d_real_source = source[self.mb_size:, ...]
-            d_real_target = target[self.mb_size:, ...]
-            d_fake_target = self.G_forward(d_real_source)
-            d_fake_source = self.G_backward(d_real_target)
+        fake_target = self.G_forward(real_source)
+        fake_source = self.G_backward(real_target)
         
-        self.discriminator_step(d_real_source, d_real_target, d_fake_source, d_fake_target)
-        self.generator_step(g_real_source, g_real_target)
+        self.discriminator_step(real_source, real_target, fake_source, fake_target)
+        self.generator_step(real_source, real_target)
 
     @tf.function
-    def test_step(self, source, target, seg=None):
-        fake_target = self.G_forward(source)
+    def test_step(self, real_source, real_target, seg=None):
+        fake_target = self.G_forward(real_source)
         cycled_source = self.G_backward(fake_target)
-        fake_source = self.G_backward(target)
+        fake_source = self.G_backward(real_target)
         cycled_target = self.G_forward(fake_source)
 
-        cycle_loss = self.L1_loss(source, cycled_source) + self.L1_loss(target, cycled_target)
+        cycle_loss = self.L1_loss(real_source, cycled_source) + self.L1_loss(real_target, cycled_target)
         self.val_L1_metric.update_state(cycle_loss)
 
     def reset_train_metrics(self):

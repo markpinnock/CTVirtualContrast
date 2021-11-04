@@ -61,15 +61,8 @@ def train(CONFIG):
             d_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt")
             )
 
-    elif CONFIG["expt"]["model"] == "HyperPix2Pix1":
-        Model = HyperPix2Pix(config=CONFIG, version=1)
-        Model.compile(
-            g_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt"),
-            d_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt")
-            )
-
-    elif CONFIG["expt"]["model"] == "HyperPix2Pix2":
-        Model = HyperPix2Pix(config=CONFIG, version=2)
+    elif CONFIG["expt"]["model"] == "HyperPix2Pix":
+        Model = HyperPix2Pix(config=CONFIG)
         Model.compile(
             g_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt"),
             d_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt")

@@ -5,7 +5,7 @@ import tensorflow as tf
 
 #-------------------------------------------------------------------------
 
-class HyperNet_v01(tf.keras.layers.Layer):
+class HyperNet(tf.keras.layers.Layer):
 
     def __init__(self, Nz: int, f: int, d: int, in_dims: int, out_dims: int, name: str = None):
 

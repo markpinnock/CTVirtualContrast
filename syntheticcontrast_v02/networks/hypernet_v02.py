@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 
-class HyperNetwork_v02(tf.keras.layers.Layer):
+class HyperNet(tf.keras.layers.Layer):
 
     def __init__(self, kernel_dims, name: str = None):
         super().__init__(name)

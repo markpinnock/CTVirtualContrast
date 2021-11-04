@@ -24,26 +24,27 @@ def inference(CONFIG, save):
         raise ValueError("Select paired or unpaired dataloader")
 
     # Initialise datasets and set normalisation parameters
-    ValGenerator = Loader(config=CONFIG["data"], dataset_type="validation")
-    _, _ = ValGenerator.set_normalisation()
+    CONFIG["data"]["cv_folds"] = 1
+    CONFIG["data"]["fold"] = 0
+    CONFIG["data"]["segs"] = []
+    CONFIG["data"]["data_path"] += "Test"
+    TestGenerator = Loader(config=CONFIG["data"], dataset_type="validation")
+    _, _ = TestGenerator.set_normalisation()
 
     # Specify output types
     output_types = {"real_source": "float32", "subject_ID": tf.string, "index_low": "float32", "index_high": "float32"}
 
     # Create dataloader
-    val_ds = tf.data.Dataset.from_generator(
-        generator=ValGenerator.inference_generator,
+    test_ds = tf.data.Dataset.from_generator(
+        generator=TestGenerator.inference_generator,
         output_types=output_types).batch(1)
 
     # Create model and load weights
     if CONFIG["expt"]["model"] == "Pix2Pix":
         Model = Pix2Pix(config=CONFIG)
 
-    elif CONFIG["expt"]["model"] == "HyperPix2Pix1":
-        Model = HyperPix2Pix(config=CONFIG, version=1)
-
-    elif CONFIG["expt"]["model"] == "HyperPix2Pix2":
-        Model = HyperPix2Pix(config=CONFIG, version=2)
+    elif CONFIG["expt"]["model"] == "HyperPix2Pix":
+        Model = HyperPix2Pix(config=CONFIG)
 
     elif CONFIG["expt"]["model"] == "CycleGAN":
         Model = CycleGAN(config=CONFIG)
@@ -57,11 +58,11 @@ def inference(CONFIG, save):
     VC_predictions = {}
     vol_depths = {}
 
-    for data in val_ds:
-        AC_pred = Model.Generator(data["real_source"], 1.0)
-        VC_pred = Model.Generator(data["real_source"], 2.0)
-        AC_pred = ValGenerator.un_normalise(AC_pred)[0, :, :, :, 0].numpy()
-        VC_pred = ValGenerator.un_normalise(VC_pred)[0, :, :, :, 0].numpy()
+    for data in test_ds:
+        AC_pred = Model.Generator(data["real_source"], tf.ones([1, 1]) * 1.0)
+        VC_pred = Model.Generator(data["real_source"], tf.ones([1, 1]) * 2.0)
+        AC_pred = TestGenerator.un_normalise(AC_pred)[0, :, :, :, 0].numpy()
+        VC_pred = TestGenerator.un_normalise(VC_pred)[0, :, :, :, 0].numpy()
         AC_pred = np.round(AC_pred).astype("int16")
         VC_pred = np.round(VC_pred).astype("int16")
 
@@ -115,7 +116,7 @@ if __name__ == "__main__":
     # Handle arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", "-p", help="Expt path", type=str)
-    parser.add_argument("--save", "-v", help="Visualise", action="store_true")
+    parser.add_argument("--save", "-s", help="Visualise", action="store_true")
     arguments = parser.parse_args()
 
     EXPT_PATH = arguments.path
