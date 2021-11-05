@@ -32,8 +32,8 @@ class BaseImgLoader(ABC):
         self._dataset_type = dataset_type
         self.config = config
         self.down_sample = config["down_sample"]
-        self.depth = config["depth"]
         self.num_targets = len(config["target"])
+        self._patch_size = config["patch_size"]
 
         if config["times"] is not None:
             self._json = json.load(open(f"{config['data_path']}/{config['times']}", 'r'))
@@ -42,35 +42,35 @@ class BaseImgLoader(ABC):
             self._json = None
 
     def example_images(self):
-        if len(self._ex_segs) > 0:
-            if self._json is not None:
-                return {
-                    "real_source": self._normalise(self._ex_sources),
-                    "real_target": self._normalise(self._ex_targets),
-                    "seg": self._ex_segs,
-                    "source_times": self._ex_source_times,
-                    "target_times": self._ex_target_times
-                    }
-            else:
-                return {
-                    "real_source": self._normalise(self._ex_sources),
-                    "real_target": self._normalise(self._ex_targets),
-                    "seg": self._ex_segs
-                    }
+        # if len(self._ex_segs) > 0:
+        #     if self._json is not None:
+        #         return {
+        #             "real_source": self._normalise(self._ex_sources),
+        #             "real_target": self._normalise(self._ex_targets),
+        #             "seg": self._ex_segs,
+        #             "source_times": self._ex_source_times,
+        #             "target_times": self._ex_target_times
+        #             }
+        #     else:
+        #         return {
+        #             "real_source": self._normalise(self._ex_sources),
+        #             "real_target": self._normalise(self._ex_targets),
+        #             "seg": self._ex_segs
+        #             }
 
+        # else:
+        if self._json is not None:
+            return {
+                "real_source": self._normalise(self._ex_sources),
+                "real_target": self._normalise(self._ex_targets),
+                "source_times": self._ex_source_times,
+                "target_times": self._ex_target_times
+                }
         else:
-            if self._json is not None:
-                return {
-                    "real_source": self._normalise(self._ex_sources),
-                    "real_target": self._normalise(self._ex_targets),
-                    "source_times": self._ex_source_times,
-                    "target_times": self._ex_target_times
-                    }
-            else:
-                return {
-                    "real_source": self._normalise(self._ex_sources),
-                    "real_target": self._normalise(self._ex_targets)
-                    }
+            return {
+                "real_source": self._normalise(self._ex_sources),
+                "real_target": self._normalise(self._ex_targets)
+                }
     
     def train_val_split(self, seed: int = 5) -> None:
         # Get unique subject IDs for subject-level train/val split
@@ -151,14 +151,16 @@ class BaseImgLoader(ABC):
           
         ex_sources_stack = []
         ex_targets_stack = []
-        
-        for source, target in zip(ex_sources, ex_targets):
-            sub_source = source[:, :, (source.shape[2] // 3):(source.shape[2] // 3 + self.depth)]
-            sub_target = target[:, :, (target.shape[2] // 3):(target.shape[2] // 3 + self.depth)]
+        mid_x = ex_sources[0].shape[0] // 2
+        mid_y = ex_sources[0].shape[1] // 2
 
-            if sub_source.shape[2] < self.depth:
-                sub_source = source[:, :, -self.depth:]
-                sub_target = target[:, :, -self.depth:]
+        for source, target in zip(ex_sources, ex_targets):
+            sub_source = source[(mid_x - self._patch_size[0] // 2):(mid_x + self._patch_size[0] // 2), (mid_y - self._patch_size[1] // 2):(mid_y + self._patch_size[1] // 2), (source.shape[2] // 3):(source.shape[2] // 3 + self._patch_size[2])]
+            sub_target = target[(mid_x - self._patch_size[0] // 2):(mid_x + self._patch_size[0] // 2), (mid_y - self._patch_size[1] // 2):(mid_y + self._patch_size[1] // 2), (target.shape[2] // 3):(target.shape[2] // 3 + self._patch_size[2])]
+
+            if sub_source.shape[2] < self._patch_size[2]:
+                sub_source = source[:, :, -self._patch_size[2]:]
+                sub_target = target[:, :, -self._patch_size[2]:]
 
             ex_sources_stack.append(sub_source)
             ex_targets_stack.append(sub_target)
@@ -168,28 +170,28 @@ class BaseImgLoader(ABC):
         self._ex_sources = self._ex_sources[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
         self._ex_targets = self._ex_targets[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
 
-        ex_segs_stack = []
+        # ex_segs_stack = []
 
-        if len(self.config["segs"]) > 0:
-            if len(self.sub_folders) == 0:
-                ex_segs = [glob.glob(f"{self._seg_paths}/{img[0:6]}AC*")[0] for img in ex_targets_list]
-                ex_segs = [np.load(seg) for seg in ex_segs]
-            else:
-                ex_segs = [np.load(f"{self._seg_paths[img[6:8]]}/{img}") for img in ex_targets_list]
+        # if len(self.config["segs"]) > 0:
+        #     if len(self.sub_folders) == 0:
+        #         ex_segs = [glob.glob(f"{self._seg_paths}/{img[0:6]}AC*")[0] for img in ex_targets_list]
+        #         ex_segs = [np.load(seg) for seg in ex_segs]
+        #     else:
+        #         ex_segs = [np.load(f"{self._seg_paths[img[6:8]]}/{img}") for img in ex_targets_list]
 
-            for seg in ex_segs:
-                sub_seg = seg[:, :, (seg.shape[2] // 3):(seg.shape[2] // 3 + self.depth)]
+        #     for seg in ex_segs:
+        #         sub_seg = seg[:, :, (seg.shape[2] // 3):(seg.shape[2] // 3 + self._patch_size[2])]
 
-                if sub_seg.shape[2] < self.depth:
-                    sub_seg = seg[:, :, -self.depth:]
+        #         if sub_seg.shape[2] < self._patch_size[2]:
+        #             sub_seg = seg[:, :, -self._patch_size[2]:]
 
-                ex_segs_stack.append(sub_seg)
+        #         ex_segs_stack.append(sub_seg)
 
-            self._ex_segs = np.stack(ex_segs_stack, axis=0)
-            self._ex_segs = self._ex_segs[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
+        #     self._ex_segs = np.stack(ex_segs_stack, axis=0)
+        #     self._ex_segs = self._ex_segs[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
 
-        else:
-            self._ex_segs = []
+        # else:
+        #     self._ex_segs = []
 
         if self._json is not None:
             self._ex_source_times = np.stack([self._json[name[:-4] + ".nrrd"] for name in ex_sources_list], axis=0).astype("float32")
@@ -321,14 +323,19 @@ class BaseImgLoader(ABC):
                 else:
                     target = np.load(f"{self._img_paths[target_name[6:8]]}/{target_name}")
 
+                # Extract patches
+                total_height = target.shape[0]
+                total_width = target.shape[1]
                 total_depth = target.shape[2]
-                num_iter = total_depth // self.depth
+                num_iter = (total_height // self._patch_size[0]) * (total_width // self._patch_size[1]) * (total_depth // self._patch_size[2])
 
                 for _ in range(num_iter):
-                    lb = np.random.randint(0, total_depth - self.depth + 1)
+                    x = np.random.randint(0, total_width - self._patch_size[0] + 1)
+                    y = np.random.randint(0, total_width - self._patch_size[1] + 1)
+                    z = np.random.randint(0, total_depth - self._patch_size[2] + 1)
 
-                    sub_target = target[::self.down_sample, ::self.down_sample, lb:(lb + self.depth), np.newaxis]
-                    sub_source = source[::self.down_sample, ::self.down_sample, lb:(lb + self.depth), np.newaxis]
+                    sub_target = target[x:(x + self._patch_size[0]):self.down_sample, y:(y + self._patch_size[1]):self.down_sample, z:(z + self._patch_size[2]), np.newaxis]
+                    sub_source = source[x:(x + self._patch_size[0]):self.down_sample, y:(y + self._patch_size[1]):self.down_sample, z:(z + self._patch_size[2]), np.newaxis]
                     sub_target = self._normalise(sub_target)
                     sub_source = self._normalise(sub_source)
 
@@ -341,14 +348,14 @@ class BaseImgLoader(ABC):
                         if len(self.sub_folders) == 0:
                             candidate_segs = glob.glob(f"{self._seg_paths}/{target_name[0:6]}AC*{target_name[-4:]}")
                             assert len(candidate_segs) == 1, candidate_segs
-                            seg = np.load(candidate_segs[0])#.astype("float32")
-                            seg = seg[::self.down_sample, ::self.down_sample, lb:(lb + self.depth), np.newaxis]
+                            seg = np.load(candidate_segs[0])
+                            seg = seg[x:(x + self._patch_size[0]):self.down_sample, y:(y + self._patch_size[1]):self.down_sample, z:(z + self._patch_size[2]), np.newaxis]
                             seg[seg > 1] = 1
                             # TODO: return index
 
                         else:
-                            seg = np.load(f"{self._seg_paths[target_name[6:8]]}/{target_name}")#.astype("float32")
-                            seg = seg[::self.down_sample, ::self.down_sample, lb:(lb + self.depth), np.newaxis]
+                            seg = np.load(f"{self._seg_paths[target_name[6:8]]}/{target_name}")
+                            seg = seg[x:(x + self._patch_size[0]):self.down_sample, y:(y + self._patch_size[1]):self.down_sample, z:(z + self._patch_size[2]), np.newaxis]
                             seg[seg > 1] = 1
 
                         if self._json is not None:
@@ -396,17 +403,17 @@ class BaseImgLoader(ABC):
                 source = np.load(f"{self._img_paths[source_name[6:8]]}/{source_name}")
 
             total_depth = source.shape[2]
-            num_iter = total_depth // self.depth
+            num_iter = total_depth // self._patch_size[2]
 
             for j in range(num_iter):
-                sub_source = source[::self.down_sample, ::self.down_sample, (j * self.depth):((j + 1) * self.depth), np.newaxis]
+                sub_source = source[::self.down_sample, ::self.down_sample, (j * self._patch_size[2]):((j + 1) * self._patch_size[2]), np.newaxis]
                 sub_source = self._normalise(sub_source)
 
-                yield {"real_source": sub_source, "subject_ID": source_name, "index_low": j * self.depth, "index_high": (j + 1) * self.depth}
+                yield {"real_source": sub_source, "subject_ID": source_name, "index_low": j * self._patch_size[2], "index_high": (j + 1) * self._patch_size[2]}
 
-            sub_source = source[::self.down_sample, ::self.down_sample, -self.depth:, np.newaxis]
+            sub_source = source[::self.down_sample, ::self.down_sample, -self._patch_size[2]:, np.newaxis]
 
-            yield {"real_source": sub_source, "subject_ID": source_name, "index_low": total_depth - self.depth, "index_high": total_depth}
+            yield {"real_source": sub_source, "subject_ID": source_name, "index_low": total_depth - self._patch_size[2], "index_high": total_depth}
 
             i += 1
 

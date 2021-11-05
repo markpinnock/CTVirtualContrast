@@ -228,7 +228,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import numpy as np
     import yaml
-    from syntheticcontrast_v02.utils.newdataloader import UnpairedLoader
+    from syntheticcontrast_v02.utils.dataloader_v02 import UnpairedLoader
 
     test_config = yaml.load(open("syntheticcontrast_v02/utils/test_config.yml", 'r'), Loader=yaml.FullLoader)
 

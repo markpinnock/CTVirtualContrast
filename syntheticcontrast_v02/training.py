@@ -7,7 +7,7 @@ import yaml
 from syntheticcontrast_v02.trainingtuningclasses.trainingclasses import TrainingPix2Pix, TrainingCycleGAN
 from syntheticcontrast_v02.networks.pix2pix import Pix2Pix, HyperPix2Pix
 from syntheticcontrast_v02.networks.cyclegan import CycleGAN
-from syntheticcontrast_v02.utils.newdataloader import PairedLoader, UnpairedLoader
+from syntheticcontrast_v02.utils.dataloader_v02 import PairedLoader, UnpairedLoader
 
 
 #-------------------------------------------------------------------------
