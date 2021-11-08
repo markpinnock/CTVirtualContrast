@@ -3,7 +3,9 @@ import tensorflow as tf
 
 from .models import Discriminator, Generator
 from syntheticcontrast_v02.utils.augmentation import DiffAug, StdAug
-from syntheticcontrast_v02.utils.losses import minimax_D, minimax_G, least_squares_D, least_squares_G, L1
+from syntheticcontrast_v02.utils.losses import (
+    minimax_D, minimax_G, least_squares_D, least_squares_G,
+    L1, gradient_difference, mutual_information)
 
 
 #-------------------------------------------------------------------------
@@ -32,6 +34,13 @@ class CycleGAN(tf.keras.Model):
         self.generator_init(config["hyperparameters"])
         self.discriminator_init(config["hyperparameters"])
 
+        # Initialise image buffers
+        self.buffer_forward = ImageBuffer()
+        self.buffer_backward = ImageBuffer()
+
+        # Initialise kernel for gradient difference loss
+        self.gradient_kernel = get_gradient_filters()
+
     def generator_init(self, config):
         # Check generator output dims match input
         G_input_size = [1] + self.img_dims + [1]
@@ -54,8 +63,11 @@ class CycleGAN(tf.keras.Model):
         self.d_forward_opt = d_forward_opt
         self.d_backward_opt = d_backward_opt
 
-        self.d_loss = minimax_D
-        self.g_loss = minimax_G
+        """ Using minmax loss rather than least squares as in 
+            ResCycleGAN paper """
+
+        self.d_loss = least_squares_D
+        self.g_loss = least_squares_G
         self.L1_loss = L1
 
         # Set up metrics
@@ -93,17 +105,23 @@ class CycleGAN(tf.keras.Model):
             same_target = self.G_forward(real_target)
             same_source = self.G_backward(real_source)
 
+            """ ResCycleGAN paper uses cycle consistency, gradient norm and MI """
+
             # Calculate L1 cycle consistency loss before augmentation
             cycle_loss = self.L1_loss(real_source, cycled_source) + self.L1_loss(real_target, cycled_target)
+            # gradient_loss = gradient_difference(real_source, cycled_source, self.gradient_kernel) + gradient_difference(real_target, cycled_target, self.gradient_kernel)
+            # mutual_information_loss = mutual_information(real_source, cycled_source) + mutual_information(real_target, cycled_target)
             identity_loss = self.L1_loss(real_source, same_source) + self.L1_loss(real_target, same_target)
             self.train_L1_metric.update_state(cycle_loss)
-            
+
             if self.Aug:
                 imgs, _ = self.Aug(imgs=[fake_source, fake_target], seg=None)
                 fake_source, fake_target = imgs
 
             fake_target_pred = self.D_forward(fake_target)
             fake_source_pred = self.D_backward(fake_source)
+
+            """ Not using identity loss as in ResCycleGAN paper """
 
             g_forward_loss = self.g_loss(fake_target_pred)
             g_backward_loss = self.g_loss(fake_source_pred)
@@ -156,6 +174,8 @@ class CycleGAN(tf.keras.Model):
 
         fake_target = self.G_forward(real_source)
         fake_source = self.G_backward(real_target)
+        fake_target = self.buffer_forward.query(fake_target)
+        fake_source = self.buffer_backward.query(fake_source)
         
         self.discriminator_step(real_source, real_target, fake_source, fake_target)
         self.generator_step(real_source, real_target)
@@ -176,3 +196,42 @@ class CycleGAN(tf.keras.Model):
         self.d_forward_metric.reset_states()
         self.d_backward_metric.reset_states()
         self.train_L1_metric.reset_states()
+
+
+#-------------------------------------------------------------------------
+""" https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix/blob/master/util/image_pool.py """
+
+class ImageBuffer:
+
+    def __init__(self):
+        self.buffer_size = 50
+        self.num_imgs = 0
+    
+        self.pool = []
+    
+    def query(self, img):
+        if self.num_imgs < self.buffer_size:
+            self.pool.append(img)
+            self.num_imgs += 1
+
+            return img
+
+        else:
+            if tf.random.uniform(shape=1) > 0.5:
+                idx = tf.random.uniform(shape=1, minval=0, maxval=self.buffer_size, dtype="int32")
+                tmp = self.pool[idx]
+                self.pool[idx] = img
+
+                return tmp
+
+            else:
+                return img
+
+
+#-------------------------------------------------------------------------
+
+def get_gradient_filters():
+    g = tf.constant([[[1.0, -1.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, 0.0]]])
+    k = tf.stack([g, tf.transpose(g, [0, 2, 1]), tf.transpose(g, [2, 0, 1])], axis=3)[:, :, :, tf.newaxis, :]
+
+    return k

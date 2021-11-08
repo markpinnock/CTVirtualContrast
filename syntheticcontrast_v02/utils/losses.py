@@ -52,6 +52,68 @@ def least_squares_G(fake_output):
     fake_loss = tf.reduce_mean(tf.square(fake_output - 1))
     return fake_loss
 
+
+#-------------------------------------------------------------------------
+""" Gradient difference
+    Xie et al. Generation of contrast-enhanced CT with residual cycle-consistent
+    generative adversarial networks (Res-CycleGAN).
+    Medical Imae 2021: Physics of Medical Imaging. 2021.
+    https://doi.org/10.1117/12.2581056 """
+
+@tf.function
+def gradient_difference(real_img, fake_img, k):
+    real_gradient = tf.nn.conv3d(real_img, filters=k, strides=(1, 1, 1, 1, 1), padding="SAME")
+    fake_gradient = tf.nn.conv3d(fake_img, filters=k, strides=(1, 1, 1, 1, 1), padding="SAME")
+    gradient_difference = tf.reduce_mean(tf.square(tf.abs(real_gradient) - tf.abs(fake_gradient)))
+
+    return gradient_difference
+
+
+#-------------------------------------------------------------------------
+""" Mutal information
+    Xie et al. Generation of contrast-enhanced CT with residual cycle-consistent
+    generative adversarial networks (Res-CycleGAN).
+    Medical Imae 2021: Physics of Medical Imaging. 2021.
+    https://doi.org/10.1117/12.2581056
+    
+    Implementation adapted from:
+    https://github.com/DeepRegNet/DeepReg/blob/main/deepreg/loss/image.py """
+
+@tf.function
+def mutual_information(real_img, fake_img):
+
+    # intensity is split into bins between 0, 1
+    real_img = tf.clip_by_value(real_img[:, ::4, ::4, ::4, :], 0, 1)
+    fake_img = tf.clip_by_value(fake_img[:, ::4, ::4, ::4, :], 0, 1)
+    bin_centers = tf.linspace(0.0, 1.0, 16)
+    bin_centers = tf.cast(bin_centers, dtype=real_img.dtype)
+    bin_centers = bin_centers[None, None, ...]
+    sigma = (tf.reduce_mean(bin_centers[:, :, 1:] - bin_centers[:, :, :-1]) * 0.5)
+    preterm = 1 / (2 * tf.math.square(sigma))
+    batch, w, h, z, c = real_img.shape
+    y_true = tf.reshape(real_img, [batch, w * h * z * c, 1])  # (batch, nb_voxels, 1)
+    y_pred = tf.reshape(fake_img, [batch, w * h * z * c, 1])  # (batch, nb_voxels, 1)
+    nb_voxels = y_true.shape[1] * 1.0  # w * h * z, number of voxels
+
+    # each voxel contributes continuously to a range of histogram bin
+    ia = tf.math.exp(-preterm * tf.math.square(y_true - bin_centers))
+    ia /= tf.reduce_sum(ia, -1, keepdims=True)
+    ia = tf.transpose(ia, (0, 2, 1))
+    pa = tf.reduce_mean(ia, axis=-1, keepdims=True)
+
+    ib = tf.math.exp(-preterm * tf.math.square(y_pred - bin_centers))
+    ib /= tf.reduce_sum(ib, -1, keepdims=True)
+    pb = tf.reduce_mean(ib, axis=1, keepdims=True)
+
+    papb = tf.matmul(pa, pb)
+    pab = tf.matmul(ia, ib)
+    pab /= nb_voxels
+
+    # MI: sum(P_ab * log(P_ab/P_ap_b))
+    div = (pab + 1e-12) / (papb + 1e-12)
+
+    return tf.reduce_sum(pab * tf.math.log(div + 1e-12))
+
 #-------------------------------------------------------------------------
 """ Wasserstein loss
     Arjovsky et al. Wasserstein generative adversarial networks.

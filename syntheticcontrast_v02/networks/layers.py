@@ -10,16 +10,16 @@ class InstanceNorm(tf.keras.layers.Layer):
         super().__init__(name=name)
         self.epsilon = 1e-12
     
-    # def build(self, input_shape):
-    #     if 
-    #     self.beta = self.add_weight("beta", shape=[1, 1, 1, 1, input_shape[-1]], initializer="zeros", trainable=True)
-    #     self.gamma = self.add_weight("gamma", shape=[1, 1, 1, 1, input_shape[-1]], initializer="ones", trainable=True)
+    def build(self, input_shape):
+        self.beta = self.add_weight("beta", shape=[1, 1, 1, 1, input_shape[-1]], initializer="zeros", trainable=True)
+        self.gamma = self.add_weight("gamma", shape=[1, 1, 1, 1, input_shape[-1]], initializer="ones", trainable=True)
 
     def call(self, x, training=None):
         mu = tf.math.reduce_mean(x, axis=[1, 2, 3], keepdims=True)
         sigma = tf.math.reduce_std(x, axis=[1, 2, 3], keepdims=True)
-        return (x - mu) / (sigma + self.epsilon)
-        # return (x - mu) / (sigma + self.epsilon) * self.gamma + self.beta
+
+        return (x - mu) / (sigma + self.epsilon) * self.gamma + self.beta
+
 
 #-------------------------------------------------------------------------
 """ Down-sampling convolutional block for U-Net"""
