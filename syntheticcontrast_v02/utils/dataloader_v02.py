@@ -7,6 +7,8 @@ import tensorflow as tf
 
 from abc import ABC, abstractmethod
 
+from patch_utils import extract_patches
+
 
 #----------------------------------------------------------------------------------------------------------------------------------------------------
 """ ImgLoader class: data_generator method for use with tf.data.Dataset.from_generator """
@@ -42,23 +44,6 @@ class BaseImgLoader(ABC):
             self._json = None
 
     def example_images(self):
-        # if len(self._ex_segs) > 0:
-        #     if self._json is not None:
-        #         return {
-        #             "real_source": self._normalise(self._ex_sources),
-        #             "real_target": self._normalise(self._ex_targets),
-        #             "seg": self._ex_segs,
-        #             "source_times": self._ex_source_times,
-        #             "target_times": self._ex_target_times
-        #             }
-        #     else:
-        #         return {
-        #             "real_source": self._normalise(self._ex_sources),
-        #             "real_target": self._normalise(self._ex_targets),
-        #             "seg": self._ex_segs
-        #             }
-
-        # else:
         if self._json is not None:
             return {
                 "real_source": self._normalise(self._ex_sources),
@@ -169,29 +154,6 @@ class BaseImgLoader(ABC):
         self._ex_targets = np.stack(ex_targets_stack, axis=0)
         self._ex_sources = self._ex_sources[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
         self._ex_targets = self._ex_targets[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
-
-        # ex_segs_stack = []
-
-        # if len(self.config["segs"]) > 0:
-        #     if len(self.sub_folders) == 0:
-        #         ex_segs = [glob.glob(f"{self._seg_paths}/{img[0:6]}AC*")[0] for img in ex_targets_list]
-        #         ex_segs = [np.load(seg) for seg in ex_segs]
-        #     else:
-        #         ex_segs = [np.load(f"{self._seg_paths[img[6:8]]}/{img}") for img in ex_targets_list]
-
-        #     for seg in ex_segs:
-        #         sub_seg = seg[:, :, (seg.shape[2] // 3):(seg.shape[2] // 3 + self._patch_size[2])]
-
-        #         if sub_seg.shape[2] < self._patch_size[2]:
-        #             sub_seg = seg[:, :, -self._patch_size[2]:]
-
-        #         ex_segs_stack.append(sub_seg)
-
-        #     self._ex_segs = np.stack(ex_segs_stack, axis=0)
-        #     self._ex_segs = self._ex_segs[:, ::self.down_sample, ::self.down_sample, :, np.newaxis].astype("float32")
-
-        # else:
-        #     self._ex_segs = []
 
         if self._json is not None:
             self._ex_source_times = np.stack([self._json[name[:-4] + ".nrrd"] for name in ex_sources_list], axis=0).astype("float32")
@@ -402,18 +364,11 @@ class BaseImgLoader(ABC):
             else:
                 source = np.load(f"{self._img_paths[source_name[6:8]]}/{source_name}")
 
-            total_depth = source.shape[2]
-            num_iter = total_depth // self._patch_size[2]
+            source = self._normalise(source)
+            patches, indices = extract_patches(source, self.config["stride_length", self._patch_size], self.down_sample)
 
-            for j in range(num_iter):
-                sub_source = source[::self.down_sample, ::self.down_sample, (j * self._patch_size[2]):((j + 1) * self._patch_size[2]), np.newaxis]
-                sub_source = self._normalise(sub_source)
-
-                yield {"real_source": sub_source, "subject_ID": source_name, "index_low": j * self._patch_size[2], "index_high": (j + 1) * self._patch_size[2]}
-
-            sub_source = source[::self.down_sample, ::self.down_sample, -self._patch_size[2]:, np.newaxis]
-
-            yield {"real_source": sub_source, "subject_ID": source_name, "index_low": total_depth - self._patch_size[2], "index_high": total_depth}
+            for patch, index in zip(patches, indices):
+                yield {"real_source": patch, "subject_ID": source_name, "x": index[0], "y": index[1], "z": index[2]}
 
             i += 1
 
