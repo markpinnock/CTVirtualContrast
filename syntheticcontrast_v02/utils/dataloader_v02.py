@@ -7,7 +7,7 @@ import tensorflow as tf
 
 from abc import ABC, abstractmethod
 
-from patch_utils import extract_patches
+from syntheticcontrast_v02.utils.patch_utils import extract_patches
 
 
 #----------------------------------------------------------------------------------------------------------------------------------------------------
@@ -365,12 +365,13 @@ class BaseImgLoader(ABC):
                 source = np.load(f"{self._img_paths[source_name[6:8]]}/{source_name}")
 
             source = self._normalise(source)
-            patches, indices = extract_patches(source, self.config["stride_length", self._patch_size], self.down_sample)
+            patches, indices = extract_patches(source, self.config["xy_patch"], self.config["stride_length"], self._patch_size, self.down_sample)
 
             for patch, index in zip(patches, indices):
                 yield {"real_source": patch, "subject_ID": source_name, "x": index[0], "y": index[1], "z": index[2]}
 
             i += 1
+
 
 #-------------------------------------------------------------------------
 """ Data loader for one to one source-target pairings """

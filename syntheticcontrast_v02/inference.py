@@ -28,10 +28,15 @@ def inference(CONFIG, save):
     CONFIG["data"]["cv_folds"] = 1
     CONFIG["data"]["fold"] = 0
     CONFIG["data"]["segs"] = []
+    CONFIG["data"]["times"] = None
     CONFIG["data"]["data_path"] += "Test"
+    CONFIG["data"]["xy_patch"] = True
     CONFIG["data"]["stride_length"] = 32
     TestGenerator = Loader(config=CONFIG["data"], dataset_type="validation")
     _, _ = TestGenerator.set_normalisation()
+
+    # Hack to avoid triggering assertion in pix2pix.py
+    CONFIG["data"]["times"] = []
 
     # Specify output types
     output_types = {"real_source": "float32", "subject_ID": tf.string, "x": "int32", "y": "int32", "z": "int32"}
@@ -59,7 +64,6 @@ def inference(CONFIG, save):
     AC_predictions = {}
     VC_predictions = {}
     weights = {}
-    # vol_depths = {}
 
     for data in test_ds:
         AC_pred = Model.Generator(data["real_source"], tf.ones([1, 1]) * 1.0)
@@ -70,30 +74,27 @@ def inference(CONFIG, save):
         VC_pred = np.round(VC_pred).astype("int16")
 
         subject_ID = data["subject_ID"].numpy()[0].decode("utf-8")[:-4]
-        x_slice = slice(data["x"], data["x"] + CONFIG["data"]["patch_size"][0])
-        y_slice = slice(data["y"], data["y"] + CONFIG["data"]["patch_size"][1])
-        z_slice = slice(data["z"], data["z"] + CONFIG["data"]["patch_size"][2])
+        x_slice = slice(int(data["x"]), int(data["x"]) + int(CONFIG["data"]["patch_size"][0]))
+        y_slice = slice(int(data["y"]), int(data["y"]) + int(CONFIG["data"]["patch_size"][1]))
+
+        if int(data["z"]) < 0:
+            z_slice = slice(int(data["z"]), None)
+        else:
+            z_slice = slice(int(data["z"]), int(data["z"]) + int(CONFIG["data"]["patch_size"][2]))
 
         if subject_ID not in AC_predictions.keys():
+            print(subject_ID)
             original_img = glob.glob(f"{CONFIG['data']['data_path']}/Images/{subject_ID}*")[0]
             img_dims = np.load(original_img).shape
             weights[subject_ID] = np.zeros(img_dims)
             AC_predictions[subject_ID] = np.zeros(img_dims)
             VC_predictions[subject_ID] = np.zeros(img_dims)
-            # vol_depths[subject_ID] = []
 
-        AC_predictions[subject_ID][x_slice, y_slice, z_slice]
-        VC_predictions[subject_ID][x_slice, y_slice, z_slice]
+        AC_predictions[subject_ID][x_slice, y_slice, z_slice] += AC_pred
+        VC_predictions[subject_ID][x_slice, y_slice, z_slice] += VC_pred
         weights[subject_ID][x_slice, y_slice, z_slice] += 1
-        # vol_depths[subject_ID].append([data["index_low"].numpy().astype("int16")[0], data["index_high"].numpy().astype("int16")[0]])
 
-    for subject, w in weights.items():
-        # AC = np.zeros((256, 256, indices[-1][-1]), dtype="int16")
-        # VC = np.zeros((256, 256, indices[-1][-1]), dtype="int16")
-
-        # for i, index in enumerate(indices):
-        #     AC[:, :, index[0]:index[1]] = AC_predictions[subject][i]
-        #     VC[:, :, index[0]:index[1]] = VC_predictions[subject][i]
+    for subject_ID, w in weights.items():
 
         AC = AC_predictions[subject_ID] / w
         VC = VC_predictions[subject_ID] / w
@@ -101,8 +102,8 @@ def inference(CONFIG, save):
         if save:
             save_path = f"{CONFIG['paths']['expt_path']}/predictions"
             if not os.path.exists(save_path): os.mkdir(save_path)
-            np.save(f"{save_path}/{subject[0:6]}AP{subject[-3:]}", AC)
-            np.save(f"{save_path}/{subject[0:6]}VP{subject[-3:]}", VC)
+            np.save(f"{save_path}/{subject_ID[0:6]}AP{subject_ID[-3:]}", AC)
+            np.save(f"{save_path}/{subject_ID[0:6]}VP{subject_ID[-3:]}", VC)
 
         else:
             plt.subplot(2, 2, 1)
@@ -129,7 +130,7 @@ if __name__ == "__main__":
     # Handle arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", "-p", help="Expt path", type=str)
-    parser.add_argument("--save", "-s", help="Visualise", action="store_true")
+    parser.add_argument("--save", "-s", help="Save images", action="store_true")
     arguments = parser.parse_args()
 
     EXPT_PATH = arguments.path
