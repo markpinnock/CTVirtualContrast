@@ -58,16 +58,24 @@ def inference(CONFIG, save):
 
     else:
         raise ValueError(f"Invalid model type: {CONFIG['expt']['model']}")
-    
-    Model.Generator.load_weights(f"{CONFIG['paths']['expt_path']}/models/generator.ckpt")
+
+    if CONFIG["expt"]["model"] == "CycleGAN":
+        Model.G_forward.load_weights(f"{CONFIG['paths']['expt_path']}/models/generator.ckpt")
+    else:
+        Model.Generator.load_weights(f"{CONFIG['paths']['expt_path']}/models/generator.ckpt")
 
     AC_predictions = {}
     VC_predictions = {}
     weights = {}
 
     for data in test_ds:
-        AC_pred = Model.Generator(data["real_source"], tf.ones([1, 1]) * 1.0)
-        VC_pred = Model.Generator(data["real_source"], tf.ones([1, 1]) * 2.0)
+        if CONFIG["expt"]["model"] == "CycleGAN":
+            AC_pred = Model.G_forward(data["real_source"])
+            VC_pred = Model.G_forward(data["real_source"])
+        else:
+            AC_pred = Model.Generator(data["real_source"], tf.ones([1, 1]) * 1.0)
+            VC_pred = Model.Generator(data["real_source"], tf.ones([1, 1]) * 2.0)
+
         AC_pred = TestGenerator.un_normalise(AC_pred)[0, :, :, :, 0].numpy()
         VC_pred = TestGenerator.un_normalise(VC_pred)[0, :, :, :, 0].numpy()
         AC_pred = np.round(AC_pred).astype("int16")
@@ -101,6 +109,7 @@ def inference(CONFIG, save):
 
         if save:
             save_path = f"{CONFIG['paths']['expt_path']}/predictions"
+            print(f"{subject_ID} saved")
             if not os.path.exists(save_path): os.mkdir(save_path)
             np.save(f"{save_path}/{subject_ID[0:6]}AP{subject_ID[-3:]}", AC)
             np.save(f"{save_path}/{subject_ID[0:6]}VP{subject_ID[-3:]}", VC)

@@ -19,7 +19,7 @@ class CycleGAN(tf.keras.Model):
         self.config = config
         self.lambda_ = config["hyperparameters"]["lambda"]
         self.mb_size = config["expt"]["mb_size"]
-        self.d_in_ch = 1
+        self.d_in_ch = 2
         self.img_dims = config["hyperparameters"]["img_dims"]
 
         # Set up augmentation
@@ -85,8 +85,8 @@ class CycleGAN(tf.keras.Model):
         print("Generator")
         print("===========================================================")
         tf.keras.Model(inputs=source, outputs=outputs).summary()
-        source = tf.keras.Input(shape=self.img_dims + [1])
-        outputs = self.D_forward.call(tf.concat([source] * self.d_in_ch, axis=4))
+        source = tf.keras.Input(shape=self.img_dims + [2])
+        outputs = self.D_forward.call(source)
         print("===========================================================")
         print("Discriminator")
         print("===========================================================")
@@ -118,8 +118,8 @@ class CycleGAN(tf.keras.Model):
                 imgs, _ = self.Aug(imgs=[fake_source, fake_target], seg=None)
                 fake_source, fake_target = imgs
 
-            fake_target_pred = self.D_forward(fake_target)
-            fake_source_pred = self.D_backward(fake_source)
+            fake_target_pred = self.D_forward(tf.concat([fake_target, real_source], axis=4, name="d_forward_concat"))
+            fake_source_pred = self.D_backward(tf.concat([fake_source, real_target], axis=4, name="d_backward_concat"))
 
             """ Not using identity loss as in ResCycleGAN paper """
 
@@ -148,8 +148,19 @@ class CycleGAN(tf.keras.Model):
             imgs, _ = self.Aug(imgs=[real_target, fake_target], seg=None)
             real_target, fake_target = imgs
 
-        D_forward_in = tf.concat([real_target, fake_target], axis=0, name="d_forward_concat")
-        D_backward_in = tf.concat([real_source, fake_source], axis=0, name="d_backward_concat")
+        D_forward_in = tf.concat(
+            [
+                tf.concat([real_target, real_source], axis=4, name="real_forward_concat"),
+                tf.concat([fake_target, real_source], axis=4, name="fake_forward_concat")
+            ], axis=0, name="d_forward_concat"
+        )
+        
+        D_backward_in = tf.concat(
+            [
+                tf.concat([real_source, real_target], axis=4, name="real_backward_concat"),
+                tf.concat([fake_source, real_target], axis=4, name="fake_backward_concat")
+            ], axis=0, name="d_backward_concat"
+        )
 
         # Get gradients from discriminator predictions and update weights
         with tf.GradientTape(persistent=True) as d_tape:

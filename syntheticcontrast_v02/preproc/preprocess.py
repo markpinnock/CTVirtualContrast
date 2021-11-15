@@ -658,7 +658,7 @@ if __name__ == "__main__":
     FILE_PATH = "Z:/Clean_CT_Data/Toshiba/"
     SAVE_PATH = "D:/ProjectImages/SyntheticContrastTest"
 
-    to_include = ["T051A0", "T052A0", "T055A0", "T057A0", "T058A0", "T061A0", "T062A0", "T063A0", "T064A0"]
+    to_include = ["T070A0"]
 
     with open("syntheticcontrast_v02/preproc/ignore.json", 'r') as fp:
         ignore = json.load(fp)
@@ -678,7 +678,7 @@ if __name__ == "__main__":
 
     # Test.list_images(
     #     ignore=image_ignore,
-    #     num_AC=1, num_VC=1, num_HQ=2
+    #     num_AC=1, num_VC=1, num_HQ=3
     #     ).display(display=True, HU_min=-150, HU_max=250)
 
     Test.list_images(

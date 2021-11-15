@@ -38,7 +38,7 @@ hyperparameters:
     g_layers: 5
     d_time_layers: ["down_0"]
     g_time_layers: []
-    Nz: 32
+    Nz: 64
 augmentation:
     type: "differentiable" # "standard", "differentiable" or null
     depth: 64

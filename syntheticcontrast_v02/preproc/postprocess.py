@@ -4,7 +4,9 @@ import os
 import SimpleITK as itk
 
 
-def NRRDConv(image_path, pred_path, save_path):
+#-------------------------------------------------------------------------
+
+def NRRDConv_v01(image_path, pred_path, save_path):
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
@@ -33,9 +35,22 @@ def NRRDConv(image_path, pred_path, save_path):
 
 #-------------------------------------------------------------------------
 
+def NRRDConv_v02(image_path, save_path):
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
+    imgs = [name for name in os.listdir(image_path)]
+
+    for name in imgs:
+        img_nrrd = itk.GetImageFromArray(np.load(f"{image_path}/{name}").astype("int16").transpose([2, 0, 1]))
+
+        itk.WriteImage(img_nrrd, f"{save_path}/{name[:-4]}.nrrd")
+
+
+#-------------------------------------------------------------------------
+
 if __name__ == "__main__":
-    NRRDConv(
-        "D:/ProjectImages/SyntheticContrastTest/Images",
-        "C:/Users/roybo/Programming/PhD/007_CNN_Virtual_Contrast/test_pix2pix/H2_save280/predictions/",
-        "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase3/output/H2_save280"
+    NRRDConv_v02(
+        "C:/Users/roybo/Programming/PhD/007_CNN_Virtual_Contrast/test_pix2pix/H2_save280/predictions",
+        "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase3/output/H2_save280/Images"
         )

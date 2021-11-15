@@ -10,7 +10,8 @@
 		"?T042A1": "No pre-CE",
 		"T053A0": "No pre-CE",
 		"T054A0": "Pelvis",
-		"T059A1": "Misregistered"
+		"T059A1": "Misregistered",
+		"T065A0": "46 slices only"
     },
     "image_ignore": [
         "T002A1HQ002",
@@ -44,6 +45,10 @@
 		"T055A0HQ006",
 		"T061A0HQ002",
 		"T062A0HQ002",
-		"T062A0HQ004"
+		"T062A0HQ004",
+        "T066A0HQ002",
+        "T066A0HQ003",
+        "T067A0HQ002",
+        "T067A0HQ003"
     ]
 }
