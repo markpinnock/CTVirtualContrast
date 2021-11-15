@@ -31,7 +31,7 @@ def inference(CONFIG, save):
     CONFIG["data"]["times"] = None
     CONFIG["data"]["data_path"] += "Test"
     CONFIG["data"]["xy_patch"] = True
-    CONFIG["data"]["stride_length"] = 32
+    CONFIG["data"]["stride_length"] = 16
     TestGenerator = Loader(config=CONFIG["data"], dataset_type="validation")
     _, _ = TestGenerator.set_normalisation()
 
@@ -103,7 +103,6 @@ def inference(CONFIG, save):
         weights[subject_ID][x_slice, y_slice, z_slice] += 1
 
     for subject_ID, w in weights.items():
-
         AC = AC_predictions[subject_ID] / w
         VC = VC_predictions[subject_ID] / w
 

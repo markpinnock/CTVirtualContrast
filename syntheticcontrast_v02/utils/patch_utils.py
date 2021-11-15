@@ -16,7 +16,7 @@ def extract_patches(img, xy_patch, stride_length, patch_size, downsample):
             patches.append(img[::downsample, ::downsample, k:(k + patch_size[2]), np.newaxis])
             indices.append([0, 0, k])
 
-            return patches, indices
+        return patches, indices
 
     else:
         for k in range(0, D - patch_size[2] + stride_length, stride_length):
