@@ -30,9 +30,10 @@ hyperparameters:
     img_dims: [64, 64, 64]
     d_opt: [2.0e-4, 0.5, 0.999]
     g_opt: [2.0e-4, 0.5, 0.999]
-    lambda: 10
+    lambda_cyc: 10.0
+    lambda_id: 0.1
     mu: 0.0 # Focal loss weighting (0.0 == OFF)
-    ndf: 16 # Discriminator starting channels
+    ndf: 32 # Discriminator starting channels
     ngf: 32 # Generator starting channels
     d_layers: 1
     g_layers: 5

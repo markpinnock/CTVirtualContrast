@@ -17,7 +17,8 @@ class CycleGAN(tf.keras.Model):
         super().__init__(name=name)
         self.initialiser = tf.keras.initializers.HeNormal()
         self.config = config
-        self.lambda_ = config["hyperparameters"]["lambda"]
+        self.lambda_cyc = config["hyperparameters"]["lambda_cyc"]
+        self.lambda_id = config["hyperparameters"]["lambda_id"]
         self.mb_size = config["expt"]["mb_size"]
         self.d_in_ch = 2
         self.img_dims = config["hyperparameters"]["img_dims"]
@@ -115,8 +116,10 @@ class CycleGAN(tf.keras.Model):
             self.train_L1_metric.update_state(cycle_loss)
 
             if self.Aug:
-                imgs, _ = self.Aug(imgs=[fake_source, fake_target], seg=None)
-                fake_source, fake_target = imgs
+                imgs, _ = self.Aug(imgs=[real_source, fake_source], seg=None)
+                real_source, fake_source = imgs
+                imgs, _ = self.Aug(imgs=[real_target, fake_target], seg=None)
+                real_target, fake_target = imgs
 
             fake_target_pred = self.D_forward(tf.concat([fake_target, real_source], axis=4, name="d_forward_concat"))
             fake_source_pred = self.D_backward(tf.concat([fake_source, real_target], axis=4, name="d_backward_concat"))
@@ -125,8 +128,8 @@ class CycleGAN(tf.keras.Model):
 
             g_forward_loss = self.g_loss(fake_target_pred)
             g_backward_loss = self.g_loss(fake_source_pred)
-            g_forward_total_loss = g_forward_loss + self.lambda_ * cycle_loss + self.lambda_ / 2 * identity_loss
-            g_backward_total_loss = g_backward_loss + self.lambda_ * cycle_loss + self.lambda_ / 2 * identity_loss
+            g_forward_total_loss = g_forward_loss + self.lambda_cyc * cycle_loss + self.lambda_id * identity_loss
+            g_backward_total_loss = g_backward_loss + self.lambda_cyc * cycle_loss + self.lambda_id * identity_loss
 
         g_forward_grads = g_tape.gradient(g_forward_total_loss, self.G_forward.trainable_variables)
         g_backward_grads = g_tape.gradient(g_backward_total_loss, self.G_backward.trainable_variables)
