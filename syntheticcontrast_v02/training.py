@@ -4,9 +4,10 @@ import os
 import tensorflow as tf
 import yaml
 
-from syntheticcontrast_v02.trainingtuningclasses.trainingclasses import TrainingPix2Pix, TrainingCycleGAN
+from syntheticcontrast_v02.trainingtuningclasses.trainingclasses import TrainingPix2Pix, TrainingCycleGAN, TrainingUNet
 from syntheticcontrast_v02.networks.pix2pix import Pix2Pix, HyperPix2Pix
 from syntheticcontrast_v02.networks.cyclegan import CycleGAN
+from syntheticcontrast_v02.networks.unet import UNet
 from syntheticcontrast_v02.utils.dataloader_v02 import PairedLoader, UnpairedLoader
 
 
@@ -76,6 +77,12 @@ def train(CONFIG):
             d_forward_opt=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["d_opt"], name="d_forward_opt"),
             d_backward_opt=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["d_opt"], name="d_backward_opt")
             )
+    
+    elif CONFIG["expt"]["model"] == "UNet":
+        Model = UNet(config=CONFIG)
+        Model.compile(
+            optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["opt"], name="opt")
+        )
 
     else:
         raise ValueError(f"Invalid model type: {CONFIG['expt']['model']}")
@@ -101,6 +108,15 @@ def train(CONFIG):
 
     if CONFIG["expt"]["model"] == "CycleGAN":
         TrainingLoop = TrainingCycleGAN(
+            Model=Model,
+            dataset=(train_ds, val_ds),
+            train_generator=TrainGenerator,
+            val_generator=ValGenerator,
+            config=CONFIG
+            )
+
+    elif CONFIG["expt"]["model"] == "UNet":
+        TrainingLoop = TrainingUNet(
             Model=Model,
             dataset=(train_ds, val_ds),
             train_generator=TrainGenerator,

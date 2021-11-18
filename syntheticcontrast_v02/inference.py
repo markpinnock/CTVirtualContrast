@@ -32,6 +32,7 @@ def inference(CONFIG, save):
     CONFIG["data"]["data_path"] += "Test"
     CONFIG["data"]["xy_patch"] = True
     CONFIG["data"]["stride_length"] = 16
+    MB_SIZE = 256
     TestGenerator = Loader(config=CONFIG["data"], dataset_type="validation")
     _, _ = TestGenerator.set_normalisation()
 
@@ -44,7 +45,7 @@ def inference(CONFIG, save):
     # Create dataloader
     test_ds = tf.data.Dataset.from_generator(
         generator=TestGenerator.inference_generator,
-        output_types=output_types).batch(256)
+        output_types=output_types).batch(MB_SIZE)
 
     # Create model and load weights
     if CONFIG["expt"]["model"] == "Pix2Pix":

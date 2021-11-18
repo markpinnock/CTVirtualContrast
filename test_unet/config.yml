@@ -2,10 +2,10 @@ paths:
     cuda_path: "/usr/local/cuda/lib64"
 data:
     data_path: "D:/ProjectImages/SyntheticContrast"
-    target: ["AC"]
+    target: ["AC", "VC"]
     source: ["HQ"]
-    segs: []
-    times: null
+    segs: ["AC"]
+    times: "times_ordinal.json"
     down_sample: 1
     patch_size: [64, 64, 64]
     norm_type: "minmax"
@@ -18,27 +18,21 @@ data:
 expt:
     mb_size: 1
     save_every: 10
-    model: "CycleGAN" # "Pix2Pix", "HyperPix2Pix" or "CycleGAN"
+    model: "UNet" # "GAN" or "HyperGAN"
     epochs: 1000
     verbose: true # Output model summary
     graph: false # Save graph for visualisation in Tensorboard
     log_scalars: true # Log losses for visualisation in Tensorboard
-    log_histograms: true # Log weights for visualisation in Tensorboard
+    log_histograms: false # Log weights for visualisation in Tensorboard
     save_model: true
-    focal: false # Use focal loss or not
+    focal: true # Use focal loss or not
 hyperparameters:
     img_dims: [64, 64, 64]
-    d_opt: [2.0e-4, 0.5, 0.999]
-    g_opt: [2.0e-4, 0.5, 0.999]
-    lambda_cyc: 10.0
-    lambda_id: 0.1
-    mu: 0.0 # Focal loss weighting (0.0 == OFF)
-    ndf: 32 # Discriminator starting channels
-    ngf: 32 # Generator starting channels
-    d_layers: 1
+    opt: [1.0e-4, 0.9, 0.999]
+    mu: 0.1 # Focal loss weighting (0.0 == OFF)
+    ngf: 32 # Starting channels
     g_layers: 5
-    d_time_layers: null
-    g_time_layers: null
+    g_time_layers: ["up_0", "up_1", "up_2", "up_3"]
 augmentation:
     type: "differentiable" # "standard", "differentiable" or null
     depth: 64

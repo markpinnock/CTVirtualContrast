@@ -111,7 +111,7 @@ class Discriminator(tf.keras.Model):
         return x
 
 #-------------------------------------------------------------------------
-""" Generator for Pix2pix """
+""" Generator for Pix2pix (can be used for UNet with mode=="UNet") """
 
 class Generator(tf.keras.Model):
 
@@ -123,7 +123,7 @@ class Generator(tf.keras.Model):
         Returns:
         - keras.Model """
 
-    def __init__(self, initialiser, config, name=None):
+    def __init__(self, initialiser, config, mode="GAN", name=None):
         super().__init__(name=name)
 
         # Check network and image dimensions
@@ -184,7 +184,14 @@ class Generator(tf.keras.Model):
         cache["strides"].reverse()
 
         self.decoder = []
-        dropout = True
+
+        # If mode == UNet, dropout is switched off, else dropout used as in Pix2Pix
+        if mode == "GAN":
+            dropout = True
+        elif mode == "UNet":
+            dropout = False
+        else:
+            raise ValueError
 
         for i in range(0, num_layers - 1):
             if i > 2: dropout = False
