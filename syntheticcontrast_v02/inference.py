@@ -8,6 +8,7 @@ import yaml
 
 from syntheticcontrast_v02.networks.pix2pix import Pix2Pix, HyperPix2Pix
 from syntheticcontrast_v02.networks.cyclegan import CycleGAN
+from syntheticcontrast_v02.networks.unet import UNet
 from syntheticcontrast_v02.utils.dataloader_v02 import PairedLoader, UnpairedLoader
 
 
@@ -36,9 +37,6 @@ def inference(CONFIG, save):
     TestGenerator = Loader(config=CONFIG["data"], dataset_type="validation")
     _, _ = TestGenerator.set_normalisation()
 
-    # Hack to avoid triggering assertion in pix2pix.py
-    CONFIG["data"]["times"] = []
-
     # Specify output types
     output_types = {"real_source": "float32", "subject_ID": tf.string, "x": "int32", "y": "int32", "z": "int32"}
 
@@ -49,6 +47,8 @@ def inference(CONFIG, save):
 
     # Create model and load weights
     if CONFIG["expt"]["model"] == "Pix2Pix":
+        # Hack to avoid triggering assertion in pix2pix.py
+        CONFIG["data"]["times"] = []
         Model = Pix2Pix(config=CONFIG)
 
     elif CONFIG["expt"]["model"] == "HyperPix2Pix":
@@ -57,11 +57,16 @@ def inference(CONFIG, save):
     elif CONFIG["expt"]["model"] == "CycleGAN":
         Model = CycleGAN(config=CONFIG)
 
+    elif CONFIG["expt"]["model"] == "UNet":
+        Model = UNet(config=CONFIG)
+
     else:
         raise ValueError(f"Invalid model type: {CONFIG['expt']['model']}")
 
     if CONFIG["expt"]["model"] == "CycleGAN":
         Model.G_forward.load_weights(f"{CONFIG['paths']['expt_path']}/models/generator.ckpt")
+    elif CONFIG["expt"]["model"] == "UNet":
+        Model.UNet.load_weights(f"{CONFIG['paths']['expt_path']}/models/model.ckpt")
     else:
         Model.Generator.load_weights(f"{CONFIG['paths']['expt_path']}/models/generator.ckpt")
 
@@ -73,6 +78,9 @@ def inference(CONFIG, save):
         if CONFIG["expt"]["model"] == "CycleGAN":
             AC_pred = Model.G_forward(data["real_source"])
             VC_pred = Model.G_forward(data["real_source"])
+        elif CONFIG["expt"]["model"] == "UNet":
+            AC_pred = Model.UNet(data["real_source"])
+            VC_pred = Model.UNet(data["real_source"])
         else:
             AC_pred = Model.Generator(data["real_source"], tf.ones([1, 1]) * 1.0)
             VC_pred = Model.Generator(data["real_source"], tf.ones([1, 1]) * 2.0)

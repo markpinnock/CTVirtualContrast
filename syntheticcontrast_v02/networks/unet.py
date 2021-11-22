@@ -1,9 +1,9 @@
 import numpy as np
 import tensorflow as tf
 
-from .models import Discriminator, Generator, HyperGenerator
+from .models import Generator
 from syntheticcontrast_v02.utils.augmentation import DiffAug, StdAug
-from syntheticcontrast_v02.utils.losses import minimax_D, minimax_G, L1, FocalLoss, FocalMetric
+from syntheticcontrast_v02.utils.losses import L1, FocalLoss, FocalMetric
 
 
 #-------------------------------------------------------------------------
@@ -37,7 +37,7 @@ class UNet(tf.keras.Model):
         # Check UNet output dims match input
         input_size = [1] + self.img_dims + [1]
         output_size = [1] + self.img_dims + [1]
-        self.UNet = Generator(self.initialiser, config["hyperparameters"], name="generator")
+        self.UNet = Generator(self.initialiser, config["hyperparameters"], mode="UNet", name="generator")
 
         if self.input_times:
             assert self.UNet.build_model(tf.zeros(input_size), tf.zeros(1)) == output_size, f"{self.UNet.build_model(tf.zeros(input_size), tf.zeros(1))} vs {output_size}"

@@ -51,6 +51,6 @@ def NRRDConv_v02(image_path, save_path):
 
 if __name__ == "__main__":
     NRRDConv_v02(
-        "C:/Users/roybo/Programming/PhD/007_CNN_Virtual_Contrast/test_pix2pix/H2_save280/predictions",
-        "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase3/output/H2_save280/Images"
+        "C:/Users/roybo/Programming/PhD/007_CNN_Virtual_Contrast/test_pix2pix/H2_save300_patch/predictions",
+        "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/H2_save300_patch/Images"
         )

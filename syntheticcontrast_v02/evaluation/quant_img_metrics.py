@@ -58,7 +58,8 @@ def calc_metrics(real_path, pred_path):
 if __name__ == "__main__":
 
     #model = "2_save230"
-    model = "H2_save280"
+    # model = "H2_save280"
+    model = "H2_save300_patch"
     real_path = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/Real/Images"
     pred_path = f"C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/{model}/Images"
 
