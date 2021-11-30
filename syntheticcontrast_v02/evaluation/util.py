@@ -1,4 +1,4 @@
-from matplotlib.pyplot import imshow
+import matplotlib.pyplot as plt
 import nrrd
 import numpy as np
 import os
@@ -123,11 +123,57 @@ class Augmentation(tf.keras.layers.Layer):
 #-------------------------------------------------------------------------
 """ Sorenson-Dice loss for segmentation-based evaluation """
 
-def dice_loss(A, B):
-    numerator = 2 * tf.reduce_sum(A * B)
-    denominator = tf.reduce_sum(A) + tf.reduce_sum(B) + 1e-12
+def dice_loss(A, B, axis=None):
+    numerator = 2 * tf.reduce_sum(A * B, axis=axis)
+    denominator = tf.reduce_sum(A, axis=axis) + tf.reduce_sum(B, axis=axis) + 1e-12
 
     return 1 - numerator / denominator
+
+
+#-------------------------------------------------------------------------
+""" Custom callback for saving training and test images """
+
+class ImgSaveCallback(tf.keras.callbacks.Callback):
+    def __init__(self, train_ex, test_ex, save_path):
+        super().__init__()
+        self.train_examples = train_ex
+        self.test_examples = test_ex
+        self.save_path = save_path
+        if not os.path.exists(f"{save_path}/train"): os.makedirs(f"{save_path}/train")
+        if not os.path.exists(f"{save_path}/test"): os.mkdir(f"{save_path}/test")
+        self.HU_min = -500
+        self.HU_max = 2500
+    
+    def save_pred(self, examples, phase, epoch):
+        imgs, segs = examples
+        preds = np.round(self.model(imgs, training=False).numpy())
+        imgs = imgs.numpy() * (self.HU_max - self.HU_min) + self.HU_min
+        segs = segs.numpy()
+
+        fig, axs = plt.subplots(imgs.shape[0], 5)
+
+        for i in range(imgs.shape[0]):
+            axs[i, 0].imshow(imgs[i, :, :, 0].T, cmap="gray", vmin=-150, vmax=250)
+            axs[i, 0].axis("off")
+            axs[i, 1].imshow(preds[i, :, :, 0].T, cmap="hot")
+            axs[i, 1].axis("off")
+            axs[i, 2].imshow(segs[i, :, :, 0].T, cmap="hot")
+            axs[i, 2].axis("off")
+            axs[i, 3].imshow(imgs[i, :, :, 0].T, cmap="gray", vmin=-150, vmax=250)
+            axs[i, 3].imshow(np.ma.masked_where(preds == 0.0, preds)[i, :, :, 0].T, cmap="Set1")
+            axs[i, 3].axis("off")
+            axs[i, 4].imshow(imgs[i, :, :, 0].T, cmap="gray", vmin=-150, vmax=250)
+            axs[i, 4].imshow(np.ma.masked_where(segs == 0.0, segs)[i, :, :, 0].T, cmap="Set1")
+            axs[i, 4].axis("off")
+
+        plt.tight_layout()
+        plt.savefig(f"{self.save_path}/{phase}/{epoch}.png", dpi=250)
+        plt.close()
+
+    def on_epoch_end(self, epoch, logs=None):
+        if (epoch + 1) % 10 == 0:
+            self.save_pred(self.train_examples, "train", epoch + 1)
+            self.save_pred(self.test_examples, "test", epoch + 1)
 
 
 #-------------------------------------------------------------------------
@@ -138,14 +184,14 @@ if __name__ == "__main__":
 
     imgs, segs = load_data(
         "test",
+        128,
         "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/Real/Images",
         "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/Real/Segmentations_Tumour",
         "VC",
-        "T065A1",
-        100
+        "T065A1"
     )
 
-    ds = tf.data.Dataset.from_tensor_slices((imgs, segs)).shuffle(256).batch(4).map(Augmentation(64))
+    ds = tf.data.Dataset.from_tensor_slices((imgs, segs)).shuffle(256).batch(4).map(Augmentation([128, 128]))
 
     for img, seg in ds:
         fig, axs = plt.subplots(2, 4)
