@@ -19,12 +19,10 @@ class UNet(tf.keras.Model):
         self.g_in_ch = 1
         self.img_dims = config["hyperparameters"]["img_dims"]
 
-        if config["data"]["times"] is None:
+        if config["hyperparameters"]["g_time_layers"] is None:
             self.input_times = False
-            assert config["hyperparameters"]["g_time_layers"] is None
         else:
             self.input_times = True
-            assert config["hyperparameters"]["g_time_layers"] is not None
 
         # Set up augmentation
         if config["augmentation"]["type"] == "standard":

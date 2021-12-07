@@ -252,42 +252,50 @@ if __name__ == "__main__":
         pred = np.zeros_like(data["real_source"].numpy())
         pred[:, 0:pred.shape[1] // 2, 0:pred.shape[1] // 2, :, :] = 1
         pred[:, pred.shape[1] // 2:, pred.shape[1] // 2:, :, :] = 1
-        perd = tf.convert_to_tensor(pred)
-        (source, target, pred), seg = TestAug([data["real_source"], data["real_target"], pred], seg=data["seg"])
+        inv_pred = 1 - pred
 
-        plt.subplot(2, 5, 1)
+        (source, target, pred, inv_pred), seg = TestAug([data["real_source"], data["real_target"], pred, inv_pred], seg=data["seg"])
+
+        plt.subplot(2, 6, 1)
         plt.imshow(data["real_source"][0, :, :, 0, 0], cmap="gray")
         plt.axis("off")
-        plt.subplot(2, 5, 6)
+        plt.subplot(2, 6, 7)
         plt.imshow(data["real_source"][1, :, :, 0, 0], cmap="gray")
         plt.axis("off")
 
-        plt.subplot(2, 5, 2)
+        plt.subplot(2, 6, 2)
         plt.imshow(source[0, :, :, 0, 0], cmap="gray")
         plt.axis("off")
-        plt.subplot(2, 5, 7)
+        plt.subplot(2, 6, 8)
         plt.imshow(source[1, :, :, 0, 0], cmap="gray")
         plt.axis("off")
         
-        plt.subplot(2, 5, 3)
+        plt.subplot(2, 6, 3)
         plt.imshow(target[0, :, :, 0, 0], cmap="gray")
         plt.axis("off")
-        plt.subplot(2, 5, 8)
+        plt.subplot(2, 6, 9)
         plt.imshow(target[1, :, :, 0, 0], cmap="gray")
         plt.axis("off")
 
-        plt.subplot(2, 5, 4)
+        plt.subplot(2, 6, 4)
         plt.imshow(pred[0, :, :, 0, 0], cmap="gray")
         plt.axis("off")
-        plt.subplot(2, 5, 9)
+        plt.subplot(2, 6, 10)
         plt.imshow(pred[1, :, :, 0, 0], cmap="gray")
         plt.axis("off")
 
+        plt.subplot(2, 6, 5)
+        plt.imshow(inv_pred[0, :, :, 0, 0], cmap="gray")
+        plt.axis("off")
+        plt.subplot(2, 6, 11)
+        plt.imshow(inv_pred[1, :, :, 0, 0], cmap="gray")
+        plt.axis("off")
+
         if "seg" in data.keys():
-            plt.subplot(2, 5, 5)
+            plt.subplot(2, 6, 6)
             plt.imshow(seg[0, :, :, 0, 0])
             plt.axis("off")
-            plt.subplot(2, 5, 10)
+            plt.subplot(2, 6, 12)
             plt.imshow(seg[1, :, :, 0, 0])
             plt.axis("off")
 

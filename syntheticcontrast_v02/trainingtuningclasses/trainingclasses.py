@@ -128,11 +128,6 @@ class TrainingPix2Pix:
             if (epoch + 1) % self.SAVE_EVERY == 0 and self.config["expt"]["save_model"]:
                 self.Model.Generator.save_weights(f"{self.MODEL_SAVE_PATH}/generator.ckpt")
 
-            # if self.Model.val_L1_metric.result() < best_L1 and not self.config["EXPT"]["VERBOSE"]:
-            #     self.Model.save_weights(f"{self.MODEL_SAVE_PATH}{self.config['EXPT']['EXPT_NAME']}")
-            #     best_L1 = self.Model.val_L1_metric.result()
-            #     super().save_results()
-
         self.results["time"] = (time.time() - start_time) / 3600
         
         if verbose:
@@ -358,11 +353,6 @@ class TrainingCycleGAN:
             if (epoch + 1) % self.SAVE_EVERY == 0 and self.config["expt"]["save_model"]:
                 self.Model.G_forward.save_weights(f"{self.MODEL_SAVE_PATH}/generator.ckpt")
 
-            # if self.Model.val_L1_metric.result() < best_L1 and not self.config["EXPT"]["VERBOSE"]:
-            #     self.Model.save_weights(f"{self.MODEL_SAVE_PATH}{self.config['EXPT']['EXPT_NAME']}")
-            #     best_L1 = self.Model.val_L1_metric.result()
-            #     super().save_results()
-
         self.results["time"] = (time.time() - start_time) / 3600
         
         if verbose:
@@ -380,7 +370,10 @@ class TrainingCycleGAN:
 
         data = data_generator.example_images()
 
-        pred = self.Model.G_forward(data["real_source"], training=True).numpy()
+        if "target_times" in data.keys():
+            pred = self.Model.G_forward(data["real_source"], data["target_times"], training=True).numpy()
+        else:
+            pred = self.Model.G_forward(data["real_source"], training=True).numpy()
 
         source = data_generator.un_normalise(data["real_source"])
         target = data_generator.un_normalise(data["real_target"])
@@ -560,11 +553,6 @@ class TrainingUNet:
 
             if (epoch + 1) % self.SAVE_EVERY == 0 and self.config["expt"]["save_model"]:
                 self.Model.UNet.save_weights(f"{self.MODEL_SAVE_PATH}/model.ckpt")
-
-            # if self.Model.val_L1_metric.result() < best_L1 and not self.config["EXPT"]["VERBOSE"]:
-            #     self.Model.save_weights(f"{self.MODEL_SAVE_PATH}{self.config['EXPT']['EXPT_NAME']}")
-            #     best_L1 = self.Model.val_L1_metric.result()
-            #     super().save_results()
 
         self.results["time"] = (time.time() - start_time) / 3600
         
