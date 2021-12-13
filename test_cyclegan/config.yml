@@ -2,10 +2,10 @@ paths:
     cuda_path: "/usr/local/cuda/lib64"
 data:
     data_path: "D:/ProjectImages/SyntheticContrast"
-    target: ["AC"]
+    target: ["AC", "VC"]
     source: ["HQ"]
     segs: []
-    times: null
+    times: "times_ordinal.json"
     down_sample: 1
     patch_size: [64, 64, 64]
     norm_type: "minmax"
@@ -17,7 +17,7 @@ data:
     fold: 5
 expt:
     mb_size: 1
-    save_every: 10
+    save_every: 1
     model: "CycleGAN" # "Pix2Pix", "HyperPix2Pix" or "CycleGAN"
     epochs: 1000
     verbose: true # Output model summary
@@ -31,14 +31,14 @@ hyperparameters:
     d_opt: [2.0e-4, 0.5, 0.999]
     g_opt: [2.0e-4, 0.5, 0.999]
     lambda_cyc: 10.0
-    lambda_id: 0.1
+    lambda_id: 0.0
     mu: 0.0 # Focal loss weighting (0.0 == OFF)
     ndf: 32 # Discriminator starting channels
     ngf: 32 # Generator starting channels
     d_layers: 1
     g_layers: 5
-    d_time_layers: null
-    g_time_layers: null
+    d_time_layers: ["down_0"]
+    g_time_layers: ["down_0", "down_1"]
 augmentation:
     type: "differentiable" # "standard", "differentiable" or null
     depth: 64

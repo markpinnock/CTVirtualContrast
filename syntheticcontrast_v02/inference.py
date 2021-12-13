@@ -30,7 +30,7 @@ def inference(CONFIG, save):
     CONFIG["data"]["fold"] = 0
     CONFIG["data"]["segs"] = []
     CONFIG["data"]["times"] = None
-    CONFIG["data"]["data_path"] += "Test"
+    CONFIG["data"]["data_path"] = "D:/ProjectImages/SyntheticContrastTest"
     CONFIG["data"]["xy_patch"] = True
     CONFIG["data"]["stride_length"] = 16
     MB_SIZE = 256
@@ -79,11 +79,11 @@ def inference(CONFIG, save):
             AC_pred = Model.G_forward(data["real_source"])
             VC_pred = Model.G_forward(data["real_source"])
         elif CONFIG["expt"]["model"] == "UNet":
-            AC_pred = Model.UNet(data["real_source"])
-            VC_pred = Model.UNet(data["real_source"])
+            AC_pred = Model.UNet(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 1.0)
+            VC_pred = Model.UNet(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 2.0)
         else:
-            AC_pred = Model.Generator(data["real_source"], tf.ones([1, 1]) * 1.0)
-            VC_pred = Model.Generator(data["real_source"], tf.ones([1, 1]) * 2.0)
+            AC_pred = Model.Generator(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 1.0)
+            VC_pred = Model.Generator(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 2.0)
 
         AC_pred = TestGenerator.un_normalise(AC_pred)[:, :, :, :, 0].numpy()
         VC_pred = TestGenerator.un_normalise(VC_pred)[:, :, :, :, 0].numpy()

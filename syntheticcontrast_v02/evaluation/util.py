@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import nrrd
 import numpy as np
 import os
+import random
 import tensorflow as tf
 
 
@@ -174,6 +175,28 @@ class ImgSaveCallback(tf.keras.callbacks.Callback):
         if (epoch + 1) % 10 == 0:
             self.save_pred(self.train_examples, "train", epoch + 1)
             self.save_pred(self.test_examples, "test", epoch + 1)
+
+
+#-------------------------------------------------------------------------
+
+def bootstrap(sample1, sample2, N):
+    median_diff = []
+    n1 = sample1.shape[0]
+
+    if sample2 is None:
+        for _ in range(N):
+            resampled1 = random.choices(sample1, k=n1)
+            median_diff.append(np.median(resampled1))
+
+    else:
+        n2 = sample2.shape[0]
+
+        for _ in range(N):
+            resampled1 = random.choices(sample1, k=n1)
+            resampled2 = random.choices(sample2, k=n2)
+            median_diff.append(np.median(resampled1) - np.median(resampled2))
+
+    return median_diff
 
 
 #-------------------------------------------------------------------------
