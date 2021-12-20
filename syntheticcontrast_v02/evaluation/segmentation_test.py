@@ -43,7 +43,10 @@ def bootstrap_and_display(expt1, expt2):
     plt.title(f"{expt1} - {expt2}")
     plt.show()
 
-    return expt1, expt2, diff, np.quantile(boot_results, [0.025, 0.975])
+    # Pivot method
+    percentiles = np.quantile(boot_results, [0.975, 0.025]) # NB: these are switched
+
+    return expt1, expt2, diff, 2 * diff - percentiles, f"Bias {np.mean(boot_results) - diff}, std err {np.std(boot_results)}"
 
 
 #-------------------------------------------------------------------------

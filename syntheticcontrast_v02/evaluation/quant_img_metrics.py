@@ -1,8 +1,11 @@
 import glob
+import matplotlib.pyplot as plt
 import nrrd
 import numpy as np
 import os
 import skimage.metrics
+
+from .util import bootstrap
 
 np.set_printoptions(4)
 
@@ -40,26 +43,45 @@ def calc_metrics(real_path, pred_path):
         SSIM["HQAC"].append(skimage.metrics.structural_similarity(AC, HQ))
         SSIM["HQVC"].append(skimage.metrics.structural_similarity(VC, HQ))
 
-        #print(subject)
+    return MSE, pSNR, SSIM
 
-        #for key in ["AP", "HQAC", "VP", "HQVC"]:
-        #    print(f"{key} {MSE[key][-1]:.2f}, {pSNR[key][-1]:.2f}, {SSIM[key][-1]:.4f}")
 
-        #print("\n")
+#-------------------------------------------------------------------------
 
-    print("Overall")
+def bootstrap_and_display(expt1, expt2, results):
+    if expt2 is None:
+        diff = np.median(results[expt1])
+        boot_results = bootstrap(np.array(results[expt1]), None, N=100000)
+    else:
+        diff = np.median(results[expt1]) - np.median(results[expt2])
+        boot_results = bootstrap(np.array(results[expt1]), np.array(results[expt2]), N=100000)
 
-    for key in ["AP", "VP"]: #["AP", "HQAC", "VP", "HQVC"]:
-        print(f"{key} {np.median(MSE[key]):.4f} {np.quantile(MSE[key], [0.05, 0.95])}, {np.median(pSNR[key]):.4f} {np.quantile(pSNR[key], [0.05, 0.95])}, {np.median(SSIM[key]):.4f} {np.quantile(SSIM[key], [0.05, 0.95])}")
+    h = plt.hist(boot_results, bins=20)
+    plt.axvline(diff, c='k', ls='--')
+    plt.errorbar(x=diff, y=(0.75 * np.max(h[0])), xerr=(1.96 * np.std(boot_results)))
+    plt.title(f"{expt1} - {expt2}")
+    plt.show()
+
+    # Pivot method
+    percentiles = np.quantile(boot_results, [0.975, 0.025]) # NB: these are switched
+
+    return expt1, expt2, diff, 2 * diff - percentiles, f"Bias {np.mean(boot_results) - diff}, std err {np.std(boot_results)}"
 
 
 #-------------------------------------------------------------------------
 
 if __name__ == "__main__":
 
-    model = "UNetT_save1000"
+    model = "H2_save300_patch"
     real_path = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/Real/Images"
     pred_path = f"C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/{model}/Images"
 
     print(model)
-    calc_metrics(real_path, pred_path)
+    MSE, pSNR, SSIM = calc_metrics(real_path, pred_path)
+    print(bootstrap_and_display("AP", None, MSE))
+    print(bootstrap_and_display("VP", None, MSE))
+    print(bootstrap_and_display("AP", None, pSNR))
+    print(bootstrap_and_display("VP", None, pSNR))
+    print(bootstrap_and_display("AP", None, SSIM))
+    print(bootstrap_and_display("VP", None, SSIM))
+    
