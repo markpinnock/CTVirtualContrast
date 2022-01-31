@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import nrrd
 import numpy as np
 import os
+import pandas as pd
 import skimage.metrics
 
 from .util import bootstrap
@@ -13,6 +14,8 @@ np.set_printoptions(4)
 #-------------------------------------------------------------------------
 
 def calc_metrics(real_path, pred_path):
+    real_path += "/Images"
+    pred_path += "/Images"
     pred_imgs = os.listdir(pred_path)
     subjects = []
     MSE = {"AP": [], "VP": [], "HQAC": [], "HQVC": []}
@@ -70,14 +73,42 @@ def bootstrap_and_display(expt1, expt2, results):
 
 #-------------------------------------------------------------------------
 
+def save_to_csv(MSE, pSNR, SSIM, save_path):
+    df = pd.DataFrame(columns=pd.MultiIndex.from_product([["CME", "NGE"], ["MSE", "pSNR", "SSIM"]]))
+    df["CME", "MSE"] = MSE["AP"]
+    df["NGE", "MSE"] = MSE["VP"]
+    df["CME", "pSNR"] = pSNR["AP"]
+    df["NGE", "pSNR"] = pSNR["VP"]
+    df["CME", "SSIM"] = SSIM["AP"]
+    df["NGE", "SSIM"] = SSIM["VP"]
+    df.to_csv(save_path)
+    print(df)
+
+
+#-------------------------------------------------------------------------
+
 if __name__ == "__main__":
 
-    model = "H2_save300_patch"
-    real_path = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/Real/Images"
-    pred_path = f"C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/{model}/Images"
+    models = {
+        "UNetACVC": "imgqual_unetbase",
+        "UNetT_save1000": "imgqual_unetphase",
+        "CycleGANT_save880": "imgqual_cyclegan",
+        "2_save230": "imgqual_p2p",
+        "2_save170_patch": "imgqual_p2ppatch",
+        "H2_save280": "imgqual_hyperp2p",
+        "H2_save300_patch": "imgqual_hyperp2ppatch"
+    }
 
-    print(model)
-    MSE, pSNR, SSIM = calc_metrics(real_path, pred_path)
+    real_path = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/Real"
+
+    for model, save_name in models.items():
+        print(model)
+        pred_path = f"C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/{model}"
+        save_path = f"C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/results/{save_name}.csv"
+        MSE, pSNR, SSIM = calc_metrics(real_path, pred_path)
+        save_to_csv(MSE, pSNR, SSIM, save_path)
+
+    exit()
     print(bootstrap_and_display("AP", None, MSE))
     print(bootstrap_and_display("VP", None, MSE))
     print(bootstrap_and_display("AP", None, pSNR))
