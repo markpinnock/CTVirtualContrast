@@ -163,7 +163,7 @@ if __name__ == "__main__":
     with open("syntheticcontrast_v02/contrastmodelling/HUs.json", 'r') as fp:
         HU = json.load(fp)
 
-    # display_subjects(HU)
+    display_subjects(HU)
     HU_agg = interpolate(HU)
     # display_aggregate(HU_agg)
     one_compartment(HU_agg)

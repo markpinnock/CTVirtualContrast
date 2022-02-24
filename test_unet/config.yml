@@ -2,10 +2,10 @@ paths:
     cuda_path: "/usr/local/cuda/lib64"
 data:
     data_path: "D:/ProjectImages/SyntheticContrast"
-    target: ["AC", "VC"]
+    target: ["AC"]
     source: ["HQ"]
     segs: ["AC"]
-    times: "times_ordinal.json"
+    times: null
     down_sample: 1
     patch_size: [64, 64, 64]
     norm_type: "minmax"
@@ -19,7 +19,7 @@ expt:
     mb_size: 1
     save_every: 10
     model: "UNet" # "GAN" or "HyperGAN"
-    epochs: 1000
+    epochs: 600
     verbose: true # Output model summary
     graph: false # Save graph for visualisation in Tensorboard
     log_scalars: true # Log losses for visualisation in Tensorboard
@@ -29,12 +29,12 @@ expt:
 hyperparameters:
     img_dims: [64, 64, 64]
     opt: [1.0e-4, 0.9, 0.999]
-    mu: 0.1 # Focal loss weighting (0.0 == OFF)
+    mu: 0.2 # Focal loss weighting (0.0 == OFF)
     ngf: 32 # Starting channels
     g_layers: 5
-    g_time_layers: ["up_0", "up_1", "up_2", "up_3"]
+    g_time_layers: null
 augmentation:
-    type: "differentiable" # "standard", "differentiable" or null
+    type: "standard" # "standard", "differentiable" or null
     depth: 64
     flip_prob: 0.5 # Settings for standard augmentation
     rotation: 45.0
