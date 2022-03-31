@@ -210,7 +210,6 @@ def calc_contrast(real_path, pred_path, slicewise=False, save_path=None, model_s
             pred_df["CME", ROI_new] = AP[ROI_old]
             pred_df["NGE", ROI_new] = VP[ROI_old]
 
-        print(pred_df)
         gt_df.to_csv(f"{save_path}/contrast_gt.csv")
         pred_df.to_csv(f"{save_path}/contrast_{model_save_name}.csv")
 
@@ -306,10 +305,13 @@ def get_adj_means(gt_phase, expts):
         y = []
 
         for expt in expts.keys():
-            x.append((np.array(expts[expt][gt_phase][ROI]) + np.array(expts[expt][pred_phase][ROI])) / 2)
-            y.append(np.array(expts[expt][gt_phase][ROI]) - np.array(expts[expt][pred_phase][ROI]))
+            x.append((np.array(expts[expt][pred_phase][ROI]) + np.array(expts[expt][gt_phase][ROI])) / 2)
+            y.append(np.array(expts[expt][pred_phase][ROI]) - np.array(expts[expt][gt_phase][ROI]))
 
         pooled_x[ROI] = np.hstack(x)
+        pooled_y[ROI] = np.hstack(y)
+        pooled_x[ROI] = pooled_x[ROI][~np.isnan(pooled_x[ROI])]
+        pooled_y[ROI] = pooled_y[ROI][~np.isnan(pooled_y[ROI])]
 
     for i, ROI in enumerate(["Ao", "Co", "Md", "Tu"]):
         print(ROI)
@@ -317,8 +319,10 @@ def get_adj_means(gt_phase, expts):
         grand_mean = pooled_x[ROI].mean()
 
         for expt in expts.keys():
-            y = np.array(expts[expt][gt_phase][ROI]) - np.array(expts[expt][pred_phase][ROI])
-            x = (np.array(expts[expt][gt_phase][ROI]) + np.array(expts[expt][pred_phase][ROI])) / 2
+            y = np.array(expts[expt][pred_phase][ROI]) - np.array(expts[expt][gt_phase][ROI])
+            x = (np.array(expts[expt][pred_phase][ROI]) + np.array(expts[expt][gt_phase][ROI])) / 2
+            y = y[~np.isnan(y)]
+            x = x[~np.isnan(x)]
             _, _, std_res, _ = get_regression(x, y)
             print(f"{expt} adjusted mean {np.round(np.mean(y - (x - grand_mean) * com_m))}, LoA {np.round(1.96 * std_res)}")
 
@@ -402,9 +406,9 @@ if __name__ == "__main__":
         pred_path = f"C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/{model}"
         save_path = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/results"
         print(model)
-        results.append(calc_contrast(real_path, pred_path, slicewise=False, save_path=save_path, model_save_name=model_save))
-    exit()
-    results_dict = dict(zip(model_names, results))
+        results.append(calc_contrast(real_path, pred_path, slicewise=False, save_path=None, model_save_name=model_save))
+
+    results_dict = dict(zip(models.values(), results))
 
     #display_bootstraps(results_dict["UNet-Base"])
 
