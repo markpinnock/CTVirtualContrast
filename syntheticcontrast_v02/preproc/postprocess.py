@@ -51,6 +51,6 @@ def NRRDConv_v02(image_path, save_path):
 
 if __name__ == "__main__":
     NRRDConv_v02(
-        "C:/Users/roybo/Programming/PhD/007_CNN_Virtual_Contrast/test_cyclegan/CycleGAN_save880/predictions",
-        "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/CycleGAN_save880/Images"
+        "C:/Users/roybo/Programming/PhD/007_CNN_Virtual_Contrast/test_cyclegan/CycleGANT_save880/predictions",
+        "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/CycleGANT_save880/Images"
         )

@@ -76,8 +76,8 @@ def inference(CONFIG, save):
 
     for data in test_ds:
         if CONFIG["expt"]["model"] == "CycleGAN":
-            AC_pred = Model.G_forward(data["real_source"])
-            VC_pred = Model.G_forward(data["real_source"])
+            AC_pred = Model.G_forward(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 1.0)
+            VC_pred = Model.G_forward(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 2.0)
         elif CONFIG["expt"]["model"] == "UNet":
             AC_pred = Model.UNet(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 1.0)
             VC_pred = Model.UNet(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 2.0)
