@@ -656,9 +656,9 @@ class Unpaired(ImgConvBase):
 if __name__ == "__main__":
 
     FILE_PATH = "Z:/Clean_CT_Data/Toshiba/"
-    SAVE_PATH = "D:/ProjectImages/SyntheticContrastTest"
+    SAVE_PATH = "D:/ProjectImages/SyntheticContrastNeedle"
 
-    to_include = ["T070A0"]
+    to_include = ["T051A0", "T052A0", "T055A0", "T057A0", "T058A0", "T061A0", "T062A0", "T063A0", "T064A0", "T065A1", "T066A0", "T067A0", "T068A0", "T069A0", "T070A0"]
 
     with open("syntheticcontrast_v02/preproc/ignore.json", 'r') as fp:
         ignore = json.load(fp)
@@ -683,7 +683,7 @@ if __name__ == "__main__":
 
     Test.list_images(
         ignore=image_ignore,
-        num_AC=1, num_VC=1, num_HQ=1
+        num_AC=1, num_VC=1, num_HQ=None
         ).save_data(HU_min=-500, HU_max=2500, file_type="npy", down_sample=2)
 
     Unpaired.check_processed_imgs(SAVE_PATH)

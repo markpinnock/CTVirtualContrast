@@ -206,7 +206,7 @@ def calc_contrast(real_path, pred_path, slicewise=False, save_path=None, model_s
             gt_df["CME", ROI_new] = AC[ROI_old]
             gt_df["NGE", ROI_new] = VC[ROI_old]
 
-        for ROI_old, ROI_new in zip(["Ao", "Co", "Md", "Tu"], ["Aorta", "Cortex", "Medulla", "Tumour"]):
+        for ROI_old, ROI_new in ROI_dict.items():
             pred_df["CME", ROI_new] = AP[ROI_old]
             pred_df["NGE", ROI_new] = VP[ROI_old]
 
@@ -215,6 +215,28 @@ def calc_contrast(real_path, pred_path, slicewise=False, save_path=None, model_s
         pred_df.to_csv(f"{save_path}/contrast_{model_save_name}.csv")
 
     return {"HQ": HQ, "AC": AC, "AP": AP, "VC": VC, "VP": VP}
+
+
+#-------------------------------------------------------------------------
+
+def load_contrasts(file_path, models):
+    results = []
+    gt_df = pd.read_csv(f"{file_path}/contrast_gt.csv", index_col=0, header=[0, 1])
+
+    for model in models.keys():
+        model_dict = {"HQ": {}, "AC": {}, "AP": {}, "VC": {}, "VP": {}}
+        df = pd.read_csv(f"{file_path}/contrast_{model}.csv", index_col=0, header=[0, 1])
+
+        for ROI_k, ROI_i in zip(["Ao", "Co", "Md", "Tu"], ["Aorta", "Cortex", "Medulla", "Tumour"]):
+            model_dict["HQ"][ROI_k] = gt_df["NCE", ROI_i].dropna().values
+            model_dict["AC"][ROI_k] = gt_df["CME", ROI_i].dropna().values
+            model_dict["VC"][ROI_k] = gt_df["NGE", ROI_i].dropna().values
+            model_dict["AP"][ROI_k] = df["CME", ROI_i].dropna().values
+            model_dict["VP"][ROI_k] = df["NGE", ROI_i].dropna().values
+
+        results.append(model_dict)
+
+    return dict(zip(models.values(), results))
 
 
 #-------------------------------------------------------------------------
@@ -258,38 +280,57 @@ def stats_bland_altman(expt1, expt2, results):
 
 #-------------------------------------------------------------------------
 
-def display_bland_altman(gt_phase, expts):
+def display_bland_altman(gt_phase, expts, expt=None, ROI=None):
+    assert bool(expt is not None) ^ bool(ROI is not None)
     pred_phase = f"{gt_phase[0]}P"
-    colour_dict = dict(zip(expts.keys(), ['k', 'r', 'b', 'g']))
 
     fig, axs = plt.subplots(2, 2)
 
-    pooled_x = {}
+    if expt is not None:
+        print(expt)
 
-    for ROI in ["Ao", "Co", "Md", "Tu"]:
-        x = []
+        for i, ROI in enumerate(["Ao", "Co", "Md", "Tu"]):
+            diff = np.array(expts[expt][pred_phase][ROI]) - np.array(expts[expt][gt_phase][ROI])
+            mean_ = (np.array(expts[expt][pred_phase][ROI]) + np.array(expts[expt][gt_phase][ROI])) / 2
+            diff = diff[~np.isnan(diff)]
+            mean_ = mean_[~np.isnan(mean_)]
 
-        for expt in colour_dict.keys():
-            x.append((np.array(expts[expt][gt_phase][ROI]) + np.array(expts[expt][pred_phase][ROI])) / 2)
-
-        pooled_x[ROI] = np.hstack(x)
-
-    for i, ROI in enumerate(["Ao", "Co", "Md", "Tu"]):
-        for expt in colour_dict.keys():
-            diff = np.array(expts[expt][gt_phase][ROI]) - np.array(expts[expt][pred_phase][ROI])
-            mean_ = (np.array(expts[expt][gt_phase][ROI]) + np.array(expts[expt][pred_phase][ROI])) / 2
-            slope, intercept, std_res, p = get_regression(mean_, diff)
+            slope, intercept, std_res, _ = get_regression(mean_, diff)
             fitted = mean_ * slope + intercept
-            print(f"{expt} adjusted mean {pooled_x[ROI].mean() * slope + intercept}, LoA {1.96 * std_res}")
-            axs.ravel()[i].plot(mean_, fitted, c=colour_dict[expt], ls='-', label=expt)
-            axs.ravel()[i].plot(mean_, fitted - 1.96 * std_res, c=colour_dict[expt], ls='--')
-            axs.ravel()[i].plot(mean_, fitted + 1.96 * std_res, c=colour_dict[expt], ls='--')
 
-        axs.ravel()[i].axhline(0.0, c='k', ls='-')
-        axs.ravel()[i].set_xlabel(r"$(HU_{actual} + HU_{pred}) / 2$")
-        axs.ravel()[i].set_ylabel(r"$HU_{actual} - HU_{pred}$")
-        axs.ravel()[i].set_title(ROI_dict[ROI])
-        axs.ravel()[i].legend()
+            axs.ravel()[i].scatter(mean_, diff, c='k', s=64, marker='+')
+            axs.ravel()[i].plot(mean_, fitted, c='k', ls='-', label="Bias")
+            axs.ravel()[i].plot(mean_, fitted - 1.96 * std_res, c='r', ls='-', label="95% LoA")
+            axs.ravel()[i].plot(mean_, fitted + 1.96 * std_res, c='r', ls='-')
+
+            axs.ravel()[i].axhline(0.0, c='k', ls='--')
+            axs.ravel()[i].set_xlabel(r"$(HU_{actual} + HU_{pred}) / 2$")
+            axs.ravel()[i].set_ylabel(r"$HU_{actual} - HU_{pred}$")
+            axs.ravel()[i].set_title(ROI_dict[ROI])
+            axs.ravel()[i].legend()
+
+    if ROI is not None:
+        print(ROI)
+
+        for i, expt in enumerate(expts.keys()):
+            diff = np.array(expts[expt][pred_phase][ROI]) - np.array(expts[expt][gt_phase][ROI])
+            mean_ = (np.array(expts[expt][pred_phase][ROI]) + np.array(expts[expt][gt_phase][ROI])) / 2
+            diff = diff[~np.isnan(diff)]
+            mean_ = mean_[~np.isnan(mean_)]
+
+            slope, intercept, std_res, _ = get_regression(mean_, diff)
+            fitted = mean_ * slope + intercept
+
+            axs.ravel()[i].scatter(mean_, diff, c='k', s=64, marker='+')
+            axs.ravel()[i].plot(mean_, fitted, c='k', ls='-', label="Bias")
+            axs.ravel()[i].plot(mean_, fitted - 1.96 * std_res, c='r', ls='-', label="95% LoA")
+            axs.ravel()[i].plot(mean_, fitted + 1.96 * std_res, c='r', ls='-')
+
+            axs.ravel()[i].axhline(0.0, c='k', ls='--')
+            axs.ravel()[i].set_xlabel(r"$(HU_{pred} + HU_{actual}) / 2$")
+            axs.ravel()[i].set_ylabel(r"$HU_{pred} - HU_{actual}$")
+            axs.ravel()[i].set_title(expt)
+            axs.ravel()[i].legend()
 
     plt.show()
 
@@ -306,10 +347,13 @@ def get_adj_means(gt_phase, expts):
         y = []
 
         for expt in expts.keys():
-            x.append((np.array(expts[expt][gt_phase][ROI]) + np.array(expts[expt][pred_phase][ROI])) / 2)
-            y.append(np.array(expts[expt][gt_phase][ROI]) - np.array(expts[expt][pred_phase][ROI]))
+            x.append((np.array(expts[expt][pred_phase][ROI]) + np.array(expts[expt][gt_phase][ROI])) / 2)
+            y.append(np.array(expts[expt][pred_phase][ROI]) - np.array(expts[expt][gt_phase][ROI]))
 
-        pooled_x[ROI] = np.hstack(x)
+        x = np.hstack(x) - np.nanmean(x)
+        y = np.hstack(y)
+        pooled_x[ROI] = x[~np.isnan(x)]
+        pooled_y[ROI] = y[~np.isnan(y)]
 
     for i, ROI in enumerate(["Ao", "Co", "Md", "Tu"]):
         print(ROI)
@@ -317,10 +361,15 @@ def get_adj_means(gt_phase, expts):
         grand_mean = pooled_x[ROI].mean()
 
         for expt in expts.keys():
-            y = np.array(expts[expt][gt_phase][ROI]) - np.array(expts[expt][pred_phase][ROI])
-            x = (np.array(expts[expt][gt_phase][ROI]) + np.array(expts[expt][pred_phase][ROI])) / 2
+            y = np.array(expts[expt][pred_phase][ROI]) - np.array(expts[expt][gt_phase][ROI])
+            x = (np.array(expts[expt][pred_phase][ROI]) + np.array(expts[expt][gt_phase][ROI])) / 2
+            x = x - np.nanmean(x)
+            x = x[~np.isnan(x)]
+            y = y[~np.isnan(y)]
             _, _, std_res, _ = get_regression(x, y)
-            print(f"{expt} adjusted mean {np.round(np.mean(y - (x - grand_mean) * com_m))}, LoA {np.round(1.96 * std_res)}")
+            adj_y = y - (x - grand_mean) * com_m
+
+            print(f"{expt} adjusted mean {np.round(np.mean(adj_y))}, mean squared error {np.round(np.mean(np.square(adj_y)))}, LoA {np.round(1.96 * std_res)}")
 
 
 #-------------------------------------------------------------------------
@@ -331,23 +380,6 @@ def rep_coeff(expt1, expt2, results):
         between_group = diff.shape[1] * np.sum(np.square(np.mean(diff, axis=1) - np.mean(diff))) / diff.shape[0]
         within_group = np.sum(np.square(diff - np.mean(diff, axis=1, keepdims=True))) / (diff.shape[0] * diff.shape[1] - diff.shape[1])
         print(f"{expt1}, {expt2}, {ROI}, between {between_group}, within {within_group}, repeatability {np.sqrt(within_group) * 1.96 * np.sqrt(2)}")
-
-
-#-------------------------------------------------------------------------
-
-def display_boxplot(expts):
-
-    fig, axs = plt.subplots(2, 2)
-
-    for i, ROI in enumerate(["Ao", "Co", "Md", "Tu"]):
-        print(ROI_dict[ROI])
-        print([np.quantile(d[ROI], [0.05, 0.5, 0.95]) for d in expts.values()])
-        axs.ravel()[i].boxplot([d[ROI] for d in expts.values()])
-        axs.ravel()[i].set_xticklabels(["NCE", "AC", "ACpred", "VC", "VCpred"])
-        axs.ravel()[i].set_ylabel("HU")
-        axs.ravel()[i].set_title(ROI_dict[ROI])
-
-    plt.show()
 
 
 #-------------------------------------------------------------------------
@@ -382,57 +414,49 @@ def display_bootstraps(contrasts):
 
 #-------------------------------------------------------------------------
 
+def display_boxplots(contrasts, gt_phase):
+    pred_phase = f"{gt_phase[0]}P"
+
+    fig, axs = plt.subplots(2, 2)
+
+    for i, ROI in enumerate(ROI_dict.keys()):
+        labels = []
+        data = []
+
+        data.append(contrasts[list(contrasts.keys())[0]][gt_phase][ROI])
+        labels.append("CME") if gt_phase == "AC" else labels.append("NGE")
+
+        for model in contrasts.keys():
+            data.append(contrasts[model][pred_phase][ROI])
+            labels.append(model)
+        
+        axs.ravel()[i].boxplot(data)
+        axs.ravel()[i].set_xticklabels(labels)
+        axs.ravel()[i].set_ylabel("HU")
+        axs.ravel()[i].set_title(ROI_dict[ROI])
+
+    plt.show()
+
+
+#-------------------------------------------------------------------------
+
 if __name__ == "__main__":
 
     ROI_dict = {"Ao": "Aorta", "Co": "Cortex", "Md": "Medulla", "Tu": "Tumour"}
+
+    # models = {
+    #     "unetbase": "UNet-Base",
+    #     "unetphase": "UNet-Phase",
+    #     "p2ppatch": "Pix2Pix",
+    #     "cyclegan": "CycleGAN"
+    # }
+
     models = {
-        "UNetACVC": "unetbase",
-        "UNetT_save1000": "unetphase",
-        "CycleGANT_save880": "cyclegan",
-        "2_save230": "p2p",
-        "2_save170_patch": "p2ppatch",
-        "H2_save280": "hyperp2p",
-        "H2_save300_patch": "hyperp2ppatch"
+        "p2p": "P2P-Full",
+        "p2ppatch": "P2P-Patch",
+        "hyperp2p": "HyperP2P-Full",
+        "hyperp2ppatch": "HyperP2P-Patch"
     }
 
-    real_path = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/Real"
-    results = []
-
-    for model, model_save in models.items():
-        pred_path = f"C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/{model}"
-        save_path = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/results"
-        print(model)
-        results.append(calc_contrast(real_path, pred_path, slicewise=False, save_path=save_path, model_save_name=model_save))
-    exit()
-    results_dict = dict(zip(model_names, results))
-
-    #display_bootstraps(results_dict["UNet-Base"])
-
-#    print("UNet-Base")
-#    stats_bland_altman("AC", "AP", results_dict["UNet-Base"])
-#    print("UNet-Phase")
-#    stats_bland_altman("AC", "AP", results_dict["UNet-Phase"])
-#    print("Pix2Pix")
-#    stats_bland_altman("AC", "AP", results_dict["Pix2Pix"])
-#    print("CycleGAN")
-#    stats_bland_altman("AC", "AP", results_dict["CycleGAN"])
-#    print("UNet-Base")
-#    stats_bland_altman("VC", "VP", results_dict["UNet-Base"])
-#    print("UNet-Phase")
-#    stats_bland_altman("VC", "VP", results_dict["UNet-Phase"])
-#    print("Pix2Pix")
-#    stats_bland_altman("VC", "VP", results_dict["Pix2Pix"])
-#    print("CycleGAN")
-#    stats_bland_altman("VC", "VP", results_dict["CycleGAN"])
-#    exit()
-
-    get_adj_means("AC", results_dict)
-    get_adj_means("VC", results_dict)
-
-#    display_bland_altman("AC", results_dict)
-#    display_bland_altman("VC", results_dict)
-
-    #contrasts = calc_contrast(real_path, pred_path, slicewise=True)
-    #rep_coeff("AC", "AP", contrasts)
-    #rep_coeff("VC", "VP", contrasts)
-    exit()
+    results_dict = load_contrasts("C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast\Phase2/results/", models)
+    display_boxplots(results_dict, "VC")

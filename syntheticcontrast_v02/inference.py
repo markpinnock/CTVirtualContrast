@@ -14,7 +14,8 @@ from syntheticcontrast_v02.utils.dataloader_v02 import PairedLoader, UnpairedLoa
 
 #-------------------------------------------------------------------------
 
-def inference(CONFIG, save):
+def inference(CONFIG, phase, save):
+    assert phase in ["AC", "VC", "both"], phase
 
     if CONFIG["data"]["data_type"] == "paired":
         Loader = PairedLoader
@@ -30,7 +31,6 @@ def inference(CONFIG, save):
     CONFIG["data"]["fold"] = 0
     CONFIG["data"]["segs"] = []
     CONFIG["data"]["times"] = None
-    CONFIG["data"]["data_path"] = "D:/ProjectImages/SyntheticContrastTest"
     CONFIG["data"]["xy_patch"] = True
     CONFIG["data"]["stride_length"] = 16
     MB_SIZE = 256
@@ -120,8 +120,16 @@ def inference(CONFIG, save):
             save_path = f"{CONFIG['paths']['expt_path']}/predictions"
             print(f"{subject_ID} saved")
             if not os.path.exists(save_path): os.mkdir(save_path)
-            np.save(f"{save_path}/{subject_ID[0:6]}AP{subject_ID[-3:]}", AC)
-            np.save(f"{save_path}/{subject_ID[0:6]}VP{subject_ID[-3:]}", VC)
+
+            if phase == "AC":
+                np.save(f"{save_path}/{subject_ID[0:6]}AP{subject_ID[-3:]}", AC)
+            elif phase == "VC":
+                np.save(f"{save_path}/{subject_ID[0:6]}VP{subject_ID[-3:]}", VC)
+            elif phase == "both":
+                np.save(f"{save_path}/{subject_ID[0:6]}AP{subject_ID[-3:]}", AC)
+                np.save(f"{save_path}/{subject_ID[0:6]}VP{subject_ID[-3:]}", VC)
+            else:
+                raise ValueError
 
         else:
             plt.subplot(2, 2, 1)
@@ -148,7 +156,9 @@ if __name__ == "__main__":
     # Handle arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", "-p", help="Expt path", type=str)
-    parser.add_argument("--save", "-s", help="Save images", action="store_true")
+    parser.add_argument("--data", '-d', help="Data path", type=str)
+    parser.add_argument("--phase", '-f', help="Phase: AC/VC/both", type=str)
+    parser.add_argument("--save", '-s', help="Save images", action="store_true")
     arguments = parser.parse_args()
 
     EXPT_PATH = arguments.path
@@ -158,5 +168,6 @@ if __name__ == "__main__":
         CONFIG = yaml.load(infile, yaml.FullLoader)
     
     CONFIG["paths"]["expt_path"] = arguments.path
+    CONFIG["data"]["data_path"] = arguments.data
     
-    inference(CONFIG, arguments.save)
+    inference(CONFIG, arguments.phase, arguments.save)

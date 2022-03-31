@@ -147,8 +147,8 @@ class BaseImgLoader(ABC):
             sub_target = target[(mid_x - self._patch_size[0] // 2):(mid_x + self._patch_size[0] // 2), (mid_y - self._patch_size[1] // 2):(mid_y + self._patch_size[1] // 2), (target.shape[2] // 3):(target.shape[2] // 3 + self._patch_size[2])]
 
             if sub_source.shape[2] < self._patch_size[2]:
-                sub_source = source[:, :, -self._patch_size[2]:]
-                sub_target = target[:, :, -self._patch_size[2]:]
+                sub_source = source[(mid_x - self._patch_size[0] // 2):(mid_x + self._patch_size[0] // 2), (mid_y - self._patch_size[1] // 2):(mid_y + self._patch_size[1] // 2), -self._patch_size[2]:]
+                sub_target = target[(mid_x - self._patch_size[0] // 2):(mid_x + self._patch_size[0] // 2), (mid_y - self._patch_size[1] // 2):(mid_y + self._patch_size[1] // 2), -self._patch_size[2]:]
 
             ex_sources_stack.append(sub_source)
             ex_targets_stack.append(sub_target)
