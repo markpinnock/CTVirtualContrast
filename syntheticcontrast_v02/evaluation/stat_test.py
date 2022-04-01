@@ -86,7 +86,8 @@ def check_contrasts(contrast_dict, gt_phase, formula, contrast):
             x.append((np.array(contrast_dict[expt][gt_phase][ROI]) + np.array(contrast_dict[expt][pred_phase][ROI])) / 2)
             g.append(np.ones_like(x[-1]) * i)
 
-        df = pd.DataFrame({'y': np.hstack(y), 'x': np.hstack(x) - np.hstack(x).mean(), 'g': np.hstack(g)})
+        df = pd.DataFrame({'y': np.hstack(y), 'x': np.hstack(x) - np.nanmean(np.hstack(x)), 'g': np.hstack(g)})
+        df.dropna(axis=0, inplace=True)
 
         lm = ols(formula, df).fit()
         print(ROI, np.hstack(x).mean(), gt_phase)
@@ -210,8 +211,8 @@ def test_contrasts(real_path, pred_path, models, type):
 
 if __name__ == "__main__":
     real_path = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/Real"
-    pred_path = f"C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output"
-    models = ["UNetACVC", "UNetT_save1000", "2_save170_patch", "CycleGANT_save880"]
+    pred_path = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output"
+    models = ["2_save230", "2_save170_patch", "H2_save280", "H2_save300_patch"]
 
     #test_img_qual_metrics(real_path, pred_path, models)
-    test_contrasts(real_path, pred_path, models, "slope")
+    test_contrasts(real_path, pred_path, models, "intercept")

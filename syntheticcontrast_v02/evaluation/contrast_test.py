@@ -210,7 +210,6 @@ def calc_contrast(real_path, pred_path, slicewise=False, save_path=None, model_s
             pred_df["CME", ROI_new] = AP[ROI_old]
             pred_df["NGE", ROI_new] = VP[ROI_old]
 
-        print(pred_df)
         gt_df.to_csv(f"{save_path}/contrast_gt.csv")
         pred_df.to_csv(f"{save_path}/contrast_{model_save_name}.csv")
 
@@ -350,10 +349,17 @@ def get_adj_means(gt_phase, expts):
             x.append((np.array(expts[expt][pred_phase][ROI]) + np.array(expts[expt][gt_phase][ROI])) / 2)
             y.append(np.array(expts[expt][pred_phase][ROI]) - np.array(expts[expt][gt_phase][ROI]))
 
+<<<<<<< HEAD
         x = np.hstack(x) - np.nanmean(x)
         y = np.hstack(y)
         pooled_x[ROI] = x[~np.isnan(x)]
         pooled_y[ROI] = y[~np.isnan(y)]
+=======
+        pooled_x[ROI] = np.hstack(x)
+        pooled_y[ROI] = np.hstack(y)
+        pooled_x[ROI] = pooled_x[ROI][~np.isnan(pooled_x[ROI])]
+        pooled_y[ROI] = pooled_y[ROI][~np.isnan(pooled_y[ROI])]
+>>>>>>> 118576e2e58c1bd17f2abb3ba08dd18b045c8857
 
     for i, ROI in enumerate(["Ao", "Co", "Md", "Tu"]):
         print(ROI)
@@ -363,9 +369,14 @@ def get_adj_means(gt_phase, expts):
         for expt in expts.keys():
             y = np.array(expts[expt][pred_phase][ROI]) - np.array(expts[expt][gt_phase][ROI])
             x = (np.array(expts[expt][pred_phase][ROI]) + np.array(expts[expt][gt_phase][ROI])) / 2
+<<<<<<< HEAD
             x = x - np.nanmean(x)
             x = x[~np.isnan(x)]
             y = y[~np.isnan(y)]
+=======
+            y = y[~np.isnan(y)]
+            x = x[~np.isnan(x)]
+>>>>>>> 118576e2e58c1bd17f2abb3ba08dd18b045c8857
             _, _, std_res, _ = get_regression(x, y)
             adj_y = y - (x - grand_mean) * com_m
 
@@ -458,5 +469,49 @@ if __name__ == "__main__":
         "hyperp2ppatch": "HyperP2P-Patch"
     }
 
+<<<<<<< HEAD
     results_dict = load_contrasts("C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast\Phase2/results/", models)
     display_boxplots(results_dict, "VC")
+=======
+    real_path = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/Real"
+    results = []
+
+    for model, model_save in models.items():
+        pred_path = f"C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/output/{model}"
+        save_path = "C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/results"
+        print(model)
+        results.append(calc_contrast(real_path, pred_path, slicewise=False, save_path=None, model_save_name=model_save))
+
+    results_dict = dict(zip(models.values(), results))
+
+    #display_bootstraps(results_dict["UNet-Base"])
+
+#    print("UNet-Base")
+#    stats_bland_altman("AC", "AP", results_dict["UNet-Base"])
+#    print("UNet-Phase")
+#    stats_bland_altman("AC", "AP", results_dict["UNet-Phase"])
+#    print("Pix2Pix")
+#    stats_bland_altman("AC", "AP", results_dict["Pix2Pix"])
+#    print("CycleGAN")
+#    stats_bland_altman("AC", "AP", results_dict["CycleGAN"])
+#    print("UNet-Base")
+#    stats_bland_altman("VC", "VP", results_dict["UNet-Base"])
+#    print("UNet-Phase")
+#    stats_bland_altman("VC", "VP", results_dict["UNet-Phase"])
+#    print("Pix2Pix")
+#    stats_bland_altman("VC", "VP", results_dict["Pix2Pix"])
+#    print("CycleGAN")
+#    stats_bland_altman("VC", "VP", results_dict["CycleGAN"])
+#    exit()
+
+    get_adj_means("AC", results_dict)
+    get_adj_means("VC", results_dict)
+
+#    display_bland_altman("AC", results_dict)
+#    display_bland_altman("VC", results_dict)
+
+    #contrasts = calc_contrast(real_path, pred_path, slicewise=True)
+    #rep_coeff("AC", "AP", contrasts)
+    #rep_coeff("VC", "VP", contrasts)
+    exit()
+>>>>>>> 118576e2e58c1bd17f2abb3ba08dd18b045c8857
