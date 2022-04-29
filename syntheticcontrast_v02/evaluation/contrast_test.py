@@ -336,6 +336,43 @@ def display_bland_altman(gt_phase, expts, expt=None, ROI=None):
 
 #-------------------------------------------------------------------------
 
+def display_group_bland_altman(gt_phase, expts):
+    pred_phase = f"{gt_phase[0]}P"
+    marker_dict = [
+        {'m': 'o', 'c': 'k'},
+        {'m': 's', 'c': 'r'},
+        {'m': 'x', 'c': 'b'},
+        {'m': '+', 'c': 'g'}
+    ]
+
+    fig, axs = plt.subplots(2, 2)
+
+    for i, ROI in enumerate(ROI_dict.keys()):
+        for j, expt in enumerate(expts.keys()):
+            diff = np.array(expts[expt][pred_phase][ROI]) - np.array(expts[expt][gt_phase][ROI])
+            mean_ = (np.array(expts[expt][pred_phase][ROI]) + np.array(expts[expt][gt_phase][ROI])) / 2
+            diff = diff[~np.isnan(diff)]
+            mean_ = mean_[~np.isnan(mean_)]
+
+            slope, intercept, std_res, _ = get_regression(mean_, diff)
+            fitted = mean_ * slope + intercept
+
+            axs.ravel()[i].scatter(mean_, diff, c=marker_dict[j]['c'], s=64, marker=marker_dict[j]['m'], label=expt)
+            axs.ravel()[i].plot(mean_, fitted, c=marker_dict[j]['c'], ls='-')
+            # axs.ravel()[i].plot(mean_, fitted - 1.96 * std_res, c='r', ls='-', label="95% LoA")
+            # axs.ravel()[i].plot(mean_, fitted + 1.96 * std_res, c='r', ls='-')
+
+            axs.ravel()[i].axhline(0.0, c='k', ls='--')
+            axs.ravel()[i].set_xlabel(r"$\overline{I} \: (HU)$")
+            axs.ravel()[i].set_ylabel(r"$\Delta \, I \: (HU)$")
+            axs.ravel()[i].set_title(ROI_dict[ROI])
+            axs.ravel()[i].legend()
+
+    plt.show()
+
+
+#-------------------------------------------------------------------------
+
 def get_adj_means(gt_phase, expts):
     pred_phase = f"{gt_phase[0]}P"
     pooled_x = {}
@@ -444,7 +481,7 @@ if __name__ == "__main__":
     ROI_dict = {"Ao": "Aorta", "Co": "Cortex", "Md": "Medulla", "Tu": "Tumour"}
 
     # models = {
-    #     "unetbase": "UNet-Base",
+    #     "unetbase": "UNet-Baseline",
     #     "unetphase": "UNet-Phase",
     #     "p2ppatch": "Pix2Pix",
     #     "cyclegan": "CycleGAN"
@@ -458,4 +495,5 @@ if __name__ == "__main__":
     }
 
     results_dict = load_contrasts("C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast\Phase2/results/", models)
-    display_boxplots(results_dict, "VC")
+    display_group_bland_altman("AC", results_dict)
+    # display_boxplots(results_dict, "VC")
