@@ -10,3 +10,6 @@ Fixtures*
 test_*/images
 test_*/logs
 test_*/models
+*.Rproj*
+*.RData
+*.Rhistory

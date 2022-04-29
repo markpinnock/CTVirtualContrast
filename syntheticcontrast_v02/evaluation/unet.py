@@ -1,8 +1,8 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.ops.init_ops_v2 import Initializer
-from tensorflow.python.ops.variables import initialize_all_variables
 
+
+#-------------------------------------------------------------------------
 
 class UNet(tf.keras.Model):
     def __init__(self, config, name="UNet"):
