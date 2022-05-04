@@ -9,7 +9,7 @@ import yaml
 from syntheticcontrast_v02.networks.pix2pix import Pix2Pix, HyperPix2Pix
 from syntheticcontrast_v02.networks.cyclegan import CycleGAN
 from syntheticcontrast_v02.networks.unet import UNet
-from syntheticcontrast_v02.utils.dataloader_v02 import PairedLoader, UnpairedLoader
+from syntheticcontrast_v02.utils.build_dataloader import get_dataloader
 
 
 #-------------------------------------------------------------------------
@@ -17,33 +17,10 @@ from syntheticcontrast_v02.utils.dataloader_v02 import PairedLoader, UnpairedLoa
 def inference(CONFIG, phase, save):
     assert phase in ["AC", "VC", "both"], phase
 
-    if CONFIG["data"]["data_type"] == "paired":
-        Loader = PairedLoader
-
-    elif CONFIG["data"]["data_type"] == "unpaired":
-        Loader = UnpairedLoader
-
-    else:
-        raise ValueError("Select paired or unpaired dataloader")
-
-    # Initialise datasets and set normalisation parameters
-    CONFIG["data"]["cv_folds"] = 1
-    CONFIG["data"]["fold"] = 0
-    CONFIG["data"]["segs"] = []
-    CONFIG["data"]["times"] = None
-    CONFIG["data"]["xy_patch"] = True
-    CONFIG["data"]["stride_length"] = 16
-    MB_SIZE = 256
-    TestGenerator = Loader(config=CONFIG["data"], dataset_type="validation")
-    _, _ = TestGenerator.set_normalisation()
-
-    # Specify output types
-    output_types = {"real_source": "float32", "subject_ID": tf.string, "x": "int32", "y": "int32", "z": "int32"}
-
-    # Create dataloader
-    test_ds = tf.data.Dataset.from_generator(
-        generator=TestGenerator.inference_generator,
-        output_types=output_types).batch(MB_SIZE)
+    test_ds, TestGenerator = get_dataloader(config=CONFIG,
+                                            dataset="test",
+                                            mb_size=64,
+                                            stride_length=16)
 
     # Create model and load weights
     if CONFIG["expt"]["model"] == "Pix2Pix":

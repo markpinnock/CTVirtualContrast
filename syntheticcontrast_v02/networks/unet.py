@@ -1,17 +1,16 @@
-import numpy as np
 import tensorflow as tf
 
-from .models import Generator
+from .components.generator import Generator
 from syntheticcontrast_v02.utils.augmentation import DiffAug, StdAug
 from syntheticcontrast_v02.utils.losses import L1, FocalLoss, FocalMetric
 
 
 #-------------------------------------------------------------------------
-""" Wrapper for standard Pix2pix GAN """
+""" Wrapper for U-Net """
 
 class UNet(tf.keras.Model):
 
-    def __init__(self, config, name="Pix2Pix"):
+    def __init__(self, config, name="UNet"):
         super().__init__(name=name)
         self.initialiser = tf.keras.initializers.HeNormal()
         self.config = config

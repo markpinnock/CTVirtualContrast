@@ -3,10 +3,13 @@ import tensorflow as tf
 from syntheticcontrast_v02.utils.affinetransformation import AffineTransform2D
 
 
+""" Augmentation classes implemented as keras layers """
+
 #-------------------------------------------------------------------------
 """ DiffAug class for differentiable augmentation
     Paper: https://arxiv.org/abs/2006.10738
-    Adapted from: https://github.com/mit-han-lab/data-efficient-gans """
+    Adapted from: https://github.com/mit-han-lab/data-efficient-gans
+"""
 
 class DiffAug(tf.keras.layers.Layer):
     
@@ -123,6 +126,7 @@ class DiffAug(tf.keras.layers.Layer):
 
 
 #-------------------------------------------------------------------------
+""" Standard augmentation performing flipping, rotating, scale and shear """
 
 class StdAug(tf.keras.layers.Layer):
 
@@ -228,7 +232,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import numpy as np
     import yaml
-    from syntheticcontrast_v02.utils.dataloader_v02 import UnpairedLoader
+    from syntheticcontrast_v02.utils.dataloader import UnpairedLoader
 
     test_config = yaml.load(open("syntheticcontrast_v02/utils/test_config.yml", 'r'), Loader=yaml.FullLoader)
 

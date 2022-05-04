@@ -4,10 +4,13 @@ import numpy as np
 import tensorflow as tf
 
 
-#-------------------------------------------------------------------------
 """ Based on implementation of spatial transformer networks:
-    https://github.com/daviddao/spatial-transformer-tensorflow/blob/master/spatial_transformer.py """
+    https://github.com/daviddao/spatial-transformer-tensorflow/blob/master/spatial_transformer.py
+"""
 
+#-------------------------------------------------------------------------
+
+""" Abstract base class """
 class AffineTransform(tf.keras.layers.Layer, abc.ABC):
 
     def __init__(self, img_dims: list, name: str):
@@ -62,8 +65,10 @@ class AffineTransform(tf.keras.layers.Layer, abc.ABC):
         else:
             return tf.reshape(output, [mb_size, self.height_i, self.width_i, self.depth_i, n_ch])
 
+
 #-------------------------------------------------------------------------
-""" 2D affine transform class, acts on 2D images and also depth-wise on 3D volumes """
+""" 2D affine transform class, acts on 2D images and also
+    depth-wise on 3D volumes """
 
 class AffineTransform2D(AffineTransform):
 
@@ -251,8 +256,10 @@ class AffineTransform3D(AffineTransform):
 
 
 #-------------------------------------------------------------------------
+""" Routine for visually testing implementations """
 
 if __name__ == "__main__":
+
     img_vol = np.zeros([4, 128, 128, 64, 1])
     img_vol[:, 54:74, 54:74, :, :] = 1
 

@@ -1,11 +1,11 @@
-import numpy as np
 import tensorflow as tf
 
-from .models import Discriminator, Generator
+from .components.generator import Generator
+from .components.discriminator import Discriminator
 from syntheticcontrast_v02.utils.augmentation import DiffAug, StdAug
-from syntheticcontrast_v02.utils.losses import (
-    minimax_D, minimax_G, least_squares_D, least_squares_G,
-    L1, gradient_difference, mutual_information)
+from syntheticcontrast_v02.utils.losses import (least_squares_D,
+                                                least_squares_G,
+                                                L1)
 
 
 #-------------------------------------------------------------------------
@@ -50,14 +50,16 @@ class CycleGAN(tf.keras.Model):
     def generator_init(self, config):
         # Check generator output dims match input
         G_input_size = [1] + self.img_dims + [1]
-        self.G_forward = Generator(self.initialiser, config, name="forward_generator")
+        # Inconsistent generator naming is for compatibility with
+        # external training loop
+        self.Generator = Generator(self.initialiser, config, name="forward_generator")
         self.G_backward = Generator(self.initialiser, config, name="backward_generator")
 
         if self.input_times is not None:
-            assert self.G_forward.build_model(tf.zeros(G_input_size), tf.zeros(1)) == G_input_size
+            assert self.Generator.build_model(tf.zeros(G_input_size), tf.zeros(1)) == G_input_size
             assert self.G_backward.build_model(tf.zeros(G_input_size), tf.zeros(1)) == G_input_size
         else:
-            assert self.G_forward.build_model(tf.zeros(G_input_size)) == G_input_size
+            assert self.Generator.build_model(tf.zeros(G_input_size)) == G_input_size
             assert self.G_backward.build_model(tf.zeros(G_input_size)) == G_input_size
 
     def discriminator_init(self, config):
@@ -91,9 +93,10 @@ class CycleGAN(tf.keras.Model):
         self.g_loss = least_squares_G
         self.L1_loss = L1
 
-        # Set up metrics
-        self.d_forward_metric = tf.keras.metrics.Mean(name="d_forward_metric")
-        self.g_forward_metric = tf.keras.metrics.Mean(name="g_forward_metric")
+        # Set up metrics - inconsistent naming is for compatibility with
+        # external training loop
+        self.d_metric = tf.keras.metrics.Mean(name="d_forward_metric")
+        self.g_metric = tf.keras.metrics.Mean(name="g_forward_metric")
         self.d_backward_metric = tf.keras.metrics.Mean(name="d_backward_metric")
         self.g_backward_metric = tf.keras.metrics.Mean(name="g_backward_metric")
         self.train_L1_metric = tf.keras.metrics.Mean(name="train_L1")
@@ -103,9 +106,9 @@ class CycleGAN(tf.keras.Model):
         source = tf.keras.Input(shape=self.img_dims + [1])
 
         if self.input_times:
-            outputs = self.G_forward.call(source, tf.zeros(1))
+            outputs = self.Generator.call(source, tf.zeros(1))
         else:
-            outputs = self.G_forward.call(source)
+            outputs = self.Generator.call(source)
 
         print("===========================================================")
         print("Generator")
@@ -129,11 +132,11 @@ class CycleGAN(tf.keras.Model):
 
         # Get gradients from discriminator predictions of generated fake images and update weights
         with tf.GradientTape(persistent=True) as g_tape:
-            fake_target = self.G_forward(real_source, target_times)
+            fake_target = self.Generator(real_source, target_times)
             cycled_source = self.G_backward(fake_target, target_times)
             fake_source = self.G_backward(real_target, target_times)
-            cycled_target = self.G_forward(fake_source, target_times)
-            same_target = self.G_forward(real_target, target_times)
+            cycled_target = self.Generator(fake_source, target_times)
+            same_target = self.Generator(real_target, target_times)
             same_source = self.G_backward(real_source, target_times)
 
             """ ResCycleGAN paper uses cycle consistency, gradient norm and MI """
@@ -163,13 +166,13 @@ class CycleGAN(tf.keras.Model):
             g_forward_total_loss = g_forward_loss + self.lambda_cyc * cycle_loss + self.lambda_id * identity_loss
             g_backward_total_loss = g_backward_loss + self.lambda_cyc * cycle_loss + self.lambda_id * identity_loss
 
-        g_forward_grads = g_tape.gradient(g_forward_total_loss, self.G_forward.trainable_variables)
+        g_forward_grads = g_tape.gradient(g_forward_total_loss, self.Generator.trainable_variables)
         g_backward_grads = g_tape.gradient(g_backward_total_loss, self.G_backward.trainable_variables)
-        self.g_forward_opt.apply_gradients(zip(g_forward_grads, self.G_forward.trainable_variables))
+        self.g_forward_opt.apply_gradients(zip(g_forward_grads, self.Generator.trainable_variables))
         self.g_backward_opt.apply_gradients(zip(g_backward_grads, self.G_backward.trainable_variables))
 
         # Update metric
-        self.g_forward_metric.update_state(g_forward_loss)
+        self.g_metric.update_state(g_forward_loss)
         self.g_backward_metric.update_state(g_backward_loss)
 
     def discriminator_step(self, real_source, real_target, fake_source, fake_target, target_times=None):
@@ -210,13 +213,13 @@ class CycleGAN(tf.keras.Model):
         self.d_backward_opt.apply_gradients(zip(d_backward_grads, self.D_backward.trainable_variables))
 
         # Update metrics
-        self.d_forward_metric.update_state(d_forward_loss)
+        self.d_metric.update_state(d_forward_loss)
         self.d_backward_metric.update_state(d_backward_loss)
     
     @tf.function
     def train_step(self, real_source, real_target, seg=None, source_times=None, target_times=None):
 
-        fake_target = self.G_forward(real_source, target_times)
+        fake_target = self.Generator(real_source, target_times)
         fake_source = self.G_backward(real_target, target_times)
         fake_target = self.buffer_forward.query(fake_target)
         fake_source = self.buffer_backward.query(fake_source)
@@ -227,18 +230,18 @@ class CycleGAN(tf.keras.Model):
     @tf.function
     def test_step(self, real_source, real_target, seg=None, source_times=None, target_times=None):
 
-        fake_target = self.G_forward(real_source, target_times)
+        fake_target = self.Generator(real_source, target_times)
         cycled_source = self.G_backward(fake_target, target_times)
         fake_source = self.G_backward(real_target, target_times)
-        cycled_target = self.G_forward(fake_source, target_times)
+        cycled_target = self.Generator(fake_source, target_times)
 
         cycle_loss = self.L1_loss(real_source, cycled_source) + self.L1_loss(real_target, cycled_target)
         self.val_L1_metric.update_state(cycle_loss)
 
     def reset_train_metrics(self):
-        self.g_forward_metric.reset_states()
+        self.g_metric.reset_states()
         self.g_backward_metric.reset_states()
-        self.d_forward_metric.reset_states()
+        self.d_metric.reset_states()
         self.d_backward_metric.reset_states()
         self.train_L1_metric.reset_states()
 

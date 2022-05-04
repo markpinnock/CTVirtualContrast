@@ -4,88 +4,21 @@ import os
 import tensorflow as tf
 import yaml
 
-from syntheticcontrast_v02.trainingtuningclasses.trainingclasses import TrainingPix2Pix, TrainingCycleGAN, TrainingUNet
-from syntheticcontrast_v02.networks.pix2pix import Pix2Pix, HyperPix2Pix
-from syntheticcontrast_v02.networks.cyclegan import CycleGAN
-from syntheticcontrast_v02.networks.unet import UNet
-from syntheticcontrast_v02.utils.dataloader_v02 import PairedLoader, UnpairedLoader
+from syntheticcontrast_v02.networks.models import get_model
+from syntheticcontrast_v02.trainingloops.build_training_loop import get_training_loop
+from syntheticcontrast_v02.utils.build_dataloader import get_dataloader
 
 
 #-------------------------------------------------------------------------
 
 def train(CONFIG):
 
-    if CONFIG["data"]["data_type"] == "paired":
-        Loader = PairedLoader
-
-    elif CONFIG["data"]["data_type"] == "unpaired":
-        Loader = UnpairedLoader
-
-    else:
-        raise ValueError("Select paired or unpaired dataloader")
-
-    # TODO: move into dataloader
-    # Initialise datasets and set normalisation parameters
-    TrainGenerator = Loader(config=CONFIG["data"], dataset_type="training")
-    param_1, param_2 = TrainGenerator.set_normalisation()
-    ValGenerator = Loader(config=CONFIG["data"], dataset_type="validation")
-    _, _ = ValGenerator.set_normalisation(param_1, param_2)
-
-    CONFIG["data"]["norm_param_1"] = param_1
-    CONFIG["data"]["norm_param_2"] = param_2
-
-    # Specify output types
-    output_types = ["real_source", "real_target"]
-
-    if len(CONFIG["data"]["segs"]) > 0:
-        output_types += ["seg"]
-    
-    if CONFIG["data"]["times"] is not None:
-        output_types += ["source_times", "target_times"]
-
-    # Create dataloader
-    train_ds = tf.data.Dataset.from_generator(
-        generator=TrainGenerator.data_generator,
-        output_types={k: "float32" for k in output_types}
-        ).batch(CONFIG["expt"]["mb_size"])
-
-    val_ds = tf.data.Dataset.from_generator(
-        generator=ValGenerator.data_generator,
-        output_types={k: "float32" for k in output_types}
-        ).batch(CONFIG["expt"]["mb_size"])
+    # Get datasets and data generator
+    train_ds, val_ds, train_gen, val_gen = get_dataloader(config=CONFIG,
+                                                          dataset="train_val")
 
     # Compile model
-    if CONFIG["expt"]["model"] == "Pix2Pix":
-        Model = Pix2Pix(config=CONFIG)
-        Model.compile(
-            g_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt"),
-            d_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt")
-            )
-
-    elif CONFIG["expt"]["model"] == "HyperPix2Pix":
-        Model = HyperPix2Pix(config=CONFIG)
-        Model.compile(
-            g_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt"),
-            d_optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_opt")
-            )
-
-    elif CONFIG["expt"]["model"] == "CycleGAN":
-        Model = CycleGAN(config=CONFIG)
-        Model.compile(
-            g_forward_opt=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_foward_opt"),
-            g_backward_opt=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["g_opt"], name="g_backward_opt"),
-            d_forward_opt=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["d_opt"], name="d_forward_opt"),
-            d_backward_opt=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["d_opt"], name="d_backward_opt")
-            )
-    
-    elif CONFIG["expt"]["model"] == "UNet":
-        Model = UNet(config=CONFIG)
-        Model.compile(
-            optimiser=tf.keras.optimizers.Adam(*CONFIG["hyperparameters"]["opt"], name="opt")
-        )
-
-    else:
-        raise ValueError(f"Invalid model type: {CONFIG['expt']['model']}")
+    Model = get_model(CONFIG)
 
     if CONFIG["expt"]["verbose"]:
         Model.summary()
@@ -106,36 +39,14 @@ def train(CONFIG):
         with writer.as_default():
             tf.summary.trace_export("graph", step=0)
 
-    if CONFIG["expt"]["model"] == "CycleGAN":
-        TrainingLoop = TrainingCycleGAN(
-            Model=Model,
-            dataset=(train_ds, val_ds),
-            train_generator=TrainGenerator,
-            val_generator=ValGenerator,
-            config=CONFIG
-            )
-
-    elif CONFIG["expt"]["model"] == "UNet":
-        TrainingLoop = TrainingUNet(
-            Model=Model,
-            dataset=(train_ds, val_ds),
-            train_generator=TrainGenerator,
-            val_generator=ValGenerator,
-            config=CONFIG
-            )
-
-    else:
-        TrainingLoop = TrainingPix2Pix(
-            Model=Model,
-            dataset=(train_ds, val_ds),
-            train_generator=TrainGenerator,
-            val_generator=ValGenerator,
-            config=CONFIG
-            )
+    TrainingLoop = get_training_loop(Model=Model,
+                                     dataset=(train_ds, val_ds),
+                                     train_generator=train_gen,
+                                     val_generator=val_gen,
+                                     config=CONFIG)
 
     # Run training loop
     TrainingLoop.train()
-    TrainingLoop.save_results()
 
 
 #-------------------------------------------------------------------------
