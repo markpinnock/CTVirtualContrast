@@ -120,3 +120,6 @@ class UNet(tf.keras.Model):
     
     def reset_train_metrics(self):
         self.train_L1_metric.reset_states()
+
+    def call(self, x, t):
+        return self.UNet(x, t)

@@ -183,3 +183,6 @@ class Pix2Pix(tf.keras.Model):
         self.d_metric.reset_states()
         self.g_metric.reset_states()
         self.train_L1_metric.reset_states()
+
+    def call(self, x, t):
+        return self.Generator(x, t)

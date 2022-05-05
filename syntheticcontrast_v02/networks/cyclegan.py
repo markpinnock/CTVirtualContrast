@@ -245,6 +245,9 @@ class CycleGAN(tf.keras.Model):
         self.d_backward_metric.reset_states()
         self.train_L1_metric.reset_states()
 
+    def call(self, x, t):
+        return self.Generator(x, t)
+
 
 #-------------------------------------------------------------------------
 """ https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix/blob/master/util/image_pool.py """

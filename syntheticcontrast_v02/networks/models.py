@@ -29,6 +29,10 @@ class Model(abc.ABC):
     def compile_model(self):
         pass
 
+    @abc.abstractmethod
+    def load_weights(self):
+        pass
+
     @property
     def model(self):
         return self._model
@@ -46,6 +50,10 @@ class UNetModel(Model):
                 *self.config["hyperparameters"]["opt"],
                 name="opt"))
 
+    def load_weights(self):
+        self._model.UNet.load_weights(
+        f"{self.config['paths']['expt_path']}/models/model.ckpt")
+
 
 #-------------------------------------------------------------------------
 
@@ -62,6 +70,10 @@ class Pix2PixModel(Model):
             d_optimiser=tf.keras.optimizers.Adam(
                 *self.config["hyperparameters"]["d_opt"],
                 name="d_opt"))
+
+    def load_weights(self):
+        self._model.Generator.load_weights(
+        f"{self.config['paths']['expt_path']}/models/generator.ckpt")
 
 
 #-------------------------------------------------------------------------
@@ -86,6 +98,10 @@ class CycleGANModel(Model):
                 *self.config["hyperparameters"]["d_opt"],
                 name="d_backward_opt"))
 
+    def load_weights(self):
+        self._model.Generator.load_weights(
+        f"{self.config['paths']['expt_path']}/models/generator.ckpt")
+
 
 #-------------------------------------------------------------------------
 
@@ -102,6 +118,7 @@ def get_model(config: dict, purpose: str = "training"):
         model_factory.compile_model()
         return model_factory.model
     elif purpose == "inference":
+        model_factory.load_weights()
         return model_factory.model
     else:
         raise ValueError("Purpose must be 'training' or 'inference'")

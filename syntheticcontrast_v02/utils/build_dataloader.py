@@ -59,17 +59,29 @@ def get_dataloader(config: dict,
         config["data"]["cv_folds"] = 1
         config["data"]["fold"] = 0
         config["data"]["segs"] = []
-        config["data"]["times"] = None # TODO: WHY
         config["data"]["xy_patch"] = True
         config["data"]["stride_length"] = stride_length
         config["expt"]["mb_size"] = mb_size
+
+        # Pix2Pix raises an error if no time json is provided
+        # (to ensure we don't ask for time encoding layers with
+        # no time data) but we don't want the dataloader reading this in...
+        temp_times = config["data"]["times"]
+        config["data"]["times"] = None
 
         # Initialise datasets and set normalisation parameters
         TestGenerator = Loader(config=config["data"], dataset_type="validation")
         _, _ = TestGenerator.set_normalisation()
 
-        # Specify output types
-        output_types = {"real_source": "float32", "subject_ID": tf.string, "x": "int32", "y": "int32", "z": "int32"}
+        # So Pix2Pix doesn't raise that error
+        config["data"]["times"] = temp_times
+
+        # Specify output types (x, y, and z are the coords of the patch)
+        output_types = {"real_source": "float32",
+                        "subject_ID": tf.string,
+                        "x": "int32",
+                        "y": "int32",
+                        "z": "int32"}
 
         # Create dataloader
         test_ds = tf.data.Dataset.from_generator(

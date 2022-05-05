@@ -6,61 +6,29 @@ import os
 import tensorflow as tf
 import yaml
 
-from syntheticcontrast_v02.networks.pix2pix import Pix2Pix, HyperPix2Pix
-from syntheticcontrast_v02.networks.cyclegan import CycleGAN
-from syntheticcontrast_v02.networks.unet import UNet
+from syntheticcontrast_v02.networks.models import get_model
 from syntheticcontrast_v02.utils.build_dataloader import get_dataloader
 
 
 #-------------------------------------------------------------------------
 
-def inference(CONFIG, phase, save):
-    assert phase in ["AC", "VC", "both"], phase
+def inference(CONFIG, args):
+    assert args.phase in ["AC", "VC", "both"], args.phase
 
     test_ds, TestGenerator = get_dataloader(config=CONFIG,
                                             dataset="test",
-                                            mb_size=64,
-                                            stride_length=16)
+                                            mb_size=args.minibatch,
+                                            stride_length=args.stride)
 
-    # Create model and load weights
-    if CONFIG["expt"]["model"] == "Pix2Pix":
-        # Hack to avoid triggering assertion in pix2pix.py
-        CONFIG["data"]["times"] = []
-        Model = Pix2Pix(config=CONFIG)
-
-    elif CONFIG["expt"]["model"] == "HyperPix2Pix":
-        Model = HyperPix2Pix(config=CONFIG)
-
-    elif CONFIG["expt"]["model"] == "CycleGAN":
-        Model = CycleGAN(config=CONFIG)
-
-    elif CONFIG["expt"]["model"] == "UNet":
-        Model = UNet(config=CONFIG)
-
-    else:
-        raise ValueError(f"Invalid model type: {CONFIG['expt']['model']}")
-
-    if CONFIG["expt"]["model"] == "CycleGAN":
-        Model.G_forward.load_weights(f"{CONFIG['paths']['expt_path']}/models/generator.ckpt")
-    elif CONFIG["expt"]["model"] == "UNet":
-        Model.UNet.load_weights(f"{CONFIG['paths']['expt_path']}/models/model.ckpt")
-    else:
-        Model.Generator.load_weights(f"{CONFIG['paths']['expt_path']}/models/generator.ckpt")
+    Model = get_model(config=CONFIG, purpose="inference")
 
     AC_predictions = {}
     VC_predictions = {}
     weights = {}
 
     for data in test_ds:
-        if CONFIG["expt"]["model"] == "CycleGAN":
-            AC_pred = Model.G_forward(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 1.0)
-            VC_pred = Model.G_forward(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 2.0)
-        elif CONFIG["expt"]["model"] == "UNet":
-            AC_pred = Model.UNet(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 1.0)
-            VC_pred = Model.UNet(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 2.0)
-        else:
-            AC_pred = Model.Generator(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 1.0)
-            VC_pred = Model.Generator(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 2.0)
+        AC_pred = Model(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 1.0)
+        VC_pred = Model(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 2.0)
 
         AC_pred = TestGenerator.un_normalise(AC_pred)[:, :, :, :, 0].numpy()
         VC_pred = TestGenerator.un_normalise(VC_pred)[:, :, :, :, 0].numpy()
@@ -93,16 +61,16 @@ def inference(CONFIG, phase, save):
         AC = AC_predictions[subject_ID] / w
         VC = VC_predictions[subject_ID] / w
 
-        if save:
+        if args.save:
             save_path = f"{CONFIG['paths']['expt_path']}/predictions"
             print(f"{subject_ID} saved")
             if not os.path.exists(save_path): os.mkdir(save_path)
 
-            if phase == "AC":
+            if args.phase == "AC":
                 np.save(f"{save_path}/{subject_ID[0:6]}AP{subject_ID[-3:]}", AC)
-            elif phase == "VC":
+            elif args.phase == "VC":
                 np.save(f"{save_path}/{subject_ID[0:6]}VP{subject_ID[-3:]}", VC)
-            elif phase == "both":
+            elif args.phase == "both":
                 np.save(f"{save_path}/{subject_ID[0:6]}AP{subject_ID[-3:]}", AC)
                 np.save(f"{save_path}/{subject_ID[0:6]}VP{subject_ID[-3:]}", VC)
             else:
@@ -134,7 +102,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", "-p", help="Expt path", type=str)
     parser.add_argument("--data", '-d', help="Data path", type=str)
-    parser.add_argument("--phase", '-f', help="Phase: AC/VC/both", type=str)
+    parser.add_argument("--phase", '-f', help="Phase: AC/VC/both", type=str, default="both")
+    parser.add_argument("--minibatch", '-m', help="Minibatch size", type=int, default=128)
+    parser.add_argument("--stride", '-t', help="Stride length", type=int, default=16)
     parser.add_argument("--save", '-s', help="Save images", action="store_true")
     arguments = parser.parse_args()
 
@@ -147,4 +117,4 @@ if __name__ == "__main__":
     CONFIG["paths"]["expt_path"] = arguments.path
     CONFIG["data"]["data_path"] = arguments.data
     
-    inference(CONFIG, arguments.phase, arguments.save)
+    inference(CONFIG, arguments)
