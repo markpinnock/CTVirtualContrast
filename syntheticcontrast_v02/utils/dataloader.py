@@ -7,7 +7,7 @@ import tensorflow as tf
 
 from abc import ABC, abstractmethod
 
-from syntheticcontrast_v02.utils.patch_utils import extract_patches
+from syntheticcontrast_v02.utils.patch_utils import generate_indices, extract_patches
 
 
 #----------------------------------------------------------------------------------------------------------------------------------------------------
@@ -374,6 +374,28 @@ class BaseImgLoader(ABC):
                 yield {"real_source": patch, "subject_ID": source_name, "x": index[0], "y": index[1], "z": index[2]}
 
             i += 1
+
+    def subject_generator(self, source_name):
+        source_name = source_name.decode("utf-8")
+
+        if len(self.sub_folders) == 0:
+            source = np.load(f"{self._img_paths}/{source_name}")
+        else:
+            source = np.load(f"{self._img_paths[source_name[6:8]]}/{source_name}")
+
+        # Linear coords are what we'll use to do our patch updates in 1D
+        # E.g. [1, 2, 3
+        #       4, 5, 6
+        #       7, 8, 9]
+        linear_coords = generate_indices(source, self.config["stride_length"], self._patch_size, self.down_sample)
+
+        source = self._normalise(source)
+        linear_source = tf.reshape(source, -1)
+
+        for coords in linear_coords:
+            patch = tf.reshape(tf.gather(linear_source, coords), self._patch_size + [1])
+
+            yield {"real_source": patch, "subject_ID": source_name, "coords": coords}
 
 
 #-------------------------------------------------------------------------

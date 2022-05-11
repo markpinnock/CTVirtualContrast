@@ -7,7 +7,8 @@ import tensorflow as tf
 import yaml
 
 from syntheticcontrast_v02.networks.models import get_model
-from syntheticcontrast_v02.utils.build_dataloader import get_dataloader
+from syntheticcontrast_v02.utils.build_dataloader import get_test_dataloader
+from syntheticcontrast_v02.utils.combine_patches import CombinePatches
 
 
 #-------------------------------------------------------------------------
@@ -15,68 +16,51 @@ from syntheticcontrast_v02.utils.build_dataloader import get_dataloader
 def inference(CONFIG, args):
     assert args.phase in ["AC", "VC", "both"], args.phase
 
-    test_ds, TestGenerator = get_dataloader(config=CONFIG,
-                                            dataset="test",
-                                            mb_size=args.minibatch,
-                                            stride_length=args.stride)
+    test_ds_dict, TestGenerator = get_test_dataloader(config=CONFIG,
+                                                      by_subject=True,
+                                                      mb_size=args.minibatch,
+                                                      stride_length=args.stride)
 
     Model = get_model(config=CONFIG, purpose="inference")
 
-    AC_predictions = {}
-    VC_predictions = {}
-    weights = {}
+    Combine = CombinePatches(CONFIG)
 
-    for data in test_ds:
-        AC_pred = Model(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 1.0)
-        VC_pred = Model(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 2.0)
+    for subject, test_ds in test_ds_dict.items():
 
-        AC_pred = TestGenerator.un_normalise(AC_pred)[:, :, :, :, 0].numpy()
-        VC_pred = TestGenerator.un_normalise(VC_pred)[:, :, :, :, 0].numpy()
-        AC_pred = np.round(AC_pred).astype("int16")
-        VC_pred = np.round(VC_pred).astype("int16")
+        # Get original img dims
+        original_img = glob.glob(f"{CONFIG['data']['data_path']}/Images/{subject}*")[0]
+        img_dims = np.load(original_img).shape
+        Combine.new_subject(img_dims)
 
-        for i in range(AC_pred.shape[0]):
-            subject_ID = data["subject_ID"].numpy()[i].decode("utf-8")[:-4]
-            x_slice = slice(int(data["x"][i]), int(data["x"][i]) + int(CONFIG["data"]["patch_size"][0]))
-            y_slice = slice(int(data["y"][i]), int(data["y"][i]) + int(CONFIG["data"]["patch_size"][1]))
+        for data in test_ds:
+            AC_pred = Model(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 1.0)
+            VC_pred = Model(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 2.0)
 
-            if int(data["z"][i]) < 0:
-                z_slice = slice(int(data["z"][i]), None)
-            else:
-                z_slice = slice(int(data["z"][i]), int(data["z"][i]) + int(CONFIG["data"]["patch_size"][2]))
+            AC_pred = TestGenerator.un_normalise(AC_pred)[:, :, :, :, 0].numpy()
+            VC_pred = TestGenerator.un_normalise(VC_pred)[:, :, :, :, 0].numpy()
 
-            if subject_ID not in AC_predictions.keys():
-                print(subject_ID)
-                original_img = glob.glob(f"{CONFIG['data']['data_path']}/Images/{subject_ID}*")[0]
-                img_dims = np.load(original_img).shape
-                weights[subject_ID] = np.zeros(img_dims)
-                AC_predictions[subject_ID] = np.zeros(img_dims)
-                VC_predictions[subject_ID] = np.zeros(img_dims)
+            Combine.apply_patches(AC_pred, VC_pred, data["coords"])
 
-            AC_predictions[subject_ID][x_slice, y_slice, z_slice] += AC_pred[i, :, :, :]
-            VC_predictions[subject_ID][x_slice, y_slice, z_slice] += VC_pred[i, :, :, :]
-            weights[subject_ID][x_slice, y_slice, z_slice] += 1
-
-    for subject_ID, w in weights.items():
-        AC = AC_predictions[subject_ID] / w
-        VC = VC_predictions[subject_ID] / w
+        AC = Combine.get_AC()
+        VC = Combine.get_VC()
 
         if args.save:
             save_path = f"{CONFIG['paths']['expt_path']}/predictions"
-            print(f"{subject_ID} saved")
+            print(f"{subject} saved")
             if not os.path.exists(save_path): os.mkdir(save_path)
 
             if args.phase == "AC":
-                np.save(f"{save_path}/{subject_ID[0:6]}AP{subject_ID[-3:]}", AC)
+                np.save(f"{save_path}/{subject[0:6]}AP{subject[-3:]}", AC)
             elif args.phase == "VC":
-                np.save(f"{save_path}/{subject_ID[0:6]}VP{subject_ID[-3:]}", VC)
+                np.save(f"{save_path}/{subject[0:6]}VP{subject[-3:]}", VC)
             elif args.phase == "both":
-                np.save(f"{save_path}/{subject_ID[0:6]}AP{subject_ID[-3:]}", AC)
-                np.save(f"{save_path}/{subject_ID[0:6]}VP{subject_ID[-3:]}", VC)
+                np.save(f"{save_path}/{subject[0:6]}AP{subject[-3:]}", AC)
+                np.save(f"{save_path}/{subject[0:6]}VP{subject[-3:]}", VC)
             else:
                 raise ValueError
 
         else:
+            print(subject)
             plt.subplot(2, 2, 1)
             plt.imshow(AC[:, :, 32], cmap="gray", vmin=-150, vmax=250)
             plt.axis("off")

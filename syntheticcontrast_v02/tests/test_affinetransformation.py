@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 import time
 
-from syntheticcontrast.utils.affinetransformation import AffineTransform2D
+from syntheticcontrast_v02.utils.affinetransformation import AffineTransform2D
 
 
 class TestAffine2D(tf.test.TestCase):

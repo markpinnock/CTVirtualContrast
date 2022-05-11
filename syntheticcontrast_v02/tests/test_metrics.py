@@ -3,11 +3,11 @@ import pytest
 import sys
 import tensorflow as tf
 
-from syntheticcontrast.utils.losses_v01 import FocalMetric
+from syntheticcontrast_v02.utils.losses import FocalMetric
 
 
 def test_metric():
-    metric = FocalMetric(loss_fn="mae")
+    metric = FocalMetric()
     a = np.zeros((2, 4, 4), dtype=np.float32)
     b = np.ones((2, 4, 4), dtype=np.float32)
     b[0, 1, 1] = 2
@@ -26,7 +26,7 @@ def test_metric():
 
 
 def test_metric_loop():
-    metric = FocalMetric(loss_fn="mae")
+    metric = FocalMetric()
     a = np.zeros((2, 4, 4), dtype=np.float32)
     b = np.ones((2, 4, 4), dtype=np.float32)
     b[0, 1, 1] = 2

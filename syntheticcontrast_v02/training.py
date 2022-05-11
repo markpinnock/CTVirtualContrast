@@ -6,7 +6,7 @@ import yaml
 
 from syntheticcontrast_v02.networks.models import get_model
 from syntheticcontrast_v02.trainingloops.build_training_loop import get_training_loop
-from syntheticcontrast_v02.utils.build_dataloader import get_dataloader
+from syntheticcontrast_v02.utils.build_dataloader import get_train_dataloader
 
 
 #-------------------------------------------------------------------------
@@ -14,8 +14,7 @@ from syntheticcontrast_v02.utils.build_dataloader import get_dataloader
 def train(CONFIG):
 
     # Get datasets and data generator
-    train_ds, val_ds, train_gen, val_gen = get_dataloader(config=CONFIG,
-                                                          dataset="train_val")
+    train_ds, val_ds, train_gen, val_gen = get_train_dataloader(CONFIG)
 
     # Compile model
     Model = get_model(CONFIG)
