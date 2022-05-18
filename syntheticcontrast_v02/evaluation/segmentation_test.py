@@ -11,23 +11,33 @@ np.set_printoptions(4)
 
 #-------------------------------------------------------------------------
 
-def test(expt_path):
+def test(expt_path, time=None):
 
     with open(f"{expt_path}/config.yml", 'r') as infile:
         config = yaml.load(infile, yaml.FullLoader)
 
-    test_ds = tf.data.Dataset.from_tensor_slices(
-        load_data("test", config["model_config"]["img_dims"][0], **config["data_config"]))
+    if time is not None:
+        time_float = float(time)
+        config["data_config"]["img_type"] = time_float
 
-    segs = next(iter(test_ds.batch(256)))[1]
-
-    test_ds = test_ds.batch(config["model_config"]["mb_size"])
+    # test_ds = tf.data.Dataset.from_tensor_slices(
+    #     )
+    test_ds = load_data("test", config["model_config"]["img_dims"][0], **config["data_config"])
+    # segs = next(iter(test_ds.batch(256)))[1]
+    imgs = np.stack(test_ds[0], axis=0)
+    segs = np.stack(test_ds[1], axis=0)
+    #test_ds = test_ds.batch(config["model_config"]["mb_size"])
 
     Model = UNet(config["model_config"])
-    Model.load_weights(f"{expt_path}/models/model.ckpt").expect_partial()
-    prediction = Model.predict(test_ds)
 
-    dice = 1 - dice_loss(prediction, segs, axis=[1, 2, 3]).numpy()
+    if time is not None:
+        Model.load_weights(f"{expt_path}/{time.replace('.', '_')}/models/model.ckpt").expect_partial()
+    else:
+        Model.load_weights(f"{expt_path}/models/model.ckpt").expect_partial()
+
+    prediction = Model(imgs).numpy()
+
+    dice = 1 - dice_loss(prediction, segs, axis=[1, 2, 3])
 
     return dice
 
@@ -62,39 +72,23 @@ if __name__ == "__main__":
     """ Segmentation-based evaluation testing routine """
 
     expts_path = "syntheticcontrast_v02/evaluation/expts"
-    expts = [
-        "HQ", "AC", "VC",
-        "UNetACVC_AP", "UNetACVC_VP",
-        "UNetT_save1000_AP", "UNetT_save1000_VP",
-        "CycleGANT_save880_AP", "CycleGANT_save880_VP",
-        "2_save230_AP", "2_save230_VP",
-        "2_save170_patch_AP", "2_save170_patch_VP",
-        "H2_save280_AP", "H2_save280_VP",
-        "H2_save300_patch_AP", "H2_save300_patch_VP"
-        ]
+    expts = ["2_save230", "2_save170_patch", "H2_save280", "H2_save300_patch"]
+    times = ["0.0", "0.25", "0.5", "0.75", "1.0", "1.25", "1.5", "1.75",
+             "2.0", "2.5", "3.0", "3.5", "4.0", "5.0", "10.0", "20.0"]
 
     results = {}
 
     for expt in expts:
-        results[expt] = test(f"{expts_path}/{expt}")
+        for time in times:
+            results[f"{expt}_{time}"] = test(f"{expts_path}/{expt}", time)
 
-    box_results = []
+    df_interp = pd.DataFrame()
 
     for k, v in results.items():
         print(k, np.median(v), np.quantile(v, [0.05, 0.95]))
-        box_results.append(v)
+        df_interp[k] = v
 
-    df_ACVC = pd.DataFrame()
-    df_HQm = pd.DataFrame()
-
-    for k, v in results.items():
-        if k in ["AC", "VC"]:
-            df_ACVC[k] = v
-        else:
-            df_HQm[k] = v
-
-    df_ACVC.to_csv("C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/results/seg_ACVC.csv")
-    df_HQm.to_csv("C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/results/seg_HQm.csv")
+    df_interp.to_csv("C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/results/seg_interp.csv")
     exit()
     # plt.boxplot(box_results)
     # plt.xticks(list(range(1, len(expts) + 1)), expts)

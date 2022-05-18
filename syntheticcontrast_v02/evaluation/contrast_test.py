@@ -10,6 +10,7 @@ from .util import bootstrap
 
 np.set_printoptions(4)
 
+
 #-------------------------------------------------------------------------
 
 def calc_contrast(real_path, pred_path, slicewise=False, save_path=None, model_save_name=None):

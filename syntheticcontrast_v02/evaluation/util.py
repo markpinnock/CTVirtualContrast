@@ -16,9 +16,17 @@ def load_data(split, img_res, img_path, seg_path, img_type, ignore):
     unique_ids = []
     train_test_split = 10
 
-    for img_id in os.listdir(img_path):
-        if img_id[0:4] not in unique_ids and img_id[0:6] != ignore:
-            unique_ids.append(img_id[0:4])
+    if isinstance(img_type, float):
+        time_str = str(img_type).replace('.', '_')
+
+        for img_id in os.listdir(f"{img_path}/{time_str}"):
+            if img_id[0:4] not in unique_ids and img_id[0:6] != ignore:
+                unique_ids.append(img_id[0:4])
+
+    else:
+        for img_id in os.listdir(img_path):
+            if img_id[0:4] not in unique_ids and img_id[0:6] != ignore:
+                unique_ids.append(img_id[0:4])
 
     np.random.seed(5)
     np.random.shuffle(unique_ids)
@@ -30,21 +38,35 @@ def load_data(split, img_res, img_path, seg_path, img_type, ignore):
     else:
         raise ValueError
 
-    img_list = [img for img in os.listdir(img_path) if img_type in img and img[0:4] in fold_ids]
-    seg_list = []
+    if isinstance(img_type, float):
+        img_list = [img for img in os.listdir(f"{img_path}/{time_str}") if img[0:4] in fold_ids]
+        seg_list = []
 
-    for img in img_list:
-        if img_type in ["AC", "VC"]:
-            seg_list.append(f"{img.split('.')[0]}-label.nrrd")
-        else:
+        for img in img_list:
             seg_list.append(f"{img[0:6]}HQ{img[8:11]}-label.nrrd")
+
+    else:
+        img_list = [img for img in os.listdir(img_path) if img_type in img and img[0:4] in fold_ids]
+        seg_list = []
+
+        for img in img_list:
+            if img_type in ["AC", "VC"] and isinstance(img_type, str):
+                seg_list.append(f"{img.split('.')[0]}-label.nrrd")
+            else:
+                seg_list.append(f"{img[0:6]}HQ{img[8:11]}-label.nrrd")
 
     imgs = []
     segs = []
 
     for img, seg in zip(img_list, seg_list):
-        img_arr = nrrd.read(f"{img_path}/{img}")[0].astype("float32")
+        if isinstance(img_type, float):
+            img_arr = nrrd.read(f"{img_path}/{time_str}/{img}")[0].astype("float32")
+
+        else:
+            img_arr = nrrd.read(f"{img_path}/{img}")[0].astype("float32")
+
         seg_arr = nrrd.read(f"{seg_path}/{seg}")[0].astype("float32")
+
         img_dims = img_arr.shape
         img_arr[img_arr < HU_min] = HU_min
         img_arr[img_arr > HU_max] = HU_max
