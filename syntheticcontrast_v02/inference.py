@@ -15,6 +15,9 @@ from syntheticcontrast_v02.utils.combine_patches import CombinePatches
 
 def inference(CONFIG, args):
     assert args.phase in ["AC", "VC", "both"], args.phase
+    times = args.time.split(",")
+    assert len(times) == 2
+    times = [float(t) for t in times]
 
     test_ds_dict, TestGenerator = get_test_dataloader(config=CONFIG,
                                                       by_subject=True,
@@ -33,8 +36,8 @@ def inference(CONFIG, args):
         Combine.new_subject(img_dims)
 
         for data in test_ds:
-            AC_pred = Model(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 1.0)
-            VC_pred = Model(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * 2.0)
+            AC_pred = Model(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * times[0])
+            VC_pred = Model(data["real_source"], tf.ones([data["real_source"].shape[0], 1]) * times[1])
 
             AC_pred = TestGenerator.un_normalise(AC_pred)[:, :, :, :, 0].numpy()
             VC_pred = TestGenerator.un_normalise(VC_pred)[:, :, :, :, 0].numpy()
@@ -88,7 +91,8 @@ if __name__ == "__main__":
     parser.add_argument("--data", '-d', help="Data path", type=str)
     parser.add_argument("--phase", '-f', help="Phase: AC/VC/both", type=str, default="both")
     parser.add_argument("--minibatch", '-m', help="Minibatch size", type=int, default=128)
-    parser.add_argument("--stride", '-t', help="Stride length", type=int, default=16)
+    parser.add_argument("--stride", '-st', help="Stride length", type=int, default=16)
+    parser.add_argument("--time", '-tt', help="Phase time, comma separated", type=str, default="1,2")
     parser.add_argument("--save", '-s', help="Save images", action="store_true")
     arguments = parser.parse_args()
 

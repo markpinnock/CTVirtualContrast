@@ -19,13 +19,13 @@ class CombinePatches:
         self.HWD_dims = subject_dims
 
         self.DHW_dims = [self.HWD_dims[2], self.HWD_dims[0], self.HWD_dims[1]]
-        linear_img_size = tf.reduce_prod(self.DHW_dims)
-        self.linear_AC = tf.zeros(linear_img_size, "int16")
-        self.linear_VC = tf.zeros(linear_img_size, "int16")
-        self.linear_weights = np.zeros(linear_img_size, "int16")
+        self.linear_img_size = tf.reduce_prod(self.DHW_dims)
+        self.linear_AC = tf.zeros(self.linear_img_size, "int16")
+        self.linear_VC = tf.zeros(self.linear_img_size, "int16")
+        self.linear_weights = np.zeros(self.linear_img_size, "int16")
 
         # Need linear coords for our (HWD) dim order
-        self.linear_coords = tf.reshape(tf.range(linear_img_size), self.HWD_dims)
+        self.linear_coords = tf.reshape(tf.range(self.linear_img_size), self.HWD_dims)
 
     def get_AC(self):
         linear_AC = tf.cast(tf.round(self.linear_AC / self.linear_weights), "int16")
@@ -39,18 +39,24 @@ class CombinePatches:
 
         return VC.numpy()
 
+    def reset(self):
+        self.linear_AC = tf.zeros(self.linear_img_size, "int16")
+        self.linear_VC = tf.zeros(self.linear_img_size, "int16")
+        self.linear_weights = np.zeros(self.linear_img_size, "int16")
+
     def apply_patches(self, AC, VC, coords):
-
-        # Flatten into update vector
-        AC_update = tf.cast(tf.round(tf.reshape(AC, -1)), "int16")
-        VC_update = tf.cast(tf.round(tf.reshape(VC, -1)), "int16")
-
         # Flatten minibatch of linear coords
         coords = tf.reshape(coords, [-1, 1])
 
-        # Update 1D image with patches
-        self.linear_AC = tf.tensor_scatter_nd_add(self.linear_AC, coords, AC_update)
-        self.linear_VC = tf.tensor_scatter_nd_add(self.linear_VC, coords, VC_update)
+        if AC is not None:
+            # Flatten into update vector
+            AC_update = tf.cast(tf.round(tf.reshape(AC, -1)), "int16")
+            # Update 1D image with patches
+            self.linear_AC = tf.tensor_scatter_nd_add(self.linear_AC, coords, AC_update)
+
+        if VC is not None:
+            VC_update = tf.cast(tf.round(tf.reshape(VC, -1)), "int16")
+            self.linear_VC = tf.tensor_scatter_nd_add(self.linear_VC, coords, VC_update)
 
         # Update weights
         self.linear_weights = tf.tensor_scatter_nd_add(self.linear_weights, coords, tf.ones_like(AC_update))
