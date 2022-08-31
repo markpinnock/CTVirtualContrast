@@ -129,18 +129,93 @@ def calc_contrast(real_path, pred_path, save_path, model_save_name=None):
 
 #-------------------------------------------------------------------------
 
+def load_contrasts(file_path, models):
+    results = []
+
+    times = ["0.0", "0.25", "0.5", "0.75", "1.0", "1.25", "1.5", "1.75",
+             "2.0", "2.5", "3.0", "3.5", "4.0", "5.0", "10.0", "20.0"]
+
+    for model in models.keys():
+        model_dict = {}
+
+        for time in times:
+            model_dict[time] = {}
+
+        df = pd.read_csv(f"{file_path}/interp_{model}.csv", index_col=0, header=[0, 1])
+
+        for ROI in ["Aorta", "Cortex", "Medulla", "Tumour"]:
+            for time in times:
+                model_dict[time][ROI] = df[time.replace('.', '_'), ROI].dropna().values
+
+        results.append(model_dict)
+
+    return dict(zip(models.values(), results))
+
+
+#-------------------------------------------------------------------------
+
+def display_interps(file_path, results):
+    gt_df = pd.read_csv(f"{file_path}/contrast_gt.csv", index_col=0, header=[0, 1])
+
+    for i, ROI in enumerate(["Aorta", "Cortex", "Medulla", "Tumour"]):
+        plt.subplot(2, 2, i + 1)
+
+        for model in models.values():
+            times = list(results[model].keys())
+            times_float = [float(t) for t in results[model].keys()]
+            HUs = []
+
+            for t in times:
+                HUs.append(np.mean(results[model][t][ROI]))
+
+            plt.plot(times_float, HUs, label=model)
+
+        plt.scatter(0.0, gt_df.mean(axis=0)["NCE"][ROI])
+        plt.scatter(1.0, gt_df.mean(axis=0)["CME"][ROI])
+        plt.scatter(2.0, gt_df.mean(axis=0)["NGE"][ROI])
+
+    plt.legend()
+    plt.show()
+
+
+#-------------------------------------------------------------------------
+
 if __name__ == "__main__":
 
-    ROI_dict = {"Ao": "Aorta", "Co": "Cortex", "Md": "Medulla", "Tu": "Tumour"}
+    models = {
+        "p2p": "P2P-Full",
+        "p2ppatch": "P2P-Patch",
+        "hp2p": "HyperP2P-Full",
+        "hp2ppatch": "HyperP2P-Patch"
+    }
 
-    # models = {
-    #     "p2p": "P2P-Full",
-    #     "p2ppatch": "P2P-Patch",
-    #     "hyperp2p": "HyperP2P-Full",
-    #     "hyperp2ppatch": "HyperP2P-Patch"
-    # }
-
-    p = "C:\\Users\\roybo\\Programming\\PhD\\007_CNN_Virtual_Contrast\\test_pix2pix\\H2_save280\\interpolation"
-    r = "C:\\Users\\roybo\\OneDrive - University College London\\PhD\\PhD_Prog\\007_CNN_Virtual_Contrast\\Phase2\\output\\Real"
     s = "C:\\Users\\roybo\\OneDrive - University College London\\PhD\\PhD_Prog\\007_CNN_Virtual_Contrast\\Phase2\\results"
-    calc_contrast(r, p, s, "hp2p")
+
+    results = load_contrasts(s, models)
+    # display_interps(s, results)
+    # p = "C:\\Users\\roybo\\Programming\\PhD\\007_CNN_Virtual_Contrast\\test_pix2pix\\H2_save300_patch\\interpolation"
+    # r = "C:\\Users\\roybo\\OneDrive - University College London\\PhD\\PhD_Prog\\007_CNN_Virtual_Contrast\\Phase2\\output\\Real"
+    # calc_contrast(r, p, s, "hp2ppatch")
+
+    segs = pd.read_csv("C:/Users/roybo/OneDrive - University College London/PhD/PhD_Prog/007_CNN_Virtual_Contrast/Phase2/results/seg_interp.csv", index_col=0)
+
+    times_f = [0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75,
+               2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 10.0, 20.0]
+
+    # plt.plot(times_f, segs.median(axis=0)[0:16], label="P2P-Full")
+    # plt.legend()
+    # plt.show()
+    # plt.plot(times_f, segs.median(axis=0)[16:32], label="P2P-Patch")
+    # plt.legend()
+    # plt.show()
+    # plt.plot(times_f, segs.median(axis=0)[32:48], label="HyperP2P-Full")
+    # plt.legend()
+    # plt.show()
+    # plt.plot(times_f, segs.median(axis=0)[48:64], label="HyperP2P-Patch")
+    # plt.legend()
+    # plt.show()
+
+    print(segs.median(axis=0)[0:16])
+    print(segs.median(axis=0)[16:32])
+    print(segs.median(axis=0)[32:48])
+    print(segs.median(axis=0)[48:])
